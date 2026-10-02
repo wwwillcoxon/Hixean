@@ -211,7 +211,49 @@ MATCH expr [ AS nombre ]
 Un `MATCH` cuyo sujeto es un `Result` no necesita `CASE ELSE` si cubre `Ok`
 y `Err`; en cualquier otro caso es obligatorio (`E0405`).
 
-## 9. Lo que este documento *no* cubre todavía
+## 9. Módulos y unidades `.hxc`
 
-`REF`/`PTR` con unicidad de procedencia, vectors, genéricos, traits,
-`COMPTIME`, `.hxk`/`.hxq`.
+```
+modulo     = "MODULE" ident , { import | constante | tipo | "FUNCTION" funcion } ;
+import     = "IMPORT" , ruta , [ "AS" ident ] ;
+```
+
+Cada módulo compila a su propia unidad de traducción (`build/gen/<modulo>.c`)
+que incluye `_runtime.h`, las cabeceras de los módulos que importa y la suya.
+El punto de entrada genera `_entry.c` y el perfil `freestanding` añade
+`_rtmem.c` con `memcpy`/`memset`. Cada objeto se guarda en
+`build/obj/<hash>.o`, donde el hash cubre la fuente C, la versión de `hxc`, el
+perfil y las cabeceras de las que depende; por eso tocar un módulo recompila
+una sola unidad.
+
+Una biblioteca se publica como dos artefactos:
+
+- `<modulo>.hxc`: interfaz versionada (número de formato y ABI) con el hash del
+  fuente, la longitud y el hash del cuerpo, el nombre del módulo y los elementos
+  exportados: tipos con sus campos, constantes con su valor y funciones con sus
+  parámetros y su retorno.
+- `lib<modulo>.a`: la implementación, con `_start`/`hx_main` renombrados a
+  `__hxlib_*` para que el programa que la enlaza apporta su propio punto de
+  entrada.
+
+```
+hxc build mate.hxs --emit-hxc unidades/     ' publica mate.hxc + libmate.a
+hxc build usa.hxe --use-hxc unidades/       ' sin fuentes de mate en el arbol
+```
+
+Sólo se exporta lo marcado `EXPORT`: un tipo o una constante no exportados dan
+`E0308` al usarse desde otro módulo. El formato tiene número de versión y se
+lee con validación de cada desplazamiento y profundidad (`E0601`..`E0603`),
+de modo que una unidad truncada, manipulada o de otra versión se rechaza en
+lugar de fallar más tarde:
+
+| código | significa |
+|---|---|
+| `E0601` | el archivo no empieza por la magia `HXCU` |
+| `E0602` | truncado, hash del cuerpo incorrecto, nombres ausentes o tipo demasiado anidado |
+| `E0603` | número de formato o ABI que esta versión no entiende |
+
+## 10. Lo que este documento *no* cubre todavía
+
+`REF`/`PTR` con unicidad de procedencia, genéricos, traits, `COMPTIME`,
+`.hxk`/`.hxq`.

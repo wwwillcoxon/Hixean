@@ -52,7 +52,7 @@ char *hx_arena_vsprintf(HxArena *a, const char *fmt, va_list ap);
     do {                                                                       \
         if ((len) == (cap)) {                                                  \
             int nx = (cap) ? (cap) * 2 : 8;                                    \
-            ptr = (__typeof__(ptr))hx_arena_realloc_tmp((void *)ptr, (size_t)nx * (elem));             \
+            ptr = (__typeof__(ptr))hx_arena_realloc_tmp((void *)(uintptr_t)ptr, (size_t)nx * (elem));             \
             cap = nx;                                                          \
         }                                                                      \
     } while (0)
@@ -61,7 +61,9 @@ void *hx_arena_realloc_tmp(void *p, size_t n);
 
 #define HX_VEC_PUSH(v, item)                                                   \
     do {                                                                       \
-        hx_vec_grow((v).data, (v).len, (v).cap, sizeof(*(v).data));           \
+        void *hx_p_ = (void *)(v).data;                                        \
+        hx_vec_grow(hx_p_, (v).len, (v).cap, sizeof(*(v).data));               \
+        (v).data = (__typeof__((v).data))hx_p_;                                \
         (v).data[(v).len++] = (item);                                          \
     } while (0)
 
@@ -81,6 +83,28 @@ size_t hx_intern_count(HxIntern *t);
 char hx_ascii_upper(char c);
 char hx_ascii_lower(char c);
 int hx_ascii_casecmp(const char *a, const char *b);
+
+typedef struct {
+    HxArena *arena;
+    char *data;
+    size_t len;
+    size_t cap;
+} HxBuf;
+
+void hx_buf_reserve(HxBuf *b, size_t n);
+void hx_buf_put(HxBuf *b, const char *s, size_t n);
+void hx_buf_str(HxBuf *b, const char *s);
+void hx_buf_printf(HxBuf *b, const char *fmt, ...);
+
+typedef struct {
+    uint64_t h;
+} HxHash;
+
+void hx_fnv_init(HxHash *x);
+void hx_fnv_bytes(HxHash *x, const void *data, size_t n);
+void hx_fnv_str(HxHash *x, const char *s);
+void hx_fnv_u64(HxHash *x, uint64_t v);
+void hx_fnv_hex(HxHash *x, char *out, int n);
 
 typedef struct {
     uint32_t start;

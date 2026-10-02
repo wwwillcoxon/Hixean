@@ -18,6 +18,41 @@
 
 const char *HX_VERSION = "0.1.0-dev";
 
+void hx_buf_reserve(HxBuf *b, size_t n) {
+    if (b->len + n + 1 <= b->cap) return;
+    size_t nc = b->cap ? b->cap * 2 : 4096;
+    while (nc < b->len + n + 1) nc *= 2;
+    b->data = (char *)realloc(b->data, nc);
+    if (!b->data) {
+        fprintf(stderr, "hx: out of memory\n");
+        exit(70);
+    }
+    b->cap = nc;
+}
+
+void hx_buf_put(HxBuf *b, const char *s, size_t n) {
+    hx_buf_reserve(b, n);
+    memcpy(b->data + b->len, s, n);
+    b->len += n;
+    b->data[b->len] = 0;
+}
+
+void hx_buf_str(HxBuf *b, const char *s) { hx_buf_put(b, s, strlen(s)); }
+
+void hx_buf_printf(HxBuf *b, const char *fmt, ...) {
+    va_list ap, ap2;
+    va_start(ap, fmt);
+    va_copy(ap2, ap);
+    int n = vsnprintf(NULL, 0, fmt, ap2);
+    va_end(ap2);
+    if (n > 0) {
+        hx_buf_reserve(b, (size_t)n);
+        vsnprintf(b->data + b->len, (size_t)n + 1, fmt, ap);
+        b->len += (size_t)n;
+    }
+    va_end(ap);
+}
+
 struct HxArenaBlock {
     HxArenaBlock *next;
     size_t used;
@@ -138,7 +173,7 @@ HxIntern *hx_intern_new(HxArena *a) {
     return t;
 }
 
-static uint32_t hx_hash_bytes(const char *s, size_t n) {
+static uint32_t hx_intern_hash(const char *s, size_t n) {
     uint32_t h = 2166136261u;
     for (size_t i = 0; i < n; i++) {
         h ^= (unsigned char)s[i];
@@ -148,7 +183,7 @@ static uint32_t hx_hash_bytes(const char *s, size_t n) {
 }
 
 HxSym hx_intern(HxIntern *t, const char *s, size_t n) {
-    uint32_t h = hx_hash_bytes(s, n);
+    uint32_t h = hx_intern_hash(s, n);
     size_t b = h & (HX_INTERN_BUCKETS - 1);
     for (HxInternEntry *e = t->buckets[b]; e; e = e->next) {
         if (e->hash == h && e->len == n && memcmp(e->text, s, n) == 0) return e->text;
@@ -286,4 +321,31 @@ void hx_mkdir_p(const char *path) {
     }
     HX_MKDIR(tmp);
     free(tmp);
+}
+/* ---------------- hash de contenido para la cache ---------------- */
+
+void hx_fnv_init(HxHash *x) { x->h = 1469598103934665603ULL; }
+
+void hx_fnv_bytes(HxHash *x, const void *data, size_t n) {
+    const unsigned char *p = (const unsigned char *)data;
+    for (size_t i = 0; i < n; i++) {
+        x->h ^= p[i];
+        x->h *= 1099511628211ULL;
+    }
+}
+
+void hx_fnv_str(HxHash *x, const char *s) { hx_fnv_bytes(x, s, strlen(s)); }
+
+void hx_fnv_u64(HxHash *x, uint64_t v) { hx_fnv_bytes(x, &v, sizeof(v)); }
+
+void hx_fnv_hex(HxHash *x, char *out, int n) {
+    static const char *digits = "0123456789abcdef";
+    uint64_t h = x->h;
+    int i;
+    if (n < 17) n = 17;
+    for (i = 16; i >= 0; i--) {
+        out[i] = digits[h & 15];
+        h >>= 4;
+    }
+    out[16] = 0;
 }

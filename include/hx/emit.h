@@ -5,7 +5,14 @@
 
 typedef enum { HX_PROFILE_FREESTANDING = 0, HX_PROFILE_LIBC = 1 } HxProfile;
 
-int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile profile,
-                 const char *out_bin, int keep_asm, const char *keep_asm_path);
+typedef struct {
+    HxProfile profile;
+    const char *dir_gen;
+    const char *dir_runtime;
+    int keep_asm;
+    const char *keep_asm_path;
+} HxEmitOptions;
+
+int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt);
 
 #endif

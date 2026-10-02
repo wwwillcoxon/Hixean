@@ -10,6 +10,45 @@ echo "== ejemplos =="
 echo -n "tco (10M iteraciones de cola): "
 (ulimit -s 128; ./build/tco | tr '\n' ' ')
 echo
+echo "== biblioteca .hxc (interfaz + libmate.a, sin fuentes de mate) =="
+rm -rf build/units
+./build/hxc build tests/hxc/mate.hxs --emit-hxc build/units -o build/mate
+./build/hxc build tests/hxc/usa.hxe --use-hxc build/units -o build/usa
+./build/usa > build/usa.out
+diff -u tests/hxc/usa.out build/usa.out && echo "ok     tests/hxc/usa.out"
+echo
+echo "== unidad .hxc dañada =="
+mkdir -p build/units_bad build/sinsrc
+head -c 40 build/units/mate.hxc > build/units_bad/mate.hxc
+cp tests/hxc/usa.hxe build/sinsrc/usa.hxe
+if ./build/hxc build build/sinsrc/usa.hxe --use-hxc build/units_bad -o build/usa 2>&1 | grep -q E0602; then
+  echo "ok     unidad truncada rechazada con E0602"
+else
+  echo "FALLO: no se rechazo la unidad truncada"; exit 1
+fi
+printf 'XXXX' > build/units_bad/mate.hxc
+tail -c +5 build/units/mate.hxc >> build/units_bad/mate.hxc
+if ./build/hxc build build/sinsrc/usa.hxe --use-hxc build/units_bad -o build/usa 2>&1 | grep -q E0601; then
+  echo "ok     unidad con magia incorrecta rechazada con E0601"
+else
+  echo "FALLO: no se rechazo la unidad con magia incorrecta"; exit 1
+fi
+
+echo "== cache de objetos =="
+rm -rf build/inc build/obj
+cp -r bench/multi build/inc
+./build/hxc build build/inc/main.hxe -o build/multi --timing 2>&1 | grep -o "([0-9]* TU recompiladas)" \
+  | grep -q "(22 TU recompiladas)" && echo "ok     22 unidades en frio"
+./build/hxc build build/inc/main.hxe -o build/multi --timing 2>&1 | grep -q "0 TU recompiladas" \
+  && echo "ok     0 unidades sin cambios"
+# la clave es el contenido, no la marca de tiempo: tocar sin cambiar no recompila
+touch build/inc/m7.hxs
+./build/hxc build build/inc/main.hxe -o build/multi --timing 2>&1 | grep -q "0 TU recompiladas" \
+  && echo "ok     tocar sin cambiar no recompila"
+sed -i "0,/RETURN acc + 7/s//RETURN acc + 4242/" build/inc/m7.hxs
+./build/hxc build build/inc/main.hxe -o build/multi --timing 2>&1 | grep -q "1 TU recompiladas" \
+  && echo "ok     1 unidad tras cambiar un modulo"
+echo
 echo "== puertas de tamano =="
 ./build/hxc build examples/hola.hxe -o build/hola
 ./build/hxc size build/hola

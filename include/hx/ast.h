@@ -218,6 +218,7 @@ typedef struct {
     HxExpr *value;
     HxTy *ty;
     HxSpan span;
+    int is_export;
 } HxConst;
 
 typedef enum {
@@ -351,7 +352,6 @@ struct HxStmt {
             HxStmtVec body;
         } arena;
         HxStmtVec inner;
-    int deferred;
         struct {
             HxSym name;
             HxExpr *value;
@@ -360,6 +360,8 @@ struct HxStmt {
         } konst;
         HxMatch match;
     };
+    int deferred;
+    int is_export;
 };
 
 
@@ -373,6 +375,7 @@ typedef struct HxModule {
     HX_VEC_ANON(HxConst) consts;
     HxStmtVec top;
     int is_entry;
+    int from_hxc;
     int index;
 } HxModule;
 

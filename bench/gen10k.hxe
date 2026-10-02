@@ -1,4 +1,4 @@
-"benchmark: 10k lineas"
+"perf: 10k lineas"
 FUNCTION F1(n AS INT) AS INT
   DIM acc AS INT = n
   FOR i = 1 TO 8

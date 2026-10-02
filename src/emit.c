@@ -5,13 +5,6 @@
 
 typedef struct {
     HxArena *arena;
-    char *data;
-    size_t len;
-    size_t cap;
-} HxBuf;
-
-typedef struct {
-    HxArena *arena;
     HxUnit *unit;
     HxDiagBag *diags;
     HxProfile profile;
@@ -31,41 +24,6 @@ typedef struct {
     int epilogue_depth;
     HxStmtVec *match_cases;
 } HxEmit;
-
-static void hx_buf_reserve(HxBuf *b, size_t n) {
-    if (b->len + n + 1 <= b->cap) return;
-    size_t nc = b->cap ? b->cap * 2 : 4096;
-    while (nc < b->len + n + 1) nc *= 2;
-    b->data = (char *)realloc(b->data, nc);
-    if (!b->data) {
-        fprintf(stderr, "hx: out of memory emitting\n");
-        exit(70);
-    }
-    b->cap = nc;
-}
-
-static void hx_buf_put(HxBuf *b, const char *s, size_t n) {
-    hx_buf_reserve(b, n);
-    memcpy(b->data + b->len, s, n);
-    b->len += n;
-    b->data[b->len] = 0;
-}
-
-static void hx_buf_str(HxBuf *b, const char *s) { hx_buf_put(b, s, strlen(s)); }
-
-static void hx_buf_printf(HxBuf *b, const char *fmt, ...) {
-    va_list ap, ap2;
-    va_start(ap, fmt);
-    va_copy(ap2, ap);
-    int n = vsnprintf(NULL, 0, fmt, ap2);
-    va_end(ap2);
-    if (n > 0) {
-        hx_buf_reserve(b, (size_t)n);
-        vsnprintf(b->data + b->len, (size_t)n + 1, fmt, ap);
-        b->len += (size_t)n;
-    }
-    va_end(ap);
-}
 
 static const char *hx_c_ty(HxEmit *e, HxTy *t) {
     if (!t) return "int32_t";
@@ -95,6 +53,9 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
         default: return "int32_t";
     }
 }
+
+static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, unsigned long);\n"
+    "void *memset(void *, int, unsigned long);\n";
 
 static const char *HX_RT_FREESTANDING_MEM =
     "void *memcpy(void *d, const void *s, unsigned long n) {\n"
@@ -155,7 +116,7 @@ static const char *HX_RT_LIBC =
     "#include <stdlib.h>\n";
 
 static const char *HX_RT_CORE =
-    "static void hx_write(int fd, const void *p, int64_t n) {\n"
+    "static inline void hx_write(int fd, const void *p, int64_t n) {\n"
     "  const char *s = (const char *)p;\n"
     "  while (n > 0) {\n"
     "    long r = hx_sys_write(fd, s, n);\n"
@@ -164,15 +125,15 @@ static const char *HX_RT_CORE =
     "    n -= r;\n"
     "  }\n"
     "}\n"
-    "static void hx_out(const char *p, int64_t n) { hx_write(1, p, n); }\n"
-    "static void hx_u64_to_dec(uint64_t v, char *buf, int *len) {\n"
+    "static inline void hx_out(const char *p, int64_t n) { hx_write(1, p, n); }\n"
+    "static inline void hx_u64_to_dec(uint64_t v, char *buf, int *len) {\n"
     "  char tmp[24];\n"
     "  int t = 0;\n"
     "  if (v == 0) tmp[t++] = '0';\n"
     "  while (v) { tmp[t++] = (char)('0' + (v % 10u)); v /= 10u; }\n"
     "  while (t) buf[(*len)++] = tmp[--t];\n"
     "}\n"
-    "static void hx_print_i64(int64_t v) {\n"
+    "static inline void hx_print_i64(int64_t v) {\n"
     "  char buf[24];\n"
     "  int n = 0;\n"
     "  uint64_t u;\n"
@@ -181,9 +142,9 @@ static const char *HX_RT_CORE =
     "  hx_u64_to_dec(u, buf, &n);\n"
     "  hx_out(buf, n);\n"
     "}\n"
-    "static void hx_print_bool(hx_bool v) { hx_out(v ? \"true\" : \"false\", v ? 4 : 5); }\n"
-    "static void hx_print_str(hx_str s) { hx_write(1, s.p, s.n); }\n"
-    "static void hx_print_f64(double d) {\n"
+    "static inline void hx_print_bool(hx_bool v) { hx_out(v ? \"true\" : \"false\", v ? 4 : 5); }\n"
+    "static inline void hx_print_str(hx_str s) { hx_write(1, s.p, s.n); }\n"
+    "static inline void hx_print_f64(double d) {\n"
     "  char buf[48];\n"
     "  int n = 0, i;\n"
     "  uint64_t ip;\n"
@@ -207,7 +168,7 @@ static const char *HX_RT_CORE =
     "  }\n"
     "  hx_out(buf, n);\n"
     "}\n"
-    "static void hx_print_duration(int64_t ns) {\n"
+    "static inline void hx_print_duration(int64_t ns) {\n"
     "  int64_t unit_ns;\n"
     "  const char *unit;\n"
     "  if (ns != 0 && ns % 3600000000000LL == 0) { unit_ns = 3600000000000LL; unit = \"h\"; }\n"
@@ -235,7 +196,7 @@ static const char *HX_RT_CORE =
     "  for (i = 0; i < n; i++) if (a.p[i] != b[i]) return 0;\n"
     "  return 1;\n"
     "}\n"
-    "static void hx_panic(const char *msg, int64_t n) {\n"
+    "static inline void hx_panic(const char *msg, int64_t n) {\n"
     "  hx_write(2, \"hx: error: \", 12);\n"
     "  hx_write(2, msg, n);\n"
     "  hx_write(2, \"\\n\", 1);\n"
@@ -255,10 +216,10 @@ static const char *HX_RT_RESULT =
     "static hx_result hx_err_s(hx_str v) { hx_result r; r.tag = 1; r.i = 0; r.f = 0.0;"
     " r.s = v; return r; }\n"
     "static hx_bool hx_is_ok(hx_result v) { return v.tag == 0; }\n"
-    "static int64_t hx_pat_eq_i(int64_t a, int64_t b) { return a == b; }\n"
-    "static int64_t hx_pat_eq_d(double a, double b) { return a == b; }\n"
-    "static int64_t hx_pat_eq_s(hx_str a, hx_str b) { return hx_str_eq(a, b); }\n"
-    "static void hx_propagate_top(hx_result v) {\n"
+    "static inline int64_t hx_pat_eq_i(int64_t a, int64_t b) { return a == b; }\n"
+    "static inline int64_t hx_pat_eq_d(double a, double b) { return a == b; }\n"
+    "static inline int64_t hx_pat_eq_s(hx_str a, hx_str b) { return hx_str_eq(a, b); }\n"
+    "static inline void hx_propagate_top(hx_result v) {\n"
     "  hx_write(2, \"hx: error no controlado: \", 25);\n"
     "  hx_write(2, v.s.p, v.s.n);\n"
     "  hx_write(2, \"\\n\", 1);\n"
@@ -266,55 +227,55 @@ static const char *HX_RT_RESULT =
     "}\n";
 
 static const char *HX_RT_CHECKED =
-    "static int32_t hx_add_i32(int32_t a, int32_t b) {\n"
+    "static inline int32_t hx_add_i32(int32_t a, int32_t b) {\n"
     "  int32_t r;\n"
     "  if (__builtin_add_overflow(a, b, &r))\n"
     "    hx_panic(\"desbordamiento de Entero en +\", sizeof(\"desbordamiento de Entero en +\") - 1);\n"
     "  return r;\n"
     "}\n"
-    "static int32_t hx_sub_i32(int32_t a, int32_t b) {\n"
+    "static inline int32_t hx_sub_i32(int32_t a, int32_t b) {\n"
     "  int32_t r;\n"
     "  if (__builtin_sub_overflow(a, b, &r))\n"
     "    hx_panic(\"desbordamiento de Entero en -\", sizeof(\"desbordamiento de Entero en -\") - 1);\n"
     "  return r;\n"
     "}\n"
-    "static int64_t hx_add_i64(int64_t a, int64_t b) {\n"
+    "static inline int64_t hx_add_i64(int64_t a, int64_t b) {\n"
     "  int64_t r;\n"
     "  if (__builtin_add_overflow(a, b, &r))\n"
     "    hx_panic(\"desbordamiento de I64 en +\", sizeof(\"desbordamiento de I64 en +\") - 1);\n"
     "  return r;\n"
     "}\n"
-    "static int64_t hx_sub_i64(int64_t a, int64_t b) {\n"
+    "static inline int64_t hx_sub_i64(int64_t a, int64_t b) {\n"
     "  int64_t r;\n"
     "  if (__builtin_sub_overflow(a, b, &r))\n"
     "    hx_panic(\"desbordamiento de I64 en -\", sizeof(\"desbordamiento de I64 en -\") - 1);\n"
     "  return r;\n"
     "}\n"
-    "static int32_t hx_add_sat_i32(int32_t a, int32_t b) {\n"
+    "static inline int32_t hx_add_sat_i32(int32_t a, int32_t b) {\n"
     "  int64_t r = (int64_t)a + (int64_t)b;\n"
     "  if (r > 2147483647LL) return 2147483647;\n"
     "  if (r < -2147483647LL - 1) return -2147483647 - 1;\n"
     "  return (int32_t)r;\n"
     "}\n"
-    "static int32_t hx_sub_sat_i32(int32_t a, int32_t b) {\n"
+    "static inline int32_t hx_sub_sat_i32(int32_t a, int32_t b) {\n"
     "  int64_t r = (int64_t)a - (int64_t)b;\n"
     "  if (r > 2147483647LL) return 2147483647;\n"
     "  if (r < -2147483647LL - 1) return -2147483647 - 1;\n"
     "  return (int32_t)r;\n"
     "}\n"
-    "static int64_t hx_add_sat_i64(int64_t a, int64_t b) {\n"
+    "static inline int64_t hx_add_sat_i64(int64_t a, int64_t b) {\n"
     "  if (b > 0 && a > 9223372036854775807LL - b) return 9223372036854775807LL;\n"
     "  if (b < 0 && a < -9223372036854775807LL - 1 - b) return -9223372036854775807LL - 1;\n"
     "  return a + b;\n"
     "}\n"
-    "static int64_t hx_sub_sat_i64(int64_t a, int64_t b) {\n"
+    "static inline int64_t hx_sub_sat_i64(int64_t a, int64_t b) {\n"
     "  if (b < 0 && a > 9223372036854775807LL + b) return 9223372036854775807LL;\n"
     "  if (b > 0 && a < -9223372036854775807LL - 1 + b) return -9223372036854775807LL - 1;\n"
     "  return a - b;\n"
     "}\n";
 
 static const char *HX_RT_STRFUNS =
-    "static int64_t hx_len_str(hx_str s) { return s.n; }\n"
+    "static inline int64_t hx_len_str(hx_str s) { return s.n; }\n"
     "static hx_bool hx_is_empty_str(hx_str s) { return s.n == 0; }\n"
     "static hx_str hx_str_at(hx_str s, int64_t i) { hx_str r; r.p = s.p + i; r.n = 1; return r; }\n"
     "static hx_str hx_str_slice(hx_str s, int64_t a, int64_t b) {\n"
@@ -381,7 +342,7 @@ static const char *HX_RT_ARENA =
     "    hx_arena_blk;\n"
     "typedef struct { hx_arena_blk *head; } hx_arena;\n"
     "static const int64_t HX_ARENA_GRAIN = 65536;\n"
-    "static void *hx_arena_alloc(hx_arena *a, int64_t n) {\n"
+    "static inline void *hx_arena_alloc(hx_arena *a, int64_t n) {\n"
     "  hx_arena_blk *b = a->head;\n"
     "  void *p;\n"
     "  if (n < 0) hx_panic(\"reserva de tamano negativo\", 26);\n"
@@ -400,8 +361,8 @@ static const char *HX_RT_ARENA =
     "  b->used += (n + 15) & ~(int64_t)15;\n"
     "  return p;\n"
     "}\n"
-    "static void hx_arena_init(hx_arena *a) { a->head = 0; }\n"
-    "static void hx_arena_free(hx_arena *a) {\n"
+    "static inline void hx_arena_init(hx_arena *a) { a->head = 0; }\n"
+    "static inline void hx_arena_free(hx_arena *a) {\n"
     "  hx_arena_blk *b = a->head;\n"
     "  while (b) {\n"
     "    hx_arena_blk *next = b->next;\n"
@@ -413,7 +374,7 @@ static const char *HX_RT_ARENA =
 
 static const char *HX_RT_RAWALLOC_FREESTANDING =
     "#if defined(__linux__) && defined(__x86_64__)\n"
-    "static void *hx_raw_alloc(int64_t n) {\n"
+    "static inline void *hx_raw_alloc(int64_t n) {\n"
     "  register long r10 __asm__(\"r10\") = 0x22;\n"
     "  register long r8 __asm__(\"r8\") = 0xffffffffL;\n"
     "  register long r9 __asm__(\"r9\") = 0;\n"
@@ -425,7 +386,7 @@ static const char *HX_RT_RAWALLOC_FREESTANDING =
     "  if (r < 0 && r > -4096) return 0;\n"
     "  return (void *)r;\n"
     "}\n"
-    "static void hx_raw_free(void *p) {\n"
+    "static inline void hx_raw_free(void *p) {\n"
     "  register long r8 __asm__(\"r8\") = 0;\n"
     "  register long r9 __asm__(\"r9\") = 0;\n"
     "  long r;\n"
@@ -437,8 +398,8 @@ static const char *HX_RT_RAWALLOC_FREESTANDING =
     "}\n"
     "#else\n"
     "static char hx_static_heap[1048576];\n"
-    "static int64_t hx_static_heap_used;\n"
-    "static void *hx_raw_alloc(int64_t n) {\n"
+    "static inline int64_t hx_static_heap_used;\n"
+    "static inline void *hx_raw_alloc(int64_t n) {\n"
     "  char *p;\n"
     "  n = (n + 15) & ~(int64_t)15;\n"
     "  if (hx_static_heap_used + n > (int64_t)sizeof(hx_static_heap)) return 0;\n"
@@ -446,23 +407,23 @@ static const char *HX_RT_RAWALLOC_FREESTANDING =
     "  hx_static_heap_used += n;\n"
     "  return p;\n"
     "}\n"
-    "static void hx_raw_free(void *p) { (void)p; }\n"
+    "static inline void hx_raw_free(void *p) { (void)p; }\n"
     "#endif\n";
 
 static const char *HX_RT_RAWALLOC_LIBC =
-    "static void *hx_raw_alloc(int64_t n) { return malloc((size_t)n); }\n"
-    "static void hx_raw_free(void *p) { free(p); }\n"
-    "static void *hx_heap_alloc(int64_t n) { return malloc((size_t)n); }\n"
-    "static void hx_heap_free(void *p) { free(p); }\n";
+    "static inline void *hx_raw_alloc(int64_t n) { return malloc((size_t)n); }\n"
+    "static inline void hx_raw_free(void *p) { free(p); }\n"
+    "static inline void *hx_heap_alloc(int64_t n) { return malloc((size_t)n); }\n"
+    "static inline void hx_heap_free(void *p) { free(p); }\n";
 
 static const char *HX_RT_VEC_PRE =
-    "static long long hx_pow10(int k) {\n"
+    "static inline long long hx_pow10(int k) {\n"
     "  long long r = 1;\n"
     "  int i;\n"
     "  for (i = 0; i < k; i++) r *= 10;\n"
     "  return r;\n"
     "}\n"
-    "static void hx_print_f32(float v) {\n"
+    "static inline void hx_print_f32(float v) {\n"
     "  double d = (double)v;\n"
     "  long long scaled;\n"
     "  char buf[32];\n"
@@ -504,14 +465,14 @@ static const char *HX_RT_VEC =
     "static hx_vec2 hx_v2s(float s) { return hx_v2(s, s); }\n"
     "static hx_vec3 hx_v3s(float s) { return hx_v3(s, s, s); }\n"
     "static hx_vec4 hx_v4s(float s) { return hx_v4(s, s, s, s); }\n"
-    "static float hx_dot(hx_vec3 a, hx_vec3 b) {\n"
+    "static inline float hx_dot(hx_vec3 a, hx_vec3 b) {\n"
     "  return a.x * b.x + a.y * b.y + a.z * b.z;\n"
     "}\n"
     "static hx_vec3 hx_cross(hx_vec3 a, hx_vec3 b) {\n"
     "  return hx_v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);\n"
     "}\n"
-    "static float hx_len3(hx_vec3 v) { return hx_dot(v, v); }\n"
-    "static double hx_sqrt_d(double x) {\n"
+    "static inline float hx_len3(hx_vec3 v) { return hx_dot(v, v); }\n"
+    "static inline double hx_sqrt_d(double x) {\n"
     "  double r = x, prev = 0.0;\n"
     "  int i;\n"
     "  if (x <= 0.0) return 0.0;\n"
@@ -537,16 +498,16 @@ static const char *HX_RT_VEC =
     "static hx_vec3 hx_scale3(hx_vec3 a, float s) {\n"
     "  return hx_v3(a.x * s, a.y * s, a.z * s);\n"
     "}\n"
-    "static void hx_print_vec2(hx_vec2 v) {\n"
+    "static inline void hx_print_vec2(hx_vec2 v) {\n"
     "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
     "  hx_print_f32(v.y); hx_out(\")\", 1);\n"
     "}\n"
-    "static void hx_print_vec3(hx_vec3 v) {\n"
+    "static inline void hx_print_vec3(hx_vec3 v) {\n"
     "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
     "  hx_print_f32(v.y); hx_out(\", \", 2);\n"
     "  hx_print_f32(v.z); hx_out(\")\", 1);\n"
     "}\n"
-    "static void hx_print_vec4(hx_vec4 v) {\n"
+    "static inline void hx_print_vec4(hx_vec4 v) {\n"
     "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
     "  hx_print_f32(v.y); hx_out(\", \", 2);\n"
     "  hx_print_f32(v.z); hx_out(\", \", 2);\n"
@@ -562,7 +523,7 @@ static const char *HX_RT_ZERO =
 
 static const char *HX_RT_STRING =
     "static char hx_cbuf[65536];\n"
-    "static int64_t hx_clen;\n"
+    "static inline int64_t hx_clen;\n"
     "static hx_str hx_concat(hx_str a, hx_str b) {\n"
     "  hx_str s;\n"
     "  if (hx_clen + a.n + b.n > (int64_t)sizeof(hx_cbuf))\n"
@@ -1710,33 +1671,24 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
             hx_buf_printf(b, "  %s %s;\n", hx_c_ty(e, t->fields.data[j].ty),
                           hx_sym_str(t->fields.data[j].name));
         hx_buf_str(b, "};\n");
+        hx_buf_printf(b,
+                      "static inline hx_T_%s hx_zero_rec_%s(void) {\n"
+                      "  hx_T_%s v;\n"
+                      "  __builtin_memset(&v, 0, sizeof(v));\n"
+                      "  return v;\n"
+                      "}\n",
+                      hx_sym_str(t->name), hx_sym_str(t->name), hx_sym_str(t->name));
     }
 }
 
-static void hx_emit_protos(HxEmit *e, HxModule *m) {
-    HxBuf *b = &e->out;
-    for (int i = 0; i < m->funcs.len; i++) {
-        HxFunc *f = &m->funcs.data[i];
-        hx_buf_printf(b, "static %s hx_call_%s(", hx_c_ty(e, f->ret), hx_sym_str(f->name));
-        if (!f->params.len) hx_buf_str(b, "void");
-        for (int j = 0; j < f->params.len; j++) {
-            if (j) hx_buf_str(b, ", ");
-            hx_buf_printf(b, "%s hx_v_%s", hx_c_ty(e, f->params.data[j].ty),
-                          hx_sym_str(f->params.data[j].name));
-        }
-        hx_buf_str(b, ");\n");
-    }
-}
+static void hx_emit_param_list(HxEmit *e, HxFunc *f, HxBuf *b);
 
 static void hx_emit_func(HxEmit *e, HxFunc *f) {
     HxBuf *b = &e->out;
-    hx_buf_printf(b, "static %s hx_call_%s(", hx_c_ty(e, f->ret), hx_sym_str(f->name));
-    if (!f->params.len) hx_buf_str(b, "void");
-    for (int j = 0; j < f->params.len; j++) {
-        if (j) hx_buf_str(b, ", ");
-        hx_buf_printf(b, "%s hx_v_%s", hx_c_ty(e, f->params.data[j].ty),
-                      hx_sym_str(f->params.data[j].name));
-    }
+    hx_buf_printf(b, "%s%s hx_call_%s(", f->is_export ? "" : "static ",
+
+                  hx_c_ty(e, f->ret), hx_sym_str(f->name));
+    hx_emit_param_list(e, f, b);
     hx_buf_str(b, ") {\n");
     e->ret_is_result = f->ret && hx_ty_is_result(f->ret);
     int ndefers = hx_count_defers(&f->body);
@@ -1796,14 +1748,124 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
     hx_buf_str(b, "}\n\n");
 }
 
-int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile profile,
-                 const char *out_bin, int keep_asm, const char *keep_asm_path) {
+static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
+    hx_buf_printf(b, "/* runtime hxc %s */\n", HX_VERSION);
+    hx_buf_str(b, "#ifndef HX_RUNTIME_H\n#define HX_RUNTIME_H\n");
+    hx_buf_str(b, "#include <stdint.h>\n#include <stddef.h>\n#include <string.h>\n");
+    hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_RT_FREESTANDING : HX_RT_LIBC);
+    if (e->profile == HX_PROFILE_FREESTANDING) {
+        hx_buf_str(b, HX_RT_RAWALLOC_FREESTANDING);
+    } else {
+        hx_buf_str(b, HX_RT_RAWALLOC_LIBC);
+    }
+    hx_buf_str(b, HX_RT_TYPES);
+    hx_buf_str(b, HX_RT_CORE);
+    if (e->uses_vec) {
+        hx_buf_str(b, HX_RT_VEC_PRE);
+        hx_buf_str(b, HX_RT_VEC);
+    }
+    if (e->uses_string) hx_buf_str(b, HX_RT_STRING);
+    hx_buf_str(b, HX_RT_ZERO);
+    if (e->uses_result) hx_buf_str(b, HX_RT_RESULT);
+    hx_buf_str(b, HX_RT_CHECKED);
+    if (e->uses_arena) {
+        hx_buf_str(b, HX_RT_ARENA);
+        hx_buf_str(b, "extern hx_arena hx_static_arena;\n");
+        hx_buf_str(b, "void hx_static_init(void);\n");
+    }
+    if (e->uses_string) {
+        hx_buf_str(b, HX_RT_STRFUNS);
+        hx_buf_str(b, HX_RT_STRMORE);
+    }
+    hx_buf_str(b, HX_RT_MEM_DECL);
+    hx_buf_str(b, "#endif\n");
+}
+
+static void hx_emit_param_list(HxEmit *e, HxFunc *f, HxBuf *b) {
+    if (!f->params.len) {
+        hx_buf_str(b, "void");
+        return;
+    }
+    for (int j = 0; j < f->params.len; j++) {
+        if (j) hx_buf_str(b, ", ");
+        hx_buf_printf(b, "%s hx_v_%s", hx_c_ty(e, f->params.data[j].ty),
+                      hx_sym_str(f->params.data[j].name));
+    }
+}
+
+
+static void hx_emit_module_header(HxEmit *e, HxModule *m, HxBuf *b) {
+    char *guard = hx_arena_sprintf(e->arena, "HX_MOD_%s_H", hx_sym_str(m->name));
+    for (char *p = guard; *p; p++) *p = hx_ascii_upper(*p);
+    hx_buf_printf(b, "/* modulo %s */\n", hx_sym_str(m->name));
+    hx_buf_printf(b, "#ifndef %s\n#define %s\n", guard, guard);
+    hx_buf_str(b, "#include \"_runtime.h\"\n");
+    hx_emit_decls(e, m);
+    for (int k = 0; k < m->consts.len; k++) {
+        HxConst *kc = &m->consts.data[k];
+        if (!kc->value || !kc->is_export) continue;
+        hx_buf_printf(b, "extern const %s hx_v_%s;\n", hx_c_ty(e, kc->ty),
+                      hx_sym_str(kc->name));
+    }
+    for (int i = 0; i < m->funcs.len; i++) {
+        HxFunc *f = &m->funcs.data[i];
+        if (!f->is_export) continue;
+        hx_buf_printf(b, "extern %s hx_call_%s(", hx_c_ty(e, f->ret),
+                      hx_sym_str(f->name));
+        if (!f->params.len) hx_buf_str(b, "void");
+        for (int j = 0; j < f->params.len; j++) {
+            if (j) hx_buf_str(b, ", ");
+            hx_buf_printf(b, "%s hx_v_%s", hx_c_ty(e, f->params.data[j].ty),
+                          hx_sym_str(f->params.data[j].name));
+        }
+        hx_buf_str(b, ");\n");
+    }
+    hx_buf_printf(b, "#endif /* %s */\n", guard);
+}
+
+static void hx_emit_module_source(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b,
+                                  int emit_funcs) {
+    hx_buf_printf(b, "/* %s -- generado por hxc %s */\n", hx_sym_str(m->name), HX_VERSION);
+    hx_buf_str(b, "#include \"_runtime.h\"\n");
+    for (int i = 0; i < m->imports.len; i++) {
+        HxImport *im = &m->imports.data[i];
+        const char *ip = hx_sym_str(im->path);
+        const char *dot = strrchr(ip, '.');
+        const char *base = dot ? dot + 1 : ip;
+        HxSym as = im->alias ? im->alias : hx_intern_cstr(unit->intern, base);
+        hx_buf_printf(b, "#include \"%s.h\"\n", hx_sym_str(as));
+    }
+    hx_buf_printf(b, "#include \"%s.h\"\n", hx_sym_str(m->name));
+    for (int k = 0; k < m->consts.len; k++) {
+        HxConst *kc = &m->consts.data[k];
+        if (!kc->value) continue;
+        if (!kc->is_export)
+            hx_buf_printf(b, "static const %s hx_v_%s = ", hx_c_ty(e, kc->ty),
+                          hx_sym_str(kc->name));
+        else
+            hx_buf_printf(b, "const %s hx_v_%s __attribute__((used)) = ", hx_c_ty(e, kc->ty),
+                          hx_sym_str(kc->name));
+        hx_expr_str(e, kc->value, 0, b);
+        hx_buf_str(b, ";\n");
+    }
+    if (!emit_funcs) return;
+    for (int j = 0; j < m->funcs.len; j++) {
+        HxFunc *f = &m->funcs.data[j];
+        if (f->is_export) continue;
+        hx_buf_printf(b, "static %s hx_call_%s(", hx_c_ty(e, f->ret), hx_sym_str(f->name));
+        hx_emit_param_list(e, f, b);
+        hx_buf_str(b, ");\n");
+    }
+    for (int j = 0; j < m->funcs.len; j++) hx_emit_func(e, &m->funcs.data[j]);
+}
+
+int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     HxEmit e;
     memset(&e, 0, sizeof(e));
     e.arena = arena;
     e.unit = unit;
     e.diags = unit->diags;
-    e.profile = profile;
+    e.profile = opt->profile;
     e.out.arena = arena;
 
     for (int i = 0; i < unit->modules.len; i++) {
@@ -1816,101 +1878,148 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile p
                 if (hx_ty_is_result(m->funcs.data[j].params.data[q].ty)) e.uses_result = 1;
         }
         for (int t = 0; t < m->types.len; t++) {
-            for (int q = 0; q < m->types.data[t].fields.len; q++)
-                if (hx_ty_is_result(m->types.data[t].fields.data[q].ty)) e.uses_result = 1;
+            for (int q = 0; q < m->types.data[t].fields.len; q++) {
+                HxTy *ft = m->types.data[t].fields.data[q].ty;
+                if (hx_ty_is_result(ft)) e.uses_result = 1;
+                if (ft && hx_vec_len(ft)) e.uses_vec = 1;
+            }
         }
+        if (m->is_entry && m->top.len) hx_scan_body(&e, &m->top);
     }
 
-    HxBuf *b = &e.out;
-    hx_buf_printf(b, "/* generado por hxc %s -- no editar */\n", HX_VERSION);
-    hx_buf_str(b, "#include <stdint.h>\n#include <stddef.h>\n#include <string.h>\n");
-    hx_buf_str(b, profile == HX_PROFILE_FREESTANDING ? HX_RT_FREESTANDING : HX_RT_LIBC);
-    if (profile == HX_PROFILE_FREESTANDING) {
-        hx_buf_str(b, HX_RT_FREESTANDING_MEM);
-        hx_buf_str(b, HX_RT_RAWALLOC_FREESTANDING);
-    } else {
-        hx_buf_str(b, HX_RT_RAWALLOC_LIBC);
+    HxBuf rt = {arena, NULL, 0, 0};
+    {
+        HxBuf saved_r = e.out;
+        e.out = rt;
+        hx_emit_runtime_header(&e, &e.out);
+        rt = e.out;
+        e.out = saved_r;
     }
-    hx_buf_str(b, HX_RT_TYPES);
-    hx_buf_str(b, HX_RT_CORE);
-    if (e.uses_vec) {
-        hx_buf_str(b, HX_RT_VEC_PRE);
-        hx_buf_str(b, HX_RT_VEC);
-    }
-    if (e.uses_string) hx_buf_str(b, HX_RT_STRING);
-    hx_buf_str(b, HX_RT_ZERO);
-    if (e.uses_result) {
-        hx_buf_str(b, HX_RT_RESULT);
-    }
-    hx_buf_str(b, HX_RT_CHECKED);
-    if (e.uses_arena) {
-        hx_buf_str(b, HX_RT_ARENA);
-        hx_buf_str(b, "static hx_arena hx_static_arena;\n");
-        hx_buf_str(b, "static void hx_static_init(void) { hx_arena_init(&hx_static_arena); }\n");
-    }
-    if (e.uses_string) {
-        hx_buf_str(b, HX_RT_STRFUNS);
-        hx_buf_str(b, HX_RT_STRMORE);
-    }
-
-    for (int i = 0; i < unit->modules.len; i++) {
-        hx_emit_decls(&e, &unit->modules.data[i]);
-        HxModule *m = &unit->modules.data[i];
-        for (int t = 0; t < m->types.len; t++)
-            hx_buf_printf(&e.out,
-                          "static hx_T_%s hx_zero_rec_%s(void) { hx_T_%s v; "
-                          "__builtin_memset(&v, 0, sizeof(v)); return v; }\n",
-                          hx_sym_str(m->types.data[t].name), hx_sym_str(m->types.data[t].name),
-                          hx_sym_str(m->types.data[t].name));
-    }
-    for (int i = 0; i < unit->modules.len; i++) {
-        HxModule *m = &unit->modules.data[i];
-        for (int k = 0; k < m->consts.len; k++) {
-            HxConst *kc = &m->consts.data[k];
-            if (!kc->value) continue;
-            hx_buf_printf(&e.out, "static const %s hx_v_%s = ", hx_c_ty(&e, kc->ty),
-                          hx_sym_str(kc->name));
-            hx_expr_str(&e, kc->value, 0, &e.out);
-            hx_buf_str(&e.out, ";\n");
-        }
-    }
-    for (int i = 0; i < unit->modules.len; i++) hx_emit_protos(&e, &unit->modules.data[i]);
-
-    if (profile == HX_PROFILE_FREESTANDING) hx_buf_str(b, "void _start(void);\n");
-    if (e.uses_arena) hx_buf_str(b, "static void hx_static_init(void);\n");
-    hx_buf_str(b, "static int32_t hx_main(void);\n");
-    hx_buf_str(b, "static int32_t hx_main(void) {\n");
-    if (e.uses_arena) hx_buf_str(b, "  hx_static_init();\n");
-    for (int i = 0; i < unit->modules.len; i++) {
-        HxModule *m = &unit->modules.data[i];
-        if (m->is_entry) hx_body(&e, &m->top, 1);
-    }
-    hx_buf_str(b, "  return 0;\n}\n\n");
-
-    for (int i = 0; i < unit->modules.len; i++) {
-        HxModule *m = &unit->modules.data[i];
-        for (int j = 0; j < m->funcs.len; j++) hx_emit_func(&e, &m->funcs.data[j]);
-    }
-
-    if (profile == HX_PROFILE_FREESTANDING)
-        hx_buf_str(b, "void _start(void) {\n  hx_exit((int)hx_main());\n  __builtin_unreachable();\n}\n");
-    else
-        hx_buf_str(b, "int main(void) { return (int)hx_main(); }\n");
-
-    int rc = hx_write_file(out_path, b->data, b->len);
-    if (rc != 0) {
-        fprintf(stderr, "hx: no se pudo escribir %s\n", out_path);
-        free(b->data);
+    if (hx_write_file(opt->dir_runtime, rt.data, rt.len) != 0) {
+        fprintf(stderr, "hx: no se pudo escribir %s\n", opt->dir_runtime);
         return 1;
     }
-    if (keep_asm && keep_asm_path) {
-        FILE *f = fopen(keep_asm_path, "wb");
-        if (f) {
-            fwrite(b->data, 1, b->len, f);
-            fclose(f);
+
+    if (opt->profile == HX_PROFILE_FREESTANDING) {
+        HxBuf mb = {arena, NULL, 0, 0};
+        hx_buf_str(&mb, "/* memcpy/memset propios del perfil freestanding */\n");
+        hx_buf_str(&mb, "#include \"_runtime.h\"\n");
+        hx_buf_str(&mb, HX_RT_FREESTANDING_MEM);
+        char *mp2 = hx_arena_sprintf(arena, "%s/_rtmem.c", opt->dir_gen);
+        if (hx_write_file(mp2, mb.data, mb.len) != 0) return 1;
+        free(mb.data);
+    }
+
+    HxModule *entry = NULL;
+    for (int i = 0; i < unit->modules.len; i++)
+        if (unit->modules.data[i].is_entry) entry = &unit->modules.data[i];
+
+    for (int i = 0; i < unit->modules.len; i++) {
+        HxModule *m = &unit->modules.data[i];
+        HxBuf hb = {arena, NULL, 0, 0};
+        HxBuf saved_h = e.out;
+        e.out = hb;
+        hx_emit_module_header(&e, m, &e.out);
+        hb = e.out;
+        e.out = saved_h;
+        char *hp = hx_arena_sprintf(arena, "%s/%s.h", opt->dir_gen, hx_sym_str(m->name));
+        if (hx_write_file(hp, hb.data, hb.len) != 0) return 1;
+        free(hb.data);
+        if (!m->is_entry) {
+            HxBuf cb = {arena, NULL, 0, 0};
+            HxBuf saved_c = e.out;
+            e.out = cb;
+            hx_emit_module_source(&e, unit, m, &e.out, 1);
+            cb = e.out;
+            e.out = saved_c;
+            char *cp = hx_arena_sprintf(arena, "%s/%s.c", opt->dir_gen, hx_sym_str(m->name));
+            if (hx_write_file(cp, cb.data, cb.len) != 0) return 1;
+            free(cb.data);
         }
     }
-    free(b->data);
-    (void)out_bin;
+
+    HxBuf main_b = {arena, NULL, 0, 0};
+    hx_buf_printf(&main_b, "/* punto de entrada -- generado por hxc %s */\n", HX_VERSION);
+    hx_buf_str(&main_b, "#include \"_runtime.h\"\n");
+    for (int i = 0; i < unit->modules.len; i++)
+        hx_buf_printf(&main_b, "#include \"%s.h\"\n", hx_sym_str(unit->modules.data[i].name));
+    if (opt->profile == HX_PROFILE_FREESTANDING) hx_buf_str(&main_b, "void _start(void);\n");
+    if (entry) {
+        HxBuf sv = e.out;
+        e.out = main_b;
+        hx_emit_module_source(&e, unit, entry, &e.out, 0);
+        main_b = e.out;
+        e.out = sv;
+    }
+    if (entry) {
+        HxBuf saved_f = e.out;
+        e.out = main_b;
+        for (int j = 0; j < entry->funcs.len; j++) {
+            HxFunc *f = &entry->funcs.data[j];
+            if (f->is_export) continue;
+            hx_buf_printf(&e.out, "static %s hx_call_%s(", hx_c_ty(&e, f->ret),
+                          hx_sym_str(f->name));
+            hx_emit_param_list(&e, f, &e.out);
+            hx_buf_str(&e.out, ");\n");
+        }
+        main_b = e.out;
+        e.out = saved_f;
+    }
+    hx_buf_str(&main_b, "static int32_t hx_main(void);\n");
+    hx_buf_str(&main_b, "static int32_t hx_main(void) {\n");
+    if (e.uses_arena) {
+        hx_buf_str(&main_b, "  hx_static_init();\n");
+    }
+    if (entry) {
+        HxBuf saved = e.out;
+        e.out = main_b;
+        hx_body(&e, &entry->top, 1);
+        main_b = e.out;
+        e.out = saved;
+    }
+    hx_buf_str(&main_b, "  return 0;\n}\n\n");
+    if (entry) {
+        HxBuf saved = e.out;
+        e.out = main_b;
+        for (int j = 0; j < entry->funcs.len; j++) hx_emit_func(&e, &entry->funcs.data[j]);
+        main_b = e.out;
+        main_b = e.out;
+        e.out = saved;
+    }
+    if (e.uses_arena) {
+        hx_buf_str(&main_b,
+                   "hx_arena hx_static_arena;\n"
+                   "void hx_static_init(void) { hx_arena_init(&hx_static_arena); }\n");
+    }
+    if (opt->profile == HX_PROFILE_FREESTANDING)
+        hx_buf_str(&main_b,
+                   "void _start(void) {\n  hx_exit((int)hx_main());\n  __builtin_unreachable();\n}\n");
+    else
+        hx_buf_str(&main_b, "int main(void) { return (int)hx_main(); }\n");
+    char *mp = hx_arena_sprintf(arena, "%s/_entry.c", opt->dir_gen);
+    if (hx_write_file(mp, main_b.data, main_b.len) != 0) return 1;
+    free(main_b.data);
+
+    if (opt->keep_asm) {
+        HxBuf all = {arena, NULL, 0, 0};
+        for (int i = 0; i < unit->modules.len; i++) {
+            HxBuf cb = {arena, NULL, 0, 0};
+            HxBuf saved_k = e.out;
+            e.out = cb;
+            hx_emit_module_source(&e, unit, &unit->modules.data[i], &e.out, 0);
+            cb = e.out;
+            e.out = saved_k;
+            hx_buf_put(&all, cb.data ? cb.data : "", cb.len);
+            free(cb.data);
+        }
+        FILE *f = fopen(opt->keep_asm_path, "wb");
+        if (f) {
+            fwrite(rt.data, 1, rt.len, f);
+            fwrite(all.data, 1, all.len, f);
+            fclose(f);
+        }
+        free(all.data);
+    }
+    free(rt.data);
     return 0;
 }

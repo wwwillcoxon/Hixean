@@ -1,0 +1,20 @@
+MODULE mate
+EXPORT CONST POR_TRES AS INT = 3
+EXPORT TYPE Escala
+  valor AS INT
+  nombre AS STRING
+END TYPE
+EXPORT FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+EXPORT FUNCTION EscalaDe(v AS INT, n AS STRING) AS Escala
+  DIM e AS Escala
+  e.valor = v
+  e.nombre = n
+  RETURN e
+END FUNCTION
+EXPORT FUNCTION Medio(n AS INT) AS Result<INT, STRING>
+  DIM r AS INT = n - (n / 2) * 2
+  IF r == 0 THEN RETURN Ok(n / 2)
+  RETURN Err("impar")
+END FUNCTION

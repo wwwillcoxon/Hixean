@@ -1180,8 +1180,11 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             continue;
         }
         int before = p.pos;
+        int before_len = m->top.len;
         hx_stmt_into(&p, &m->top);
         if (p.pos == before) hx_bump(&p);
+        if (is_export && m->top.len > before_len)
+            m->top.data[m->top.len - 1].is_export = 1;
     }
 
     for (int i = m->top.len - 1; i >= 0; i--) {
@@ -1193,6 +1196,7 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
         cst.value = st->konst.value;
         cst.ty = st->konst.ty;
         cst.span = st->konst.name_span;
+        cst.is_export = st->is_export;
         HX_VEC_PUSH(m->consts, cst);
         memmove(&m->top.data[i], &m->top.data[i + 1],
                 (size_t)(m->top.len - i - 1) * sizeof(HxStmt));

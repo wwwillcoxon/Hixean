@@ -1,0 +1,176 @@
+MODULE m18
+EXPORT FUNCTION F18_0(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 0
+END FUNCTION
+EXPORT FUNCTION F18_1(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 7
+END FUNCTION
+EXPORT FUNCTION F18_2(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 1
+END FUNCTION
+EXPORT FUNCTION F18_3(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 8
+END FUNCTION
+EXPORT FUNCTION F18_4(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 2
+END FUNCTION
+EXPORT FUNCTION F18_5(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 9
+END FUNCTION
+EXPORT FUNCTION F18_6(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 3
+END FUNCTION
+EXPORT FUNCTION F18_7(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 10
+END FUNCTION
+EXPORT FUNCTION F18_8(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 4
+END FUNCTION
+EXPORT FUNCTION F18_9(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 11
+END FUNCTION
+EXPORT FUNCTION F18_10(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 5
+END FUNCTION
+EXPORT FUNCTION F18_11(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 12
+END FUNCTION
+EXPORT FUNCTION F18_12(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 6
+END FUNCTION
+EXPORT FUNCTION F18_13(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 0
+END FUNCTION
+EXPORT FUNCTION F18_14(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 7
+END FUNCTION
+EXPORT FUNCTION F18_15(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 1
+END FUNCTION
+EXPORT FUNCTION F18_16(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 8
+END FUNCTION
+EXPORT FUNCTION F18_17(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 2
+END FUNCTION
+EXPORT FUNCTION F18_18(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 9
+END FUNCTION
+EXPORT FUNCTION F18_19(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 3
+END FUNCTION
+EXPORT FUNCTION F18_20(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 10
+END FUNCTION
+EXPORT FUNCTION F18_21(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 4
+END FUNCTION
+EXPORT FUNCTION F18_22(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 11
+END FUNCTION
+EXPORT FUNCTION F18_23(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 5
+END FUNCTION
+EXPORT FUNCTION F18_24(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 12
+END FUNCTION

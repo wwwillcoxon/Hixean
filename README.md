@@ -22,8 +22,9 @@ Hola mundo
 | M5a | `ARENA` con reservas reales (mmap en freestanding, malloc en libc) | escape de arena rechazado por el verificador |
 | M5c | `REF` con unicidad por sentencia | prestamo anidado del mismo origen rechazado |
 | M6 | vectores: literales, componentes, swizzle, `DOT`/`CROSS`/`NORMALIZED` | `v.zyx` y `f(a,b).y` en el corpus |
+| M7 | compilación por módulos con caché de objetos y unidad `.hxc` (interfaz + biblioteca) | recompilar 1 de 20 módulos: 240 ms |
 | M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
-| M6–M12 | vectores, capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
+| M8–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -41,6 +42,20 @@ respaldo estático fuera de Linux x86_64) y sobre `malloc` en el perfil libc.
 Los epílogos de bloque se encadenan con `goto` y una bandera de modo, así que
 `DEFER` y `ARENA` comparten el mismo mecanismo sin pila en runtime.
 
+M7 compila cada módulo a su propia unidad de traducción (`build/gen/m*.c` más
+un `_entry.c` y un `_rtmem.c`) y guarda el objeto en `build/obj/<hash>.o`, con
+el hash FNV-1a de la fuente C, la versión del compilador, el perfil y las
+cabeceras de las que depende. Tocar un módulo recompila una sola unidad.
+
+Las bibliotecas se publican como una unidad `.hxc` (interfaz: tipos, constantes
+y firmas exportadas, con el hash del fuente) más un `lib<modulo>.a` con la
+implementación. Quien use la biblioteca no necesita sus fuentes:
+
+```
+hxc build mate.hxs --emit-hxc unidades/     ' publica unidades/mate.hxc + libmate.a
+hxc build usa.hxe --use-hxc unidades/       ' compila usando sólo la interfaz
+```
+
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.
 
@@ -49,6 +64,8 @@ Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.
 ```
 hxc run   <archivo.hxe> [--freestanding|--libc] [--timing] [--keep-c]
 hxc build <archivo.hxe> [-o salida] [--emit-only] [--keep-c]
+hxc build <archivo.hxe> --emit-hxc DIR     publica la interfaz .hxc y lib<mod>.a
+hxc build <archivo.hxe> --use-hxc DIR      compila contra interfaces .hxc
 hxc test  <archivo.hxt>...
 hxc check <archivo.hxe>
 hxc size  <binario>
@@ -57,7 +74,7 @@ hxc size  <binario>
 ## Perfiles de binario
 
 - `freestanding` (por defecto): `-nostdlib -nostartfiles`, `_start` propio,
-  syscalls directas, `memcpy`/`memset` propios. **Hola mundo: 8 936 bytes.**
+  syscalls directas, `memcpy`/`memset` propios. **Hola mundo: 8 896 bytes.**
 - `libc`: `main()` + `libc`, útil cuando se quiere `printf`/`malloc` del sistema.
 
 ## Medidas en esta máquina
@@ -66,9 +83,14 @@ GCC 13.3, x86_64, Ubuntu 24.04. Reproducible con `make test`.
 
 | métrica | valor | nota |
 |---|---|---|
-| front-end + emisión a C, 10 012 líneas | **61 ms** | puerta de diseño: 200 ms |
-| `cc -O2` + link del mismo caso | 866 ms | fuera de la puerta, cacheado aparte |
-| hola mundo, perfil freestanding | **8 936 B** | puerta: 12 288 B |
+| front-end + emisión a C, 10 012 líneas | **60 ms** | puerta de diseño: 200 ms |
+| `cc -O2` + link del mismo caso | 928 ms | fuera de la puerta, cacheado aparte |
+| el mismo caso con la caché de objetos | **1 ms** | 0 unidades recompiladas |
+| 20 módulos: front-end + emisión | **19 ms** | 20 módulos cargados |
+| 20 módulos en frío (22 unidades) | 4 755 ms | dominated por 22 invocaciones de `cc` |
+| 20 módulos sin cambios | **9 ms** de `cc` | caché completa |
+| tocar 1 de 20 módulos | **240 ms** | 1 unidad recompilada |
+| hola mundo, perfil freestanding | **8 896 B** | puerta: 12 288 B |
 | TCO: 10 M iteraciones, pila 128 KiB | sin desbordamiento | `for(;;)` generado por `hxc` |
 
 ## Principio de ejecución

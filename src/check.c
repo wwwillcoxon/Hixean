@@ -324,7 +324,7 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                                                       "'%s' no está exportado por el módulo '%s'",
                                                       hx_sym_str(parts[i].name),
                                                       hx_sym_str(parts[0].name)),
-                                     "sólo las funciones EXPORT son visibles al importar",
+                                     "sólo los elementos EXPORT (funciones, constantes, tipos) son visibles al importar",
                                      NULL);
                         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
                         return e;
@@ -453,7 +453,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                                  hx_arena_sprintf(c->arena,
                                                   "'%s' no está exportado por el módulo '%s'",
                                                   hx_sym_str(last), hx_sym_str(parts[0].name)),
-                                 "sólo las funciones EXPORT son visibles al importar", NULL);
+                                 "sólo los elementos EXPORT (funciones, constantes, tipos) son visibles al importar", NULL);
                 }
             }
         }

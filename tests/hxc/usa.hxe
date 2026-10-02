@@ -1,0 +1,16 @@
+"compila contra mate.hxc + libmate.a: la biblioteca no tiene fuentes aqui"
+IMPORT mate
+DIM n AS INT = mate.Doble(21)
+PRINT n
+PRINT mate.POR_TRES
+DIM e AS mate.Escala = mate.EscalaDe(7, "siega")
+PRINT e.valor
+PRINT e.nombre
+MATCH mate.Medio(42)
+  CASE Ok(v) THEN PRINT v
+  CASE Err(err) THEN PRINT "error {err}"
+END MATCH
+MATCH mate.Medio(7)
+  CASE Ok(v) THEN PRINT v
+  CASE Err(err) THEN PRINT "error {err}"
+END MATCH

@@ -1,0 +1,176 @@
+MODULE m15
+EXPORT FUNCTION F15_0(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 0
+END FUNCTION
+EXPORT FUNCTION F15_1(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 7
+END FUNCTION
+EXPORT FUNCTION F15_2(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 1
+END FUNCTION
+EXPORT FUNCTION F15_3(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 8
+END FUNCTION
+EXPORT FUNCTION F15_4(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 2
+END FUNCTION
+EXPORT FUNCTION F15_5(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 9
+END FUNCTION
+EXPORT FUNCTION F15_6(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 3
+END FUNCTION
+EXPORT FUNCTION F15_7(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 10
+END FUNCTION
+EXPORT FUNCTION F15_8(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 4
+END FUNCTION
+EXPORT FUNCTION F15_9(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 11
+END FUNCTION
+EXPORT FUNCTION F15_10(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 5
+END FUNCTION
+EXPORT FUNCTION F15_11(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 12
+END FUNCTION
+EXPORT FUNCTION F15_12(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 6
+END FUNCTION
+EXPORT FUNCTION F15_13(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 0
+END FUNCTION
+EXPORT FUNCTION F15_14(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 7
+END FUNCTION
+EXPORT FUNCTION F15_15(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 1
+END FUNCTION
+EXPORT FUNCTION F15_16(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 8
+END FUNCTION
+EXPORT FUNCTION F15_17(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 2
+END FUNCTION
+EXPORT FUNCTION F15_18(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 9
+END FUNCTION
+EXPORT FUNCTION F15_19(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 3
+END FUNCTION
+EXPORT FUNCTION F15_20(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 10
+END FUNCTION
+EXPORT FUNCTION F15_21(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 4
+END FUNCTION
+EXPORT FUNCTION F15_22(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 11
+END FUNCTION
+EXPORT FUNCTION F15_23(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 5
+END FUNCTION
+EXPORT FUNCTION F15_24(n AS INT) AS INT
+  DIM acc AS INT = n
+  FOR k = 1 TO 8
+    acc = acc + k * n
+  NEXT k
+  RETURN acc + 12
+END FUNCTION
