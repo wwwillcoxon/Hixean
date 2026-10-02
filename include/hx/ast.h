@@ -16,7 +16,12 @@ typedef enum {
     TY_NAMED,
     TY_ARRAY,
     TY_REF,
-    TY_PTR
+    TY_PTR,
+    TY_VEC2,
+    TY_VEC3,
+    TY_VEC4,
+    TY_MAT4,
+    TY_QUAT
 } HxTyKind;
 
 typedef struct HxTypeDecl HxTypeDecl;
@@ -45,7 +50,7 @@ typedef enum {
     EX_MEMBER,
     EX_TRY,
     EX_VEC,
-    EX_FIELD_ACCESS
+    EX_MEMB
 } HxExprKind;
 
 typedef enum {
@@ -105,6 +110,7 @@ struct HxExpr {
     int is_err_ctor;
     int propagate;
     int deref;
+    int vec_component;
     int *ret_arg_refs;
     int n_arg_refs;
     HxTy *payload_ty;

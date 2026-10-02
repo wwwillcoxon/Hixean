@@ -21,6 +21,7 @@ Hola mundo
 | M4b | `DEFER` de bloque y de función, epílogos encadenados | orden LIFO verificado en el corpus |
 | M5a | `ARENA` con reservas reales (mmap en freestanding, malloc en libc) | escape de arena rechazado por el verificador |
 | M5c | `REF` con unicidad por sentencia | prestamo anidado del mismo origen rechazado |
+| M6 | vectores: literales, componentes, swizzle, `DOT`/`CROSS`/`NORMALIZED` | `v.zyx` y `f(a,b).y` en el corpus |
 | M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
 | M6–M12 | vectores, capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 

@@ -1,0 +1,52 @@
+"vectores: literales, componentes, swizzle y algebra"
+DIM a AS vec3 = (1.0, 2.0, 3.0)
+DIM b AS vec3 = (0.0, 1.0, 0.0)
+
+PRINT a
+PRINT a.x
+PRINT a.y
+PRINT a.z
+PRINT a.zyx
+PRINT a.xx
+
+"algebra: suma, resta, escala y punto"
+PRINT a + b
+PRINT a - b
+PRINT a * 2.0
+PRINT DOT(a, b)
+PRINT CROSS(a, b)
+
+"normalizacion"
+DIM n AS vec3 = (3.0, 4.0, 0.0)
+PRINT NORMALIZED(n)
+PRINT DOT(NORMALIZED(n), NORMALIZED(n))
+
+DIM p AS vec2 = (1.5, -2.5)
+PRINT p
+PRINT p.y
+
+"los componentes admiten enteros"
+DIM c AS vec3 = (1, 2, 3)
+PRINT c
+
+"matrices y quaternions llegan con el perfil gpu; el literal de 4 componentes
+ con el ultimo flotante es un quat"
+DIM q AS quat = (0.0, 0.0, 0.0, 1.0)
+PRINT q
+PRINT q.w
+
+"los vectores viajan a funciones por valor"
+FUNCTION Desplazar(p AS vec3, d AS vec3) AS vec3
+  RETURN p + d
+END FUNCTION
+PRINT Desplazar((1.0, 0.0, 0.0), (0.0, 2.0, 0.0))
+PRINT Desplazar((1.0, 0.0, 0.0), (0.0, 2.0, 0.0)).y
+
+"un ARRAY de vectores en una arena"
+ARENA puntos
+  DIM ps AS vec3[4]
+  ps[0] = (1.0, 2.0, 3.0)
+  ps[1] = NORMALIZED(ps[0])
+  PRINT ps[0]
+  PRINT ps[1]
+END ARENA

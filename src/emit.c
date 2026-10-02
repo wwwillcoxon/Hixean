@@ -21,6 +21,7 @@ typedef struct {
     int uses_arena;
     int uses_exit;
     int uses_result;
+    int uses_vec;
     int ret_is_result;
     int epilogue;
     const char *ret_field;
@@ -82,6 +83,11 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
             return hx_arena_sprintf(e->arena, "%s*", inner);
         }
         case TY_ARRAY: return "hx_span";
+        case TY_VEC2: return "hx_vec2";
+        case TY_VEC3: return "hx_vec3";
+        case TY_VEC4: return "hx_vec4";
+        case TY_MAT4: return "hx_mat4";
+        case TY_QUAT: return "hx_quat";
         case TY_NAMED:
             if (hx_ty_is_result(t)) return "hx_result";
             if (t->decl) return hx_arena_sprintf(e->arena, "hx_T_%s", hx_sym_str(t->decl->name));
@@ -449,6 +455,104 @@ static const char *HX_RT_RAWALLOC_LIBC =
     "static void *hx_heap_alloc(int64_t n) { return malloc((size_t)n); }\n"
     "static void hx_heap_free(void *p) { free(p); }\n";
 
+static const char *HX_RT_VEC_PRE =
+    "static long long hx_pow10(int k) {\n"
+    "  long long r = 1;\n"
+    "  int i;\n"
+    "  for (i = 0; i < k; i++) r *= 10;\n"
+    "  return r;\n"
+    "}\n"
+    "static void hx_print_f32(float v) {\n"
+    "  double d = (double)v;\n"
+    "  long long scaled;\n"
+    "  char buf[32];\n"
+    "  int n = 0, i;\n"
+    "  if (v != v) { hx_out(\"nan\", 3); return; }\n"
+    "  if (d == (double)(long long)d) { hx_print_i64((long long)d); return; }\n"
+    "  scaled = (long long)(d * 1000000.0);\n"
+    "  if (scaled == 0) { hx_out(\"0\", 1); return; }\n"
+    "  if (scaled < 0) { hx_out(\"-\", 1); scaled = -scaled; }\n"
+    "  hx_u64_to_dec((uint64_t)(scaled / 1000000), buf, &n);\n"
+    "  hx_out(buf, n);\n"
+    "  n = 0;\n"
+    "  hx_out(\".\", 1);\n"
+    "  for (i = 5; i >= 0; i--) {\n"
+    "    int dig = (int)((scaled / (long long)hx_pow10(i)) % 10);\n"
+    "    if (dig) break;\n"
+    "  }\n"
+    "  for (; i >= 0; i--) {\n"
+    "    int dig = (int)((scaled / (long long)hx_pow10(i)) % 10);\n"
+    "    buf[n++] = (char)(\'0\' + dig);\n"
+    "  }\n"
+    "  while (n > 0 && buf[n - 1] == \'0\') n--;\n"
+    "  hx_out(buf, n);\n"
+    "}\n";
+
+static const char *HX_RT_VEC =
+    "typedef struct { float x, y; } hx_vec2;\n"
+    "typedef struct { float x, y, z; } hx_vec3;\n"
+    "typedef struct { float x, y, z, w; } hx_vec4;\n"
+    "typedef hx_vec4 hx_quat;\n"
+    "typedef struct { hx_vec4 r0, r1, r2, r3; } hx_mat4;\n"
+    "static hx_vec2 hx_v2(float x, float y) { hx_vec2 v; v.x = x; v.y = y; return v; }\n"
+    "static hx_vec3 hx_v3(float x, float y, float z) {\n"
+    "  hx_vec3 v; v.x = x; v.y = y; v.z = z; return v;\n"
+    "}\n"
+    "static hx_vec4 hx_v4(float x, float y, float z, float w) {\n"
+    "  hx_vec4 v; v.x = x; v.y = y; v.z = z; v.w = w; return v;\n"
+    "}\n"
+    "static hx_vec2 hx_v2s(float s) { return hx_v2(s, s); }\n"
+    "static hx_vec3 hx_v3s(float s) { return hx_v3(s, s, s); }\n"
+    "static hx_vec4 hx_v4s(float s) { return hx_v4(s, s, s, s); }\n"
+    "static float hx_dot(hx_vec3 a, hx_vec3 b) {\n"
+    "  return a.x * b.x + a.y * b.y + a.z * b.z;\n"
+    "}\n"
+    "static hx_vec3 hx_cross(hx_vec3 a, hx_vec3 b) {\n"
+    "  return hx_v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);\n"
+    "}\n"
+    "static float hx_len3(hx_vec3 v) { return hx_dot(v, v); }\n"
+    "static double hx_sqrt_d(double x) {\n"
+    "  double r = x, prev = 0.0;\n"
+    "  int i;\n"
+    "  if (x <= 0.0) return 0.0;\n"
+    "  for (i = 0; i < 40; i++) {\n"
+    "    prev = r;\n"
+    "    r = 0.5 * (r + x / r);\n"
+    "    if (r - prev < 1e-12 && prev - r < 1e-12) break;\n"
+    "  }\n"
+    "  return r;\n"
+    "}\n"
+    "static hx_vec3 hx_normalized(hx_vec3 v) {\n"
+    "  float l = hx_len3(v);\n"
+    "  if (l <= 0.0f) return v;\n"
+    "  l = 1.0f / (float)hx_sqrt_d((double)l);\n"
+    "  return hx_v3(v.x * l, v.y * l, v.z * l);\n"
+    "}\n"
+    "static hx_vec3 hx_add3(hx_vec3 a, hx_vec3 b) {\n"
+    "  return hx_v3(a.x + b.x, a.y + b.y, a.z + b.z);\n"
+    "}\n"
+    "static hx_vec3 hx_sub3(hx_vec3 a, hx_vec3 b) {\n"
+    "  return hx_v3(a.x - b.x, a.y - b.y, a.z - b.z);\n"
+    "}\n"
+    "static hx_vec3 hx_scale3(hx_vec3 a, float s) {\n"
+    "  return hx_v3(a.x * s, a.y * s, a.z * s);\n"
+    "}\n"
+    "static void hx_print_vec2(hx_vec2 v) {\n"
+    "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.y); hx_out(\")\", 1);\n"
+    "}\n"
+    "static void hx_print_vec3(hx_vec3 v) {\n"
+    "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.y); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.z); hx_out(\")\", 1);\n"
+    "}\n"
+    "static void hx_print_vec4(hx_vec4 v) {\n"
+    "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.y); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.z); hx_out(\", \", 2);\n"
+    "  hx_print_f32(v.w); hx_out(\")\", 1);\n"
+    "}\n";
+
 static const char *HX_RT_ZERO =
     "static int32_t hx_zero_int32(void) { return 0; }\n"
     "static int64_t hx_zero_int64(void) { return 0; }\n"
@@ -554,6 +658,8 @@ static void hx_scan_body(HxEmit *e, HxStmtVec *body);
 static void hx_scan_expr(HxEmit *e, HxExpr *x) {
     if (!x) return;
     if (x->kind == EX_STR) e->uses_string = 1;
+    if (x->kind == EX_VEC || x->vec_component || (x->ty && (x->ty->kind == TY_VEC2 || x->ty->kind == TY_VEC3 || x->ty->kind == TY_VEC4 || x->ty->kind == TY_MAT4 || x->ty->kind == TY_QUAT)))
+        e->uses_vec = 1;
     if (x->kind == EX_TRY || x->is_ok_ctor || x->is_err_ctor) e->uses_result = 1;
     if (x->ty && hx_ty_is_result(x->ty)) e->uses_result = 1;
     switch (x->kind) {
@@ -659,6 +765,48 @@ static const char *hx_kind(const char *kind, const char *op, const char *sfx) {
     return buf;
 }
 
+static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b);
+
+static int hx_vec_len(HxTy *t) {
+    if (!t) return 0;
+    switch (t->kind) {
+        case TY_VEC2: return 2;
+        case TY_VEC3: return 3;
+        case TY_VEC4:
+        case TY_QUAT: return 4;
+        default: return 0;
+    }
+}
+
+static int hx_vec_comp_index(char c) {
+    if (c == 'x' || c == 'r') return 0;
+    if (c == 'y' || c == 'g') return 1;
+    if (c == 'z' || c == 'b') return 2;
+    return 3;
+}
+
+static void hx_emit_vec_access(HxEmit *e, HxExpr *x, HxBuf *b) {
+    static const char comp[] = "xyzw";
+    e->uses_vec = 1;
+    int pre = x->prefix_len > 0 ? x->prefix_len : 1;
+    const char *name = x->method ? hx_sym_str(x->method) : "x";
+    int n = (int)strlen(name);
+    if (n == 1) {
+        hx_buf_str(b, "(");
+        hx_expr_base(e, x, pre, b);
+        hx_buf_printf(b, ").%c", comp[hx_vec_comp_index(name[0])]);
+        return;
+    }
+    hx_buf_printf(b, "%s(", n == 2 ? "hx_v2" : n == 3 ? "hx_v3" : "hx_v4");
+    for (int i = 0; i < n; i++) {
+        if (i) hx_buf_str(b, ", ");
+        hx_buf_str(b, "(");
+        hx_expr_base(e, x, pre, b);
+        hx_buf_printf(b, ").%c", comp[hx_vec_comp_index(name[i])]);
+    }
+    hx_buf_str(b, ")");
+}
+
 static int hx_prec_of(HxExpr *x) {
     if (!x) return 100;
     switch (x->kind) {
@@ -679,9 +827,14 @@ static int hx_prec_of(HxExpr *x) {
     }
 }
 
-static const char *hx_print_fn(HxTy *t) {
+static const char *hx_print_fn(HxEmit *e, HxTy *t) {
     if (!t) return "hx_print_i64";
     switch (t->kind) {
+        case TY_VEC2: e->uses_vec = 1; return "hx_print_vec2";
+        case TY_VEC3: e->uses_vec = 1; return "hx_print_vec3";
+        case TY_VEC4:
+        case TY_QUAT: e->uses_vec = 1; return "hx_print_vec4";
+        case TY_MAT4: e->uses_vec = 1; return "hx_print_vec4";
         case TY_FLOAT: return "hx_print_f64";
         case TY_BOOL: return "hx_print_bool";
         case TY_STRING: return "hx_print_str";
@@ -721,6 +874,12 @@ static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {
     hx_expr_str(e, h, 0, &inner);
     hx_buf_printf(b, "%s(%s)", hx_str_of_fn(h->ty), inner.data ? inner.data : "0");
     free(inner.data);
+}
+
+static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
+    if (x->deref) hx_buf_printf(b, "(*hx_v_%s)", hx_sym_str(x->path.parts.data[0].name));
+    else hx_buf_printf(b, "hx_v_%s", hx_sym_str(x->path.parts.data[0].name));
+    for (int i = 1; i < pre; i++) hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
 }
 
 static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
@@ -769,6 +928,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             break;
         }
         case EX_PATH: {
+            if (x->vec_component > 0) {
+                hx_emit_vec_access(e, x, b);
+                break;
+            }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
             if (x->is_intrin) {
                 hx_buf_printf(b, "hx_%s(hx_v_%s", hx_intrin_cname(hx_sym_str(x->method)),
@@ -797,6 +960,36 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 else sfx = "i";
                 hx_buf_printf(b, "%s_%s(", fn, sfx);
                 if (x->call.args.len) hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                hx_buf_str(b, ")");
+                break;
+            }
+            if (x->is_intrin == 3) {
+                e->uses_vec = 1;
+                const char *nm = hx_sym_str(x->method);
+                if (!hx_ascii_casecmp(nm, "DOT")) {
+                    hx_buf_str(b, "hx_dot(");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->call.args.data[1].value, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                if (!hx_ascii_casecmp(nm, "CROSS")) {
+                    hx_buf_str(b, "hx_cross(");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->call.args.data[1].value, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                if (!hx_ascii_casecmp(nm, "LEN")) {
+                    hx_buf_str(b, "hx_len3(");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                hx_buf_str(b, "hx_normalized(");
+                hx_expr_str(e, x->call.args.data[0].value, 0, b);
                 hx_buf_str(b, ")");
                 break;
             }
@@ -852,6 +1045,25 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             if (x->bin.op == OP_OR) cop = "||";
             if (x->bin.op == OP_XOR) cop = "^";
             if (x->bin.op == OP_MOD) cop = "%";
+            if (x->ty && hx_vec_len(x->ty)) {
+                e->uses_vec = 1;
+                if (x->bin.op == OP_ADD || x->bin.op == OP_SUB) {
+                    hx_buf_printf(b, "hx_%s3(", x->bin.op == OP_ADD ? "add" : "sub");
+                    hx_expr_str(e, x->bin.lhs, 0, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->bin.rhs, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                if (x->bin.op == OP_MUL) {
+                    hx_buf_str(b, "hx_scale3(");
+                    hx_expr_str(e, x->bin.lhs, 0, b);
+                    hx_buf_str(b, ", (float)(");
+                    hx_expr_str(e, x->bin.rhs, 0, b);
+                    hx_buf_str(b, "))");
+                    break;
+                }
+            }
             if (x->bin.op == OP_ADD || x->bin.op == OP_SUB || x->bin.op == OP_ADDS ||
                 x->bin.op == OP_SUBS) {
                 const char *kind = x->ty && x->ty->kind == TY_FLOAT   ? "f64"
@@ -900,14 +1112,38 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             break;
         }
+        case EX_MEMB: {
+            hx_expr_str(e, x->member.base, 7, b);
+            hx_buf_printf(b, ".%s", hx_sym_str(x->member.name));
+            break;
+        }
         case EX_TRY:
             hx_error(e->diags, x->span, "E0403",
                      "'?' sólo puede ser el valor completo de una asignación, DIM o RETURN");
             hx_buf_str(b, "0");
             break;
-        case EX_VEC:
-            hx_buf_printf(b, "hx_span_make(NULL, %d)", x->vec.len);
+        case EX_VEC: {
+            e->uses_vec = 1;
+            const char *fn = x->ty && x->ty->kind == TY_VEC2   ? "hx_v2"
+                             : x->ty && x->ty->kind == TY_VEC3 ? "hx_v3"
+                             : x->ty && x->ty->kind == TY_QUAT ? "hx_v4"
+                             : x->ty && x->ty->kind == TY_VEC4 ? "hx_v4"
+                                                               : "hx_v4s";
+            if (x->vec.len == 1) {
+                hx_buf_printf(b, "%s(", fn);
+                hx_expr_str(e, x->vec.items[0], 0, b);
+                hx_buf_str(b, ")");
+                break;
+            }
+            hx_buf_printf(b, "%s(", fn);
+            for (int i = 0; i < x->vec.len; i++) {
+                if (i) hx_buf_str(b, ", ");
+                if (x->vec.items[i]->kind == EX_INT) hx_buf_str(b, "(float)");
+                hx_expr_str(e, x->vec.items[i], 0, b);
+            }
+            hx_buf_str(b, ")");
             break;
+        }
         default:
             hx_buf_str(b, "0");
             break;
@@ -1142,7 +1378,7 @@ static void hx_emit_print(HxEmit *e, HxStmt *s, int ind) {
         }
         HxExpr *x = it->expr;
         if (x->kind == EX_TRY && x->propagate) {
-            char *dest = hx_arena_sprintf(e->arena, "%s(", hx_print_fn(x->ty));
+            char *dest = hx_arena_sprintf(e->arena, "%s(", hx_print_fn(e, x->ty));
             hx_emit_propagating(e, x, ind, dest, 1);
             continue;
         }
@@ -1168,7 +1404,7 @@ static void hx_emit_print(HxEmit *e, HxStmt *s, int ind) {
                 }
                 HxBuf inner = {e->arena, NULL, 0, 0};
                 hx_expr_str(e, h, 0, &inner);
-                hx_buf_printf(b, "%s(%s);\n", hx_print_fn(h->ty), inner.data ? inner.data : "0");
+                hx_buf_printf(b, "%s(%s);\n", hx_print_fn(e, h->ty), inner.data ? inner.data : "0");
                 free(inner.data);
             }
             hx_indent(b, ind);
@@ -1182,7 +1418,7 @@ static void hx_emit_print(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_printf(b, ", %d);\n", x->str.len);
             continue;
         }
-        hx_buf_printf(b, "%s(", hx_print_fn(x->ty));
+        hx_buf_printf(b, "%s(", hx_print_fn(e, x->ty));
         hx_expr_str(e, x, 0, b);
         hx_buf_str(b, ");\n");
     }
@@ -1597,6 +1833,10 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile p
     }
     hx_buf_str(b, HX_RT_TYPES);
     hx_buf_str(b, HX_RT_CORE);
+    if (e.uses_vec) {
+        hx_buf_str(b, HX_RT_VEC_PRE);
+        hx_buf_str(b, HX_RT_VEC);
+    }
     if (e.uses_string) hx_buf_str(b, HX_RT_STRING);
     hx_buf_str(b, HX_RT_ZERO);
     if (e.uses_result) {

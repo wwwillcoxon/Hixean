@@ -126,6 +126,7 @@ static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *
     int fr = hx_ty_rank(from), tr = hx_ty_rank(to);
     if (fr && tr && from->kind == to->kind) return 1;
     if (fr && tr && fr < tr) return 1;
+    if (fr == 2 && tr == 4) return 1;
     hx_diag_note(c->diags, sp, "E0301",
                  hx_arena_sprintf(c->arena, "se esperaba %s, se encontró %s", hx_ty_name(to),
                                   hx_ty_name(from)),
@@ -154,6 +155,29 @@ static const HxIntrin hx_string_intrins[] = {
     {NULL, NULL, 0, TY_UNKNOWN},
 };
 
+typedef struct {
+    const char *name;
+    int nargs;
+    HxTyKind ret;
+    int vec_arg;
+} HxVecIntrin;
+
+static const HxVecIntrin hx_vec_intrins[] = {
+    {"DOT", 2, TY_FLOAT, 1},       {"CROSS", 2, TY_VEC3, 1},
+    {"NORMALIZED", 1, 0, 1},        {"LEN", 1, TY_FLOAT, 1},
+    {"NORMALIZE", 1, TY_VEC3, 1},   {"SWIZZLE", 1, TY_VEC4, 1},
+    {NULL, 0, TY_UNKNOWN, 0},
+};
+
+static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
+    for (int i = 0; hx_vec_intrins[i].name; i++)
+        if (!hx_ascii_casecmp(hx_vec_intrins[i].name, name)) {
+            if (nvec) *nvec = hx_vec_intrins[i].vec_arg;
+            return &hx_vec_intrins[i];
+        }
+    return NULL;
+}
+
 static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
     if (!recv || recv->kind != TY_STRING) return NULL;
     for (int i = 0; hx_string_intrins[i].name; i++)
@@ -162,6 +186,46 @@ static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
 }
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
+
+static int hx_vec_len(HxTy *t) {
+    if (!t) return 0;
+    switch (t->kind) {
+        case TY_VEC2: return 2;
+        case TY_VEC3: return 3;
+        case TY_VEC4:
+        case TY_QUAT: return 4;
+        default: return 0;
+    }
+}
+
+static int hx_vec_index_of(char c) {
+    if (c == 'x' || c == 'r') return 0;
+    if (c == 'y' || c == 'g') return 1;
+    if (c == 'z' || c == 'b') return 2;
+    if (c == 'w' || c == 'a') return 3;
+    return -1;
+}
+
+static int hx_vec_component(HxChecker *c, HxTy *t, const char *member, HxSpan *sp) {
+    int len = hx_vec_len(t);
+    if (!len) return -1;
+    size_t n = strlen(member);
+    if (n == 0 || n > 4) return -1;
+    int idx[4];
+    for (size_t i = 0; i < n; i++) {
+        int k = hx_vec_index_of(member[i]);
+        if (k < 0 || k >= len) {
+            hx_error(c->diags, *sp, "E0402",
+                     hx_arena_sprintf(c->arena, "'%s' no es un componente o swizzle válido aquí",
+                                      member));
+            return -1;
+        }
+        idx[i] = k;
+    }
+    if (n == 1) return idx[0] + 1;
+    return 100 + idx[0] * 10 + idx[1] + (n == 3 ? 1000 + idx[2] * 10 : 0) +
+           (n == 4 ? 10000 + idx[2] * 100 + idx[3] * 10 : 0);
+}
 
 static void hx_str_check(HxChecker *c, HxExpr *e) {
     const char *raw = e->str.raw;
@@ -269,6 +333,19 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                 }
             } else if (split < n) {
                 const char *member = hx_sym_str(parts[split].name);
+                int vcomp = hx_vec_component(c, t, member, &parts[split].span);
+                if (vcomp > 0) {
+                    int mlen = (int)strlen(member);
+                    e->prefix_len = split;
+                    e->method = parts[split].name;
+                    e->vec_component = vcomp;
+                    e->ty = hx_ty_builtin(c->arena,
+                                          mlen == 1   ? TY_FLOAT
+                                          : mlen == 2 ? TY_VEC2
+                                          : mlen == 3 ? TY_VEC3
+                                                      : TY_VEC4);
+                    return e;
+                }
                 if (t->decl) {
                     for (int fi = 0; fi < t->decl->fields.len; fi++) {
                         HxField *fld = &t->decl->fields.data[fi];
@@ -311,6 +388,31 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
 
 static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     HxExpr *raw_callee = e->call.callee;
+    if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1 &&
+        !hx_lookup(c, raw_callee->path.parts.data[0].name)) {
+        const char *fname = hx_sym_str(raw_callee->path.parts.data[0].name);
+        int needs_vec = 0;
+        const HxVecIntrin *vi = hx_find_vec_intrin(fname, &needs_vec);
+        if (vi) {
+            if (e->call.args.len != vi->nargs)
+                hx_error(c->diags, e->span, "E0306",
+                         hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                                          fname, vi->nargs, e->call.args.len));
+            for (int i = 0; i < e->call.args.len; i++) {
+                e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+                HxTy *at = e->call.args.data[i].value->ty;
+                if (i < vi->vec_arg) {
+                    if (at && !hx_vec_len(at))
+                        hx_error(c->diags, e->call.args.data[i].span, "E0402",
+                                 hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
+                }
+            }
+            e->method = raw_callee->path.parts.data[0].name;
+            e->is_intrin = 3;
+            e->ty = hx_ty_builtin(c->arena, vi->ret == 0 ? TY_VEC3 : vi->ret);
+            return e;
+        }
+    }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1) {
         const char *cn = hx_sym_str(raw_callee->path.parts.data[0].name);
         int is_ok = !hx_ascii_casecmp(cn, "Ok");
@@ -495,6 +597,26 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
         e->ty = hx_ty_builtin(c->arena, TY_BOOL);
         return e;
     }
+    if (is_arith && ((l && hx_vec_len(l)) || (r && hx_vec_len(r)))) {
+        if (op == OP_MUL && l && hx_vec_len(l) && r && hx_ty_is_numeric(r)) {
+            e->ty = l;
+            return e;
+        }
+        if (op == OP_MUL && r && hx_vec_len(r) && l && hx_ty_is_numeric(l)) {
+            e->ty = r;
+            return e;
+        }
+        if ((op == OP_ADD || op == OP_SUB) && l && hx_vec_len(l) && r && hx_vec_len(r)) {
+            e->ty = l;
+            return e;
+        }
+        hx_error(c->diags, e->span, "E0402",
+                 hx_arena_sprintf(c->arena,
+                                  "'%s' no está definido entre %s y %s",
+                                  hx_binop_symbol(op), hx_ty_name(l), hx_ty_name(r)));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return e;
+    }
     if (is_arith) {
         if ((l && !hx_ty_is_numeric(l)) || (r && !hx_ty_is_numeric(r))) {
             hx_diag_note(c->diags, e->span, "E0307",
@@ -602,16 +724,62 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                         ? e->index.base->ty->elem
                         : hx_ty_builtin(c->arena, TY_UNKNOWN);
             break;
+        case EX_MEMB: {
+            e->member.base = hx_expr_check(c, e->member.base);
+            HxTy *bt = e->member.base->ty;
+            const char *member = hx_sym_str(e->member.name);
+            int vcomp = hx_vec_component(c, bt, member, &e->member.name_span);
+            if (vcomp > 0) {
+                int mlen = (int)strlen(member);
+                e->method = e->member.name;
+                e->vec_component = vcomp;
+                e->ty = hx_ty_builtin(c->arena,
+                                      mlen == 1   ? TY_FLOAT
+                                      : mlen == 2 ? TY_VEC2
+                                      : mlen == 3 ? TY_VEC3
+                                                  : TY_VEC4);
+                break;
+            }
+            if (bt && bt->decl) {
+                for (int fi = 0; fi < bt->decl->fields.len; fi++) {
+                    HxField *fld = &bt->decl->fields.data[fi];
+                    if (hx_ascii_casecmp(hx_sym_str(fld->name), member)) continue;
+                    e->is_intrin = 4;
+                    e->method = e->member.name;
+                    e->ty = fld->ty;
+                    break;
+                }
+            }
+            if (!e->ty || e->ty->kind == TY_UNKNOWN) {
+                hx_error(c->diags, e->member.name_span, "E0303",
+                         hx_arena_sprintf(c->arena, "'%s' no tiene un miembro llamado '%s'",
+                                          hx_ty_name(bt), member));
+                e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            }
+            break;
+        }
         case EX_TRY:
             e->try.inner = hx_expr_check(c, e->try.inner);
             e->ty = e->try.inner->ty;
             break;
         case EX_VEC:
-            hx_error(c->diags, e->span, "E0402",
-                     "los tipos vectoriales llegan en el objetivo M8");
             for (int i = 0; i < e->vec.len; i++)
                 e->vec.items[i] = hx_expr_check(c, e->vec.items[i]);
-            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            e->ty = hx_ty_builtin(c->arena,
+                                  e->vec.len == 2   ? TY_VEC2
+                                  : e->vec.len == 3 ? TY_VEC3
+                                  : e->vec.len == 4 ? TY_VEC4
+                                                   : TY_UNKNOWN);
+            if (e->vec.len == 4 && e->vec.items[3]->ty &&
+                e->vec.items[3]->ty->kind == TY_FLOAT)
+                e->ty = hx_ty_builtin(c->arena, TY_QUAT);
+            for (int i = 0; i < e->vec.len; i++) {
+                HxTy *ct = e->vec.items[i]->ty;
+                if (ct && ct->kind != TY_FLOAT && ct->kind != TY_INT &&
+                    ct->kind != TY_UNKNOWN)
+                    hx_error(c->diags, e->vec.items[i]->span, "E0402",
+                             "un literal de vector sólo admite FLOAT o INT");
+            }
             break;
         default:
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
@@ -790,7 +958,8 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                     HxTy *t = it->expr->ty;
                     if (t && t->kind != TY_STRING && t->kind != TY_INT && t->kind != TY_I64 &&
                         t->kind != TY_FLOAT && t->kind != TY_BOOL && t->kind != TY_DURATION &&
-                        t->kind != TY_UNKNOWN)
+                        t->kind != TY_UNKNOWN && !hx_vec_len(t) && t->kind != TY_MAT4 &&
+                        t->kind != TY_QUAT)
                         hx_error(c->diags, it->expr->span, "E0311",
                                  "PRINT no admite valores de ese tipo");
                 }

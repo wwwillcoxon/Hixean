@@ -567,6 +567,19 @@ static HxExpr *hx_postfix(HxParser *p) {
             e = idx;
             continue;
         }
+        if (hx_is_punct(p, ".") &&
+            (hx_at(p, 1)->kind == TK_IDENT || hx_tok_is_kw(hx_at(p, 1)->kind))) {
+            hx_bump(p);
+            HxSym nm = hx_cur(p)->sym;
+            HxSpan nsp = hx_cur(p)->span;
+            hx_bump(p);
+            HxExpr *m = hx_expr_new(p, EX_MEMB, hx_join(e->span, nsp));
+            m->member.base = e;
+            m->member.name = nm;
+            m->member.name_span = nsp;
+            e = m;
+            continue;
+        }
         if (hx_is_punct(p, "?")) {
             HxSpan qsp = hx_cur(p)->span;
             hx_bump(p);
