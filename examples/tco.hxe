@@ -1,0 +1,14 @@
+"cola verificable: auto-recursion de cola convertida a bucle en HIR"
+FUNCTION Cuenta(n AS INT) AS INT
+  IF n <= 0 THEN RETURN 0
+  RETURN Cuenta(n - 1)
+END FUNCTION
+
+FUNCTION SumaHasta(n AS INT, acc AS I64) AS I64
+  IF n <= 0 THEN RETURN acc
+  RETURN SumaHasta(n - 1, acc + n)
+END FUNCTION
+
+"10 millones de iteraciones con una pila de 256 KiB"
+PRINT Cuenta(10000000)
+PRINT SumaHasta(10000000, 0)

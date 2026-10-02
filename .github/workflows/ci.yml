@@ -1,0 +1,29 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: compilar hxc
+        run: make
+      - name: corpus de pruebas
+        run: make test
+      - name: puerta de tamano (12 KiB, perfil freestanding)
+        run: make size
+
+  ejemplos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+      - name: TCO con pila de 128 KiB
+        run: |
+          ./build/hxc build examples/tco.hxe -o build/tco
+          (ulimit -s 128; ./build/tco)

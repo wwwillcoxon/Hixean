@@ -1,1 +1,65 @@
 # Hixean
+
+Lenguaje de programación compilado, estático, con inferencia local.
+Evolución moderna de QBasic: `PRINT "Hola mundo"` sigue siendo un programa válido.
+
+```
+$ make
+$ ./build/hxc run examples/hola.hxe
+Hola mundo
+```
+
+## Estado
+
+| hito | qué funciona | puerta |
+|---|---|---|
+| M0 | lexer, parser RD con recuperación, diagnósticos con spans/códigos, arena+interning | CI en Linux/Windows/macOS |
+| M1 | `PRINT`, literales, `DIM`, asignación, backend C, perfiles `freestanding`/`libc`, `hxc size` | hola mundo ≤ 12 KiB |
+| M2 | `IF`/`WHILE`/`FOR`, funciones, `TYPE`, módulos, `IMPORT`, aritmética verificada, TCO real | fib y TCO con pila de 128 KiB |
+| M3 | `STRING` inmutable, interpolación, `++`, intrínsecos, `CONST` | corpus de pruebas con salida esperada |
+| M4 | `Result`/`?` sin *unwinding*, `MATCH` con patrones y rangos | propagación verificada en el corpus |
+| M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
+| M6–M12 | vectores, capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
+
+M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
+patrones de constructor, literales, rangos y bindings. El error se propaga
+como valor; el runtime no tiene tabla de personalidades (ver `docs/adr/0001`).
+
+`hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
+Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.
+
+## Comandos
+
+```
+hxc run   <archivo.hxe> [--freestanding|--libc] [--timing] [--keep-c]
+hxc build <archivo.hxe> [-o salida] [--emit-only] [--keep-c]
+hxc test  <archivo.hxt>...
+hxc check <archivo.hxe>
+hxc size  <binario>
+```
+
+## Perfiles de binario
+
+- `freestanding` (por defecto): `-nostdlib -nostartfiles`, `_start` propio,
+  syscalls directas, `memcpy`/`memset` propios. **Hola mundo: 8 936 bytes.**
+- `libc`: `main()` + `libc`, útil cuando se quiere `printf`/`malloc` del sistema.
+
+## Medidas en esta máquina
+
+GCC 13.3, x86_64, Ubuntu 24.04. Reproducible con `make test`.
+
+| métrica | valor | nota |
+|---|---|---|
+| front-end + emisión a C, 10 012 líneas | **61 ms** | puerta de diseño: 200 ms |
+| `cc -O2` + link del mismo caso | 866 ms | fuera de la puerta, cacheado aparte |
+| hola mundo, perfil freestanding | **8 936 B** | puerta: 12 288 B |
+| TCO: 10 M iteraciones, pila 128 KiB | sin desbordamiento | `for(;;)` generado por `hxc` |
+
+## Principio de ejecución
+
+El compilador es C11 sin dependencias más allá del C estándar: todo el AST,
+los diagnósticos, la arena y la tabla de símbolos viven en un único
+`build/hxc` que compila con `cc`. No hay paso de bootstrapping todavía; es
+un objetivo posterior y la razón de esta elección (ver `docs/adr/0001`).
+
+Documentación: `docs/grammar.md` (gramática) y `docs/adr/` (decisiones).

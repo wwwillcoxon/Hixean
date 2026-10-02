@@ -1,0 +1,27 @@
+"tipos: TYPE, registros, constantes"
+TYPE Punto
+  x: INT
+  y: INT
+END TYPE
+
+TYPE Rectangulo
+  ancho: INT
+  alto: INT
+END TYPE
+
+DIM p AS Punto
+p.x = 3
+p.y = 4
+PRINT p.x
+PRINT p.y
+
+DIM r AS Rectangulo
+r.ancho = 10
+r.alto = 5
+PRINT r.ancho * r.alto
+
+FUNCTION Area(r AS Rectangulo) AS INT
+  RETURN r.ancho * r.alto
+END FUNCTION
+
+PRINT Area(r)

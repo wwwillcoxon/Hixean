@@ -1,0 +1,18 @@
+"cadenas: literales, interpolacion, concatenacion, intrinsecos"
+DIM nombre AS STRING = "Hixean"
+PRINT "Hola, {nombre}!"
+PRINT nombre.Len()
+PRINT "".IsEmpty()
+PRINT "abc".Upper()
+PRINT "ABC".Lower()
+PRINT "  x  ".Trim()
+PRINT "abcdef".Slice(1, 3)
+PRINT "ab" ++ "cd"
+DIM a AS STRING = "uno"
+a = a ++ " y dos"
+PRINT a
+PRINT "longitud de {a} = {a.Len()}"
+PRINT "{a} tiene {a.Len()} caracteres"
+DIM b AS STRING
+PRINT b.Len()
+PRINT b.IsEmpty()

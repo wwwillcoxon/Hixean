@@ -1,0 +1,6 @@
+"modulos: import y alcance"
+IMPORT mate
+
+PRINT mate.Doble(21)
+PRINT mate.Tres(7)
+PRINT mate.POR_TRES

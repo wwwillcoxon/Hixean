@@ -1,0 +1,44 @@
+"Result/?: propagacion de errores sin unwinding"
+FUNCTION Pedir(n AS INT) AS Result<STRING, STRING>
+  IF n < 0 THEN RETURN Err("nombre negativo")
+  RETURN Ok("Ana")
+END FUNCTION
+
+FUNCTION Doble(x AS INT) AS Result<INT, STRING>
+  IF x = 0 THEN RETURN Err("no se puede doblar cero")
+  RETURN Ok(x * 2)
+END FUNCTION
+
+DIM nombre AS STRING = Pedir(1)?
+PRINT "hola, {nombre}"
+
+DIM r AS INT = Doble(21)?
+PRINT r
+
+FUNCTION Anidado(n AS INT) AS Result<INT, STRING>
+  DIM v AS INT = Doble(n)?
+  RETURN Ok(v + 1)
+END FUNCTION
+
+PRINT Anidado(5)?
+
+MATCH Pedir(3)
+  CASE Ok(n) THEN PRINT "ok: {n}"
+  CASE Err(e) THEN PRINT "error: {e}"
+END MATCH
+
+MATCH Pedir(-1)
+  CASE Ok(n) THEN PRINT "no deberia: {n}"
+  CASE Err(e) THEN PRINT "error esperado: {e}"
+END MATCH
+
+MATCH 7
+  CASE 1 TO 5 THEN PRINT "rango bajo"
+  CASE 6 TO 10 THEN PRINT "rango alto"
+  CASE ELSE THEN PRINT "otro"
+END MATCH
+
+MATCH Pedir(-2)
+  CASE Ok(n) THEN PRINT "imposible"
+  CASE Err(e) THEN PRINT "propagado: {e}"
+END MATCH

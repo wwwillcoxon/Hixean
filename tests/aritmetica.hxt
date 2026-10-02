@@ -1,0 +1,20 @@
+"aritmetica: enteros, flotantes, wrapping, duraciones"
+DIM a AS INT = 7
+DIM b AS INT = 3
+PRINT a + b
+PRINT a - b
+PRINT a * b
+PRINT a / b
+PRINT a MOD b
+PRINT "a" ++ "b"
+PRINT -a
+PRINT TRUE
+PRINT 1.5 + 2.25
+PRINT 10 / 4
+PRINT 200ms
+PRINT 5s
+PRINT 1h30m
+PRINT 0xFF
+PRINT 1_000_000
+PRINT a > b AND b > 0
+PRINT NOT (a = b)

@@ -1,0 +1,29 @@
+"funciones: recursion, TCO, retornos"
+FUNCTION Cuadrado(n AS INT) AS INT
+  RETURN n * n
+END FUNCTION
+
+FUNCTION Fact(n AS INT) AS I64
+  IF n <= 1 THEN RETURN 1
+  RETURN n * Fact(n - 1)
+END FUNCTION
+
+FUNCTION Suma(n AS INT) AS INT
+  DIM acc AS INT = 0
+  FOR i = 1 TO n
+    acc = acc + i
+  NEXT i
+  RETURN acc
+END FUNCTION
+
+FUNCTION Saluda(nombre AS STRING) AS VOID
+  PRINT "Hola, {nombre}, bienvenido."
+END FUNCTION
+
+PRINT Cuadrado(9)
+PRINT Fact(20)
+PRINT Suma(100)
+Saluda("mundo")
+
+"el factorial debe caber en 64 bits sin desbordar"
+PRINT Fact(12)
