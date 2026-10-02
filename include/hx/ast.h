@@ -342,6 +342,7 @@ struct HxStmt {
             HxStmtVec body;
         } arena;
         HxStmtVec inner;
+    int deferred;
         struct {
             HxSym name;
             HxExpr *value;

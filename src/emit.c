@@ -21,6 +21,8 @@ typedef struct {
     int uses_exit;
     int uses_result;
     int ret_is_result;
+    int epilogue;
+    const char *ret_field;
     HxStmtVec *match_cases;
 } HxEmit;
 
@@ -607,6 +609,10 @@ static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {
         hx_buf_printf(b, ", %d)", h->str.len);
         return;
     }
+    if (h->ty && h->ty->kind == TY_STRING) {
+        hx_expr_str(e, h, 0, b);
+        return;
+    }
     HxBuf inner = {e->arena, NULL, 0, 0};
     hx_expr_str(e, h, 0, &inner);
     hx_buf_printf(b, "%s(%s)", hx_str_of_fn(h->ty), inner.data ? inner.data : "0");
@@ -892,7 +898,11 @@ static void hx_emit_propagating(HxEmit *e, HxExpr *val, int ind, const char *des
     hx_expr_str(e, val->try.inner, 0, b);
     hx_buf_str(b, ";\n");
     hx_indent(b, ind);
-    if (e->ret_is_result) hx_buf_printf(b, "if (hx_t%d.tag) return hx_t%d;\n", id, id);
+    if (e->ret_is_result && e->epilogue >= 0)
+        hx_buf_printf(b, "if (hx_t%d.tag) { hx_ret_s = hx_t%d.s; goto hx_epilogue_%d; }\n", id, id,
+                      e->epilogue);
+    else if (e->ret_is_result)
+        hx_buf_printf(b, "if (hx_t%d.tag) return hx_t%d;\n", id, id);
     else hx_buf_printf(b, "if (hx_t%d.tag) hx_propagate_top(hx_t%d);\n", id, id);
     hx_indent(b, ind);
     hx_buf_str(b, dest);
@@ -1098,6 +1108,19 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 break;
             }
             hx_indent(b, ind);
+            if (e->epilogue >= 0) {
+                if (s->ret.value) {
+                    hx_buf_printf(b, "hx_ret_%s = ", e->ret_field);
+                    hx_expr_str(e, s->ret.value, 0, b);
+                    hx_buf_printf(b, ";\n");
+                    hx_indent(b, ind);
+                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", e->epilogue);
+                } else {
+                    hx_indent(b, ind);
+                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", e->epilogue);
+                }
+                break;
+            }
             if (s->ret.value) {
                 hx_buf_str(b, "return ");
                 hx_expr_str(e, s->ret.value, 0, b);
@@ -1159,9 +1182,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
         }
         case ST_BLOCK: hx_body(e, &s->block.stmts, ind); break;
         case ST_ARENA: hx_body(e, &s->arena.body, ind); break;
-        case ST_DEFER:
-            hx_error(e->diags, s->span, "E0401", "DEFER todavía no está implementado (objetivo M4)");
-            break;
+        case ST_DEFER: break;
     }
 }
 
@@ -1211,6 +1232,28 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
     }
     hx_buf_str(b, ") {\n");
     e->ret_is_result = f->ret && hx_ty_is_result(f->ret);
+    int ndefers = 0;
+    for (int i = 0; i < f->body.len; i++)
+        if (f->body.data[i].kind == ST_DEFER) ndefers++;
+    e->epilogue = ndefers ? e->tmp++ : -1;
+    if (e->epilogue >= 0) {
+        e->ret_field = e->ret_is_result ? "r"
+                       : !f->ret || f->ret->kind == TY_VOID  ? "i"
+                       : f->ret->kind == TY_FLOAT             ? "f"
+                       : f->ret->kind == TY_STRING            ? "s"
+                                                           : "i";
+        if (e->ret_is_result) {
+            hx_buf_str(b, "  hx_result hx_ret_r;\n");
+        } else if (!f->ret || f->ret->kind == TY_VOID) {
+            hx_buf_str(b, "  int64_t hx_ret_i;\n");
+        } else {
+            hx_buf_printf(b, "  %s hx_ret_%s;\n",
+                          f->ret->kind == TY_FLOAT ? "double"
+                          : f->ret->kind == TY_STRING ? "hx_str"
+                                                      : "int64_t",
+                          e->ret_field);
+        }
+    }
     if (f->is_tail_loop) {
         HxStmt *last = &f->body.data[f->body.len - 1];
         hx_buf_str(b, "  for (;;) {\n");
@@ -1224,6 +1267,18 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
     } else {
         hx_body(e, &f->body, 1);
     }
+    if (e->epilogue >= 0) {
+        hx_buf_printf(b, "hx_epilogue_%d:\n", e->epilogue);
+        for (int i = f->body.len - 1; i >= 0; i--) {
+            if (f->body.data[i].kind != ST_DEFER) continue;
+            for (int k = 0; k < f->body.data[i].inner.len; k++)
+                hx_stmt_emit(e, &f->body.data[i].inner.data[k], 1);
+        }
+        hx_buf_str(b, "  ");
+        if (!f->ret || f->ret->kind == TY_VOID) hx_buf_str(b, "return;\n");
+        else hx_buf_printf(b, "return hx_ret_%s;\n", e->ret_field);
+    }
+    e->epilogue = -1;
     e->ret_is_result = 0;
     hx_buf_str(b, "}\n\n");
 }

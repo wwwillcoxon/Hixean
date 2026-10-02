@@ -213,6 +213,5 @@ y `Err`; en cualquier otro caso es obligatorio (`E0405`).
 
 ## 9. Lo que este documento *no* cubre todavía
 
-`ARENA` con reservas reales, `DEFER` (error explícito `E0401`), `REF`/`PTR`
-con unicidad, vectores, genéricos, traits, `COMPTIME`, `.hxk`/`.hxq`.
-Cada uno tiene su hito en el README.
+`ARENA` con reservas reales, `DEFER` de bloque, `REF`/`PTR` con unicidad,
+vectores, genéricos, traits, `COMPTIME`, `.hxk`/`.hxq`.

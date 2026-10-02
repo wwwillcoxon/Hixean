@@ -1,0 +1,46 @@
+"DEFER: limpieza en orden inverso en cualquier salida de la funcion"
+' los DEFER se ejecutan en orden inverso al declararse, tanto en el
+' retorno normal como en una propagacion de error con '?'
+
+DIM orden AS STRING = ""
+
+FUNCTION Anotar(nombre AS STRING, valor AS INT) AS Result<INT, STRING>
+  DEFER PRINT "limpio {nombre}"
+  PRINT "uso {nombre}"
+  IF n_valor() < 0 THEN RETURN Err("valor negativo")
+  RETURN Ok(n_valor())
+END FUNCTION
+
+FUNCTION n_valor() AS INT
+  RETURN -1
+END FUNCTION
+
+FUNCTION Abrir(nombre AS STRING) AS Result<INT, STRING>
+  DEFER PRINT "cerrando {nombre}"
+  DEFER PRINT "soltando {nombre}"
+  PRINT "abriendo {nombre}"
+  RETURN Ok(1)
+END FUNCTION
+
+FUNCTION AbrirFallo(nombre AS STRING) AS Result<INT, STRING>
+  DEFER PRINT "cerrando {nombre}"
+  DEFER PRINT "soltando {nombre}"
+  PRINT "abriendo {nombre}"
+  RETURN Err("no existe {nombre}")
+END FUNCTION
+
+MATCH Abrir("A")
+  CASE Ok(v) THEN PRINT "ok {v}"
+  CASE Err(e) THEN PRINT "error {e}"
+END MATCH
+
+MATCH AbrirFallo("B")
+  CASE Ok(v) THEN PRINT "ok {v}"
+  CASE Err(e) THEN PRINT "error {e}"
+END MATCH
+
+MATCH Anotar("C", 1)
+  CASE Ok(v) THEN PRINT "valor {v}"
+  CASE Err(e) THEN PRINT "error {e}"
+END MATCH
+

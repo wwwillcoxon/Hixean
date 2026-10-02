@@ -91,6 +91,10 @@ static void hx_skip_trivia(HxLexer *lx) {
             lx->p++;
             continue;
         }
+        if (*lx->p == '\'') {
+            while (*lx->p && *lx->p != '\n') lx->p++;
+            continue;
+        }
         if (*lx->p == '#') {
             while (*lx->p && *lx->p != '\n') lx->p++;
             continue;

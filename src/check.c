@@ -27,6 +27,7 @@ typedef struct {
     HxFunc *cur_func;
     HxTy *ret_ty;
     int loop_depth;
+    int defer_depth;
 } HxChecker;
 
 static void hx_scope_push(HxChecker *c) {
@@ -724,6 +725,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             }
             break;
         case ST_IF: {
+            c->defer_depth++;
             hx_scope_push(c);
             s->if_.cond = hx_expr_check(c, s->if_.cond);
             if (s->if_.cond->ty && s->if_.cond->ty->kind != TY_BOOL)
@@ -742,9 +744,11 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_check_body(c, &s->if_.else_);
                 hx_scope_pop(c);
             }
+            c->defer_depth--;
             break;
         }
         case ST_WHILE:
+            c->defer_depth++;
             hx_scope_push(c);
             s->while_.cond = hx_expr_check(c, s->while_.cond);
             if (s->while_.cond->ty && s->while_.cond->ty->kind != TY_BOOL)
@@ -754,8 +758,10 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             hx_check_body(c, &s->while_.body);
             c->loop_depth--;
             hx_scope_pop(c);
+            c->defer_depth--;
             break;
         case ST_FOR:
+            c->defer_depth++;
             hx_scope_push(c);
             s->for_.start = hx_expr_check(c, s->for_.start);
             s->for_.end = hx_expr_check(c, s->for_.end);
@@ -769,6 +775,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             hx_check_body(c, &s->for_.body);
             c->loop_depth--;
             hx_scope_pop(c);
+            c->defer_depth--;
             break;
         case ST_RETURN:
             if (s->ret.value) {
@@ -801,11 +808,20 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             hx_scope_pop(c);
             break;
         case ST_DEFER:
+            if (!s->inner.len) {
+                hx_error(c->diags, s->span, "E0401", "DEFER requiere una sentencia");
+                break;
+            }
+            if (c->defer_depth)
+                hx_error(c->diags, s->span, "E0406",
+                         "DEFER anidado en una rama no está soportado todavía; "
+                         "el DEFER de bloque llega con ARENA");
             hx_scope_push(c);
             hx_check_body(c, &s->inner);
             hx_scope_pop(c);
             break;
         case ST_MATCH: {
+            c->defer_depth++;
             hx_scope_push(c);
             s->match.subject = hx_expr_check(c, s->match.subject);
             if (s->match.subject_name) {
@@ -846,6 +862,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                              "MATCH exige CASE ELSE o cubrir todos los casos de Ok y Err");
             }
             hx_scope_pop(c);
+            c->defer_depth--;
             break;
         }
         case ST_NOP: break;

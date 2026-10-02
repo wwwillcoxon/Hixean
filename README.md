@@ -18,6 +18,7 @@ Hola mundo
 | M2 | `IF`/`WHILE`/`FOR`, funciones, `TYPE`, módulos, `IMPORT`, aritmética verificada, TCO real | fib y TCO con pila de 128 KiB |
 | M3 | `STRING` inmutable, interpolación, `++`, intrínsecos, `CONST` | corpus de pruebas con salida esperada |
 | M4 | `Result`/`?` sin *unwinding*, `MATCH` con patrones y rangos | propagación verificada en el corpus |
+| M4b | `DEFER` en orden inverso en toda salida, sin pila de runtime | orden LIFO verificado en el corpus |
 | M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
 | M6–M12 | vectores, capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 
