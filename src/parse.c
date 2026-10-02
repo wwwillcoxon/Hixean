@@ -1036,7 +1036,7 @@ static void hx_parse_type(HxParser *p, HxTypeDecl *t, int is_export) {
         f.span = hx_cur(p)->span;
         f.name = hx_cur(p)->sym;
         hx_bump(p);
-        hx_expect_punct(p, ":");
+        if (!hx_eat_type_marker(p)) hx_expect_punct(p, ":");
         f.ty = hx_type(p);
         HX_VEC_PUSH(t->fields, f);
         if (!hx_eat_kw(p, TK_NL)) hx_expect_kw(p, TK_NL, "fin de línea");

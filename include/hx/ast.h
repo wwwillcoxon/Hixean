@@ -104,6 +104,9 @@ struct HxExpr {
     int is_ok_ctor;
     int is_err_ctor;
     int propagate;
+    int deref;
+    int *ret_arg_refs;
+    int n_arg_refs;
     HxTy *payload_ty;
     int prefix_len;
     HxSym method;

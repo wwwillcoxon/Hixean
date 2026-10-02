@@ -1,0 +1,40 @@
+"REF: prestamo con unicidad y mutacion a traves de la referencia"
+TYPE Contador
+  n AS INT
+  etiqueta AS STRING
+END TYPE
+
+TYPE Caja
+  v AS INT
+END TYPE
+
+FUNCTION Incrementar(c AS REF Contador) AS INT
+  c.n = c.n + 1
+  RETURN c.n
+END FUNCTION
+
+FUNCTION Poner(c AS REF Caja, x AS INT) AS INT
+  c.v = x
+  RETURN c.v
+END FUNCTION
+
+FUNCTION Anidado(c AS REF Caja, x AS INT) AS INT
+  c.v = x
+  RETURN c.v
+END FUNCTION
+
+DIM c AS Contador
+c.n = 10
+c.etiqueta = "cuenta"
+
+"el REF muta el origen del llamante"
+PRINT Incrementar(c)
+PRINT Incrementar(c)
+PRINT c.n
+PRINT c.etiqueta
+
+"prestamos secuenciales sobre el mismo origen: permitido"
+DIM k AS Caja
+PRINT Poner(k, 1)
+PRINT Poner(k, 2)
+PRINT k.v

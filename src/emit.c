@@ -778,7 +778,8 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, ")");
                 break;
             }
-            hx_buf_printf(b, "hx_v_%s", hx_sym_str(x->path.parts.data[0].name));
+            if (x->deref) hx_buf_printf(b, "(*hx_v_%s)", hx_sym_str(x->path.parts.data[0].name));
+            else hx_buf_printf(b, "hx_v_%s", hx_sym_str(x->path.parts.data[0].name));
             for (int i = 1; i < pre; i++)
                 hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
             break;
@@ -818,7 +819,15 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             for (int i = 0; i < x->call.args.len; i++) {
                 if (i) hx_buf_str(b, ", ");
-                hx_expr_str(e, x->call.args.data[i].value, 0, b);
+                int wants_ref = 0;
+                if (x->ret_arg_refs) wants_ref = x->ret_arg_refs[i];
+                if (wants_ref && x->call.args.data[i].value->kind == EX_PATH &&
+                    !x->call.args.data[i].value->deref) {
+                    hx_buf_printf(b, "&hx_v_%s",
+                                  hx_sym_str(x->call.args.data[i].value->path.parts.data[0].name));
+                } else {
+                    hx_expr_str(e, x->call.args.data[i].value, 0, b);
+                }
             }
             hx_buf_str(b, ")");
             break;

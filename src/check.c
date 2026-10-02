@@ -9,6 +9,7 @@ typedef struct {
     int kind;
     HxSpan span;
     int arena_depth;
+    int borrowed;
 } HxSymEntry;
 
 enum { SK_VAR, SK_FUNC, SK_TYPE, SK_CONST, SK_MODULE };
@@ -43,8 +44,39 @@ static void hx_scope_push(HxChecker *c) {
 static void hx_scope_pop(HxChecker *c) { c->scope = c->scope->parent; }
 
 static void hx_define(HxChecker *c, HxSym name, HxTy *ty, int kind, HxSpan span) {
-    HxSymEntry e = {name, ty, kind, span, 0};
+    HxSymEntry e = {name, ty, kind, span, 0, 0};
     HX_VEC_PUSH(c->scope->syms, e);
+}
+
+static HxSymEntry *hx_lookup_in_scope(HxChecker *c, HxSym name) {
+    for (int i = c->scope->syms.len - 1; i >= 0; i--)
+        if (c->scope->syms.data[i].name == name) return &c->scope->syms.data[i];
+    for (HxScope *s = c->scope->parent; s; s = s->parent)
+        for (int i = s->syms.len - 1; i >= 0; i--)
+            if (s->syms.data[i].name == name) return &s->syms.data[i];
+    return NULL;
+}
+
+static void hx_mark_borrow(HxChecker *c, HxExpr *arg, HxSpan sp) {
+    if (!arg || arg->kind != EX_PATH || arg->path.parts.len != 1) {
+        hx_diag_note(c->diags, sp, "E0408",
+                     "un REF sólo puede tomar prestada una variable con nombre",
+                     "si necesitas arithmetic cruda usa PTR", NULL);
+        return;
+    }
+    HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(arg->path.parts.data[0].name),
+                                         strlen(hx_sym_str(arg->path.parts.data[0].name)));
+    HxSymEntry *se = hx_lookup_in_scope(c, folded);
+    if (!se) return;
+    if (se->borrowed) {
+        hx_diag_note(c->diags, sp, "E0408",
+                     hx_arena_sprintf(c->arena, "'%s' ya está prestado",
+                                      hx_sym_str(arg->path.parts.data[0].name)),
+                     "una variable se presta a lo sumo una vez por ambito (unicidad)",
+                     NULL);
+        return;
+    }
+    se->borrowed = 1;
 }
 
 static HxSymEntry *hx_lookup(HxChecker *c, HxSym name) {
@@ -199,6 +231,10 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                 return e;
             }
             HxTy *t = se->ty;
+            if (se->kind == SK_VAR && t && t->kind == TY_REF) {
+                e->deref = 1;
+                t = t->inner;
+            }
             if (se->kind == SK_MODULE) {
                 t = hx_ty_builtin(c->arena, TY_VOID);
                 for (int i = split; i < n; i++) {
@@ -406,13 +442,28 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                          : NULL,
                      NULL);
     }
+    int *refs = (int *)hx_arena_calloc(c->arena, sizeof(int) * (e->call.args.len + 1));
     for (int i = 0; i < e->call.args.len; i++) {
         HxArg *arg = &e->call.args.data[i];
         arg->value = hx_expr_check(c, arg->value);
+        if (i < f->params.len && f->params.data[i].ty && f->params.data[i].ty->kind == TY_REF)
+            refs[i] = 1;
         HxParam *p = (i < f->params.len) ? &f->params.data[i] : NULL;
-        if (p && p->ty) hx_coerce(c, arg->value->ty, p->ty, arg->span, hx_sym_str(f->name));
+        if (p && p->ty) {
+            if (p->ty->kind == TY_REF) {
+                hx_mark_borrow(c, arg->value, arg->span);
+                if (arg->value->ty && !hx_ty_equal(arg->value->ty, p->ty->inner))
+                    hx_error(c->diags, arg->span, "E0301",
+                             hx_arena_sprintf(c->arena, "REF %s espera un %s",
+                                              hx_sym_str(f->name), hx_ty_name(p->ty->inner)));
+            } else {
+                hx_coerce(c, arg->value->ty, p->ty, arg->span, hx_sym_str(f->name));
+            }
+        }
     }
     e->ty = f->ret ? f->ret : hx_ty_builtin(c->arena, TY_VOID);
+    e->ret_arg_refs = refs;
+    e->n_arg_refs = e->call.args.len;
     return e;
 }
 
@@ -906,6 +957,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
 
 static void hx_check_body(HxChecker *c, HxStmtVec *body) {
     for (int i = 0; i < body->len; i++) {
+        for (int k = 0; k < c->scope->syms.len; k++) c->scope->syms.data[k].borrowed = 0;
         hx_check_stmt(c, &body->data[i]);
         if (c->diags->errors > c->diags->max_errors) break;
     }
