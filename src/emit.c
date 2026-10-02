@@ -18,11 +18,16 @@ typedef struct {
     HxBuf out;
     int tmp;
     int uses_string;
+    int uses_arena;
     int uses_exit;
     int uses_result;
     int ret_is_result;
     int epilogue;
     const char *ret_field;
+    int arena_depth;
+    const char *arena_stack[16];
+    int epilogue_stack[16];
+    int epilogue_depth;
     HxStmtVec *match_cases;
 } HxEmit;
 
@@ -115,6 +120,21 @@ static const char *HX_RT_FREESTANDING =
     "static void hx_exit(int code) {\n"
     "  __asm__ volatile(\"syscall\" : : \"a\"(60L), \"D\"((long)code) : \"rcx\", \"r11\", \"memory\");\n"
     "  __builtin_unreachable();\n"
+    "}\n"
+    "static long hx_sys_mmap(int64_t n) {\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r)\n"
+    "                   : \"a\"(9L), \"D\"(0L), \"S\"(n), \"d\"((long)0x22), \"r\"((long)0x32),\n"
+    "                     \"r\"((long)-1L)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
+    "}\n"
+    "static long hx_sys_munmap(void *p) {\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r)\n"
+    "                   : \"a\"(11L), \"D\"((long)p), \"S\"((long)0), \"d\"((long)0x1000)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
     "}\n";
 
 static const char *HX_RT_LIBC =
@@ -125,7 +145,8 @@ static const char *HX_RT_LIBC =
     "  do { r = (long)write(fd, p, (size_t)n); } while (r < 0);\n"
     "  return r;\n"
     "}\n"
-    "static void hx_exit(int code) { _exit(code); }\n";
+    "static void hx_exit(int code) { _exit(code); }\n"
+    "#include <stdlib.h>\n";
 
 static const char *HX_RT_CORE =
     "static void hx_write(int fd, const void *p, int64_t n) {\n"
@@ -349,6 +370,85 @@ static const char *HX_RT_STRMORE =
     "  return r;\n"
     "}\n";
 
+static const char *HX_RT_ARENA =
+    "typedef struct hx_arena_blk { struct hx_arena_blk *next; int64_t used; int64_t cap; }\n"
+    "    hx_arena_blk;\n"
+    "typedef struct { hx_arena_blk *head; } hx_arena;\n"
+    "static const int64_t HX_ARENA_GRAIN = 65536;\n"
+    "static void *hx_arena_alloc(hx_arena *a, int64_t n) {\n"
+    "  hx_arena_blk *b = a->head;\n"
+    "  void *p;\n"
+    "  if (n < 0) hx_panic(\"reserva de tamano negativo\", 26);\n"
+    "  if (n == 0) n = 1;\n"
+    "  if (!b || b->cap - b->used < n) {\n"
+    "    int64_t cap = HX_ARENA_GRAIN;\n"
+    "    while (cap < n) cap *= 2;\n"
+    "    b = (hx_arena_blk *)hx_raw_alloc(cap);\n"
+    "    if (!b) hx_panic(\"sin memoria para la arena\", 25);\n"
+    "    b->next = a->head;\n"
+    "    b->used = 0;\n"
+    "    b->cap = cap;\n"
+    "    a->head = b;\n"
+    "  }\n"
+    "  p = (char *)b + sizeof(hx_arena_blk) + b->used;\n"
+    "  b->used += (n + 15) & ~(int64_t)15;\n"
+    "  return p;\n"
+    "}\n"
+    "static void hx_arena_init(hx_arena *a) { a->head = 0; }\n"
+    "static void hx_arena_free(hx_arena *a) {\n"
+    "  hx_arena_blk *b = a->head;\n"
+    "  while (b) {\n"
+    "    hx_arena_blk *next = b->next;\n"
+    "    hx_raw_free(b);\n"
+    "    b = next;\n"
+    "  }\n"
+    "  a->head = 0;\n"
+    "}\n";
+
+static const char *HX_RT_RAWALLOC_FREESTANDING =
+    "#if defined(__linux__) && defined(__x86_64__)\n"
+    "static void *hx_raw_alloc(int64_t n) {\n"
+    "  register long r10 __asm__(\"r10\") = 0x22;\n"
+    "  register long r8 __asm__(\"r8\") = 0xffffffffL;\n"
+    "  register long r9 __asm__(\"r9\") = 0;\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r)\n"
+    "                   : \"a\"(9L), \"D\"(0L), \"S\"(n), \"d\"(3L), \"r\"(r10), \"r\"(r8),\n"
+    "                     \"r\"(r9)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  if (r < 0 && r > -4096) return 0;\n"
+    "  return (void *)r;\n"
+    "}\n"
+    "static void hx_raw_free(void *p) {\n"
+    "  register long r8 __asm__(\"r8\") = 0;\n"
+    "  register long r9 __asm__(\"r9\") = 0;\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r)\n"
+    "                   : \"a\"(11L), \"D\"((long)p), \"S\"((long)0), \"d\"(0x1000L),\n"
+    "                     \"r\"(r8), \"r\"(r9)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  (void)r;\n"
+    "}\n"
+    "#else\n"
+    "static char hx_static_heap[1048576];\n"
+    "static int64_t hx_static_heap_used;\n"
+    "static void *hx_raw_alloc(int64_t n) {\n"
+    "  char *p;\n"
+    "  n = (n + 15) & ~(int64_t)15;\n"
+    "  if (hx_static_heap_used + n > (int64_t)sizeof(hx_static_heap)) return 0;\n"
+    "  p = hx_static_heap + hx_static_heap_used;\n"
+    "  hx_static_heap_used += n;\n"
+    "  return p;\n"
+    "}\n"
+    "static void hx_raw_free(void *p) { (void)p; }\n"
+    "#endif\n";
+
+static const char *HX_RT_RAWALLOC_LIBC =
+    "static void *hx_raw_alloc(int64_t n) { return malloc((size_t)n); }\n"
+    "static void hx_raw_free(void *p) { free(p); }\n"
+    "static void *hx_heap_alloc(int64_t n) { return malloc((size_t)n); }\n"
+    "static void hx_heap_free(void *p) { free(p); }\n";
+
 static const char *HX_RT_ZERO =
     "static int32_t hx_zero_int32(void) { return 0; }\n"
     "static int64_t hx_zero_int64(void) { return 0; }\n"
@@ -492,7 +592,11 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
             hx_scan_expr(e, s->assign.target);
             hx_scan_expr(e, s->assign.value);
             break;
-        case ST_DIM: hx_scan_expr(e, s->dim.init); break;
+        case ST_DIM:
+            hx_scan_expr(e, s->dim.init);
+            if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && s->dim.ty->size > 0)
+                e->uses_arena = 1;
+            break;
         case ST_CONST: hx_scan_expr(e, s->konst.value); break;
         case ST_PRINT:
             for (int k = 0; k < s->print.items.len; k++)
@@ -773,14 +877,20 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_expr_str(e, x->un.operand, 7, b);
             }
             break;
-        case EX_INDEX:
+        case EX_INDEX: {
+            HxTy *et = x->ty;
+            hx_buf_str(b, "((");
+            hx_buf_str(b, hx_c_ty(e, et));
+            hx_buf_str(b, "*)(");
             hx_expr_str(e, x->index.base, 7, b);
+            hx_buf_str(b, ").data)");
             if (x->index.start) {
                 hx_buf_str(b, "[");
                 hx_expr_str(e, x->index.start, 0, b);
                 hx_buf_str(b, "]");
             }
             break;
+        }
         case EX_TRY:
             hx_error(e->diags, x->span, "E0403",
                      "'?' sólo puede ser el valor completo de una asignación, DIM o RETURN");
@@ -798,6 +908,100 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
 
 
 static void hx_indent(HxBuf *b, int n);
+
+static int hx_size_of(HxEmit *e, HxTy *t) {
+    switch (t ? t->kind : TY_INT) {
+        case TY_BOOL:
+        case TY_INT: return 4;
+        case TY_I64:
+        case TY_DURATION:
+        case TY_FLOAT: return 8;
+        case TY_STRING: return 16;
+        case TY_ARRAY: return 16;
+        case TY_PTR:
+        case TY_REF: return 8;
+        case TY_NAMED: {
+            if (hx_ty_is_result(t)) return 32;
+            if (!t->decl) return 4;
+            int total = 0;
+            for (int i = 0; i < t->decl->fields.len; i++)
+                total += hx_size_of(e, t->decl->fields.data[i].ty);
+            return total ? total : 4;
+        }
+        default: return 4;
+    }
+}
+
+static int hx_body_has_defer(HxStmtVec *body) {
+    for (int i = 0; i < body->len; i++)
+        if (body->data[i].kind == ST_DEFER) return 1;
+    return 0;
+}
+
+static int hx_count_defers(HxStmtVec *body) {
+    int n = 0;
+    for (int i = 0; i < body->len; i++) {
+        HxStmt *st = &body->data[i];
+        if (st->kind == ST_DEFER) {
+            n++;
+            continue;
+        }
+        switch (st->kind) {
+            case ST_IF:
+                n += hx_count_defers(&st->if_.then);
+                for (int k = 0; k < st->if_.n_elifs; k++)
+                    n += hx_count_defers(&st->if_.elifs[k].then);
+                n += hx_count_defers(&st->if_.else_);
+                break;
+            case ST_WHILE: n += hx_count_defers(&st->while_.body); break;
+            case ST_FOR: n += hx_count_defers(&st->for_.body); break;
+            case ST_ARENA: n += hx_count_defers(&st->arena.body); break;
+            case ST_BLOCK: n += hx_count_defers(&st->block.stmts); break;
+            case ST_MATCH:
+                for (int k = 0; k < st->match.cases.len; k++)
+                    n += hx_count_defers(&st->match.cases.data[k].body);
+                n += hx_count_defers(&st->match.else_body);
+                break;
+            default: break;
+        }
+    }
+    return n;
+}
+
+static int hx_push_epilogue(HxEmit *e) {
+    int lab = e->tmp++;
+    if (e->epilogue_depth < 16) e->epilogue_stack[e->epilogue_depth++] = lab;
+    return lab;
+}
+
+static void hx_epilogue_end(HxEmit *e, int lab, HxStmtVec *body, int ind) {
+    HxBuf *b = &e->out;
+    hx_indent(b, ind);
+    hx_buf_printf(b, "hx_epilogue_%d:\n", lab);
+    for (int i = body->len - 1; i >= 0; i--) {
+        if (body->data[i].kind != ST_DEFER) continue;
+        for (int k = 0; k < body->data[i].inner.len; k++)
+            hx_stmt_emit(e, &body->data[i].inner.data[k], ind);
+    }
+    if (e->epilogue_depth > 0) e->epilogue_depth--;
+    hx_indent(b, ind);
+    if (e->epilogue_depth > 0)
+        hx_buf_printf(b, "if (hx_mode) goto hx_epilogue_%d;\n", e->epilogue_stack[e->epilogue_depth - 1]);
+    else
+        hx_buf_str(b, "\n");
+}
+
+static void hx_block(HxEmit *e, HxStmtVec *body, int ind) {
+    int lab = hx_body_has_defer(body) ? hx_push_epilogue(e) : -1;
+    hx_body(e, body, ind);
+    if (lab >= 0) {
+        hx_indent(&e->out, ind);
+        hx_buf_str(&e->out, "hx_mode = 0;\n");
+        hx_indent(&e->out, ind);
+        hx_buf_printf(&e->out, "goto hx_epilogue_%d;\n", lab);
+        hx_epilogue_end(e, lab, body, ind);
+    }
+}
 
 static const char *hx_payload_field(HxTy *t) {
     if (!t) return "i";
@@ -898,9 +1102,11 @@ static void hx_emit_propagating(HxEmit *e, HxExpr *val, int ind, const char *des
     hx_expr_str(e, val->try.inner, 0, b);
     hx_buf_str(b, ";\n");
     hx_indent(b, ind);
-    if (e->ret_is_result && e->epilogue >= 0)
-        hx_buf_printf(b, "if (hx_t%d.tag) { hx_ret_s = hx_t%d.s; goto hx_epilogue_%d; }\n", id, id,
-                      e->epilogue);
+    int tgt = e->epilogue_depth > 0 ? e->epilogue_stack[e->epilogue_depth - 1] : e->epilogue;
+    if (e->ret_is_result && tgt >= 0)
+        hx_buf_printf(b,
+                      "if (hx_t%d.tag) { hx_ret_r = hx_t%d; hx_mode = 1; goto hx_epilogue_%d; }\n",
+                      id, id, tgt);
     else if (e->ret_is_result)
         hx_buf_printf(b, "if (hx_t%d.tag) return hx_t%d;\n", id, id);
     else hx_buf_printf(b, "if (hx_t%d.tag) hx_propagate_top(hx_t%d);\n", id, id);
@@ -983,7 +1189,21 @@ static void hx_emit_print(HxEmit *e, HxStmt *s, int ind) {
 static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
     HxBuf *b = &e->out;
     if (s->assign.value && s->assign.value->kind == EX_TRY && s->assign.value->propagate) {
-        char *dest = hx_arena_sprintf(e->arena, "hx_v_%s = ", hx_sym_str(s->assign.target->path.parts.data[0].name));
+        HxBuf *db = &e->out;
+        hx_buf_put(db, "", 0);
+        hx_buf_str(db, "");
+        hx_buf_str(db, "");
+        char *dest = hx_arena_sprintf(e->arena, "%s", "");
+        if (s->assign.target->kind == EX_INDEX) {
+            dest = hx_arena_strdup(e->arena, "");
+            hx_expr_str(e, s->assign.target, 0, db);
+            dest = hx_arena_sprintf(e->arena, "%s", db->data + db->len);
+            dest = hx_arena_sprintf(e->arena, "%.*s = ", db->len, db->data);
+            db->len = 0;
+            if (db->data) db->data[0] = 0;
+        } else {
+            dest = hx_arena_sprintf(e->arena, "hx_v_%s = ", hx_sym_str(s->assign.target->path.parts.data[0].name));
+        }
         hx_emit_propagating(e, s->assign.value, ind, dest, 0);
         return;
     }
@@ -1023,6 +1243,21 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 hx_emit_propagating(e, s->dim.init, ind, dest, 0);
                 break;
             }
+            if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && !s->dim.init) {
+                e->uses_arena = 1;
+                const char *el = hx_c_ty(e, s->dim.ty->elem);
+                int64_t cnt = s->dim.ty->size;
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_span hx_v_%s = hx_span_make(hx_arena_alloc(",
+                              hx_sym_str(s->dim.name));
+                if (e->arena_depth) hx_buf_printf(b, "&%s", e->arena_stack[e->arena_depth - 1]);
+                else hx_buf_str(b, "&hx_static_arena");
+                hx_buf_printf(b, ", %lld), %lld);\n",
+                              (long long)(cnt * (int64_t)hx_size_of(e, s->dim.ty->elem)),
+                              (long long)cnt);
+                (void)el;
+                break;
+            }
             hx_indent(b, ind);
             hx_buf_printf(b, "%s hx_v_%s = ", hx_c_ty(e, s->dim.ty), hx_sym_str(s->dim.name));
             if (s->dim.init) {
@@ -1053,20 +1288,20 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_str(b, "if (");
             hx_expr_str(e, s->if_.cond, 0, b);
             hx_buf_str(b, ") {\n");
-            hx_body(e, &s->if_.then, ind + 1);
+            hx_block(e, &s->if_.then, ind + 1);
             hx_indent(b, ind);
             hx_buf_str(b, "}");
             for (int i = 0; i < s->if_.n_elifs; i++) {
                 hx_buf_str(b, " else if (");
                 hx_expr_str(e, s->if_.elifs[i].cond, 0, b);
                 hx_buf_str(b, ") {\n");
-                hx_body(e, &s->if_.elifs[i].then, ind + 1);
+                hx_block(e, &s->if_.elifs[i].then, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}");
             }
             if (s->if_.has_else) {
                 hx_buf_str(b, " else {\n");
-                hx_body(e, &s->if_.else_, ind + 1);
+                hx_block(e, &s->if_.else_, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}");
             }
@@ -1079,7 +1314,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_str(b, "if (!(");
             hx_expr_str(e, s->while_.cond, 0, b);
             hx_buf_str(b, ")) break;\n");
-            hx_body(e, &s->while_.body, ind + 1);
+            hx_block(e, &s->while_.body, ind + 1);
             hx_indent(b, ind);
             hx_buf_str(b, "}\n");
             break;
@@ -1097,7 +1332,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             if (s->for_.step) hx_expr_str(e, s->for_.step, 0, b);
             else hx_buf_str(b, "1");
             hx_buf_str(b, ") {\n");
-            hx_body(e, &s->for_.body, ind + 1);
+            hx_block(e, &s->for_.body, ind + 1);
             hx_indent(b, ind);
             hx_buf_str(b, "}\n");
             break;
@@ -1108,16 +1343,22 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 break;
             }
             hx_indent(b, ind);
-            if (e->epilogue >= 0) {
+            int target = e->epilogue_depth > 0 ? e->epilogue_stack[e->epilogue_depth - 1]
+                                               : e->epilogue;
+            if (target >= 0) {
                 if (s->ret.value) {
                     hx_buf_printf(b, "hx_ret_%s = ", e->ret_field);
                     hx_expr_str(e, s->ret.value, 0, b);
                     hx_buf_printf(b, ";\n");
                     hx_indent(b, ind);
-                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", e->epilogue);
+                    hx_buf_str(b, "hx_mode = 1;\n");
+                    hx_indent(b, ind);
+                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", target);
                 } else {
                     hx_indent(b, ind);
-                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", e->epilogue);
+                    hx_buf_str(b, "hx_mode = 1;\n");
+                    hx_indent(b, ind);
+                    hx_buf_printf(b, "goto hx_epilogue_%d;\n", target);
                 }
                 break;
             }
@@ -1167,21 +1408,42 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 }
                 hx_buf_str(b, ") {\n");
                 hx_emit_pattern_bind(e, mc->pattern, subj, s->match.subject->ty, ind + 1);
-                hx_body(e, &mc->body, ind + 1);
+                hx_block(e, &mc->body, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}\n");
             }
             if (s->match.has_else) {
                 hx_indent(b, ind);
                 hx_buf_str(b, s->match.cases.len ? "else {\n" : "{");
-                hx_body(e, &s->match.else_body, ind + 1);
+                hx_block(e, &s->match.else_body, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}\n");
             }
             break;
         }
-        case ST_BLOCK: hx_body(e, &s->block.stmts, ind); break;
-        case ST_ARENA: hx_body(e, &s->arena.body, ind); break;
+        case ST_BLOCK: {
+            int lab = hx_body_has_defer(&s->block.stmts) ? hx_push_epilogue(e) : -1;
+            hx_body(e, &s->block.stmts, ind);
+            if (lab >= 0) hx_epilogue_end(e, lab, &s->block.stmts, ind);
+            break;
+        }
+        case ST_ARENA: {
+            e->uses_arena = 1;
+            int id = e->tmp++;
+            char *aname = hx_arena_sprintf(e->arena, "hx_a%d", id);
+            if (e->arena_depth < 16) e->arena_stack[e->arena_depth++] = aname;
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena %s;\n", aname);
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena_init(&%s);\n", aname);
+            int lab = hx_body_has_defer(&s->arena.body) ? hx_push_epilogue(e) : -1;
+            hx_body(e, &s->arena.body, ind);
+            if (lab >= 0) hx_epilogue_end(e, lab, &s->arena.body, ind);
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena_free(&%s);\n", aname);
+            if (e->arena_depth) e->arena_depth--;
+            break;
+        }
         case ST_DEFER: break;
     }
 }
@@ -1232,11 +1494,13 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
     }
     hx_buf_str(b, ") {\n");
     e->ret_is_result = f->ret && hx_ty_is_result(f->ret);
-    int ndefers = 0;
-    for (int i = 0; i < f->body.len; i++)
-        if (f->body.data[i].kind == ST_DEFER) ndefers++;
+    int ndefers = hx_count_defers(&f->body);
     e->epilogue = ndefers ? e->tmp++ : -1;
+    e->epilogue_depth = 0;
+    if (e->epilogue >= 0 && e->epilogue_depth < 16)
+        e->epilogue_stack[e->epilogue_depth++] = e->epilogue;
     if (e->epilogue >= 0) {
+        hx_buf_str(b, "  int hx_mode = 0;\n");
         e->ret_field = e->ret_is_result ? "r"
                        : !f->ret || f->ret->kind == TY_VOID  ? "i"
                        : f->ret->kind == TY_FLOAT             ? "f"
@@ -1268,6 +1532,9 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
         hx_body(e, &f->body, 1);
     }
     if (e->epilogue >= 0) {
+        hx_buf_str(b, "hx_mode = 0;\n");
+        hx_buf_str(b, "goto ");
+        hx_buf_printf(b, "hx_epilogue_%d;\n", e->epilogue);
         hx_buf_printf(b, "hx_epilogue_%d:\n", e->epilogue);
         for (int i = f->body.len - 1; i >= 0; i--) {
             if (f->body.data[i].kind != ST_DEFER) continue;
@@ -1278,6 +1545,7 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
         if (!f->ret || f->ret->kind == TY_VOID) hx_buf_str(b, "return;\n");
         else hx_buf_printf(b, "return hx_ret_%s;\n", e->ret_field);
     }
+    e->epilogue_depth = 0;
     e->epilogue = -1;
     e->ret_is_result = 0;
     hx_buf_str(b, "}\n\n");
@@ -1312,7 +1580,12 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile p
     hx_buf_printf(b, "/* generado por hxc %s -- no editar */\n", HX_VERSION);
     hx_buf_str(b, "#include <stdint.h>\n#include <stddef.h>\n#include <string.h>\n");
     hx_buf_str(b, profile == HX_PROFILE_FREESTANDING ? HX_RT_FREESTANDING : HX_RT_LIBC);
-    if (profile == HX_PROFILE_FREESTANDING) hx_buf_str(b, HX_RT_FREESTANDING_MEM);
+    if (profile == HX_PROFILE_FREESTANDING) {
+        hx_buf_str(b, HX_RT_FREESTANDING_MEM);
+        hx_buf_str(b, HX_RT_RAWALLOC_FREESTANDING);
+    } else {
+        hx_buf_str(b, HX_RT_RAWALLOC_LIBC);
+    }
     hx_buf_str(b, HX_RT_TYPES);
     hx_buf_str(b, HX_RT_CORE);
     if (e.uses_string) hx_buf_str(b, HX_RT_STRING);
@@ -1321,6 +1594,11 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile p
         hx_buf_str(b, HX_RT_RESULT);
     }
     hx_buf_str(b, HX_RT_CHECKED);
+    if (e.uses_arena) {
+        hx_buf_str(b, HX_RT_ARENA);
+        hx_buf_str(b, "static hx_arena hx_static_arena;\n");
+        hx_buf_str(b, "static void hx_static_init(void) { hx_arena_init(&hx_static_arena); }\n");
+    }
     if (e.uses_string) {
         hx_buf_str(b, HX_RT_STRFUNS);
         hx_buf_str(b, HX_RT_STRMORE);
@@ -1350,8 +1628,10 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, const char *out_path, HxProfile p
     for (int i = 0; i < unit->modules.len; i++) hx_emit_protos(&e, &unit->modules.data[i]);
 
     if (profile == HX_PROFILE_FREESTANDING) hx_buf_str(b, "void _start(void);\n");
+    if (e.uses_arena) hx_buf_str(b, "static void hx_static_init(void);\n");
     hx_buf_str(b, "static int32_t hx_main(void);\n");
     hx_buf_str(b, "static int32_t hx_main(void) {\n");
+    if (e.uses_arena) hx_buf_str(b, "  hx_static_init();\n");
     for (int i = 0; i < unit->modules.len; i++) {
         HxModule *m = &unit->modules.data[i];
         if (m->is_entry) hx_body(&e, &m->top, 1);

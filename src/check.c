@@ -8,6 +8,7 @@ typedef struct {
     HxTy *ty;
     int kind;
     HxSpan span;
+    int arena_depth;
 } HxSymEntry;
 
 enum { SK_VAR, SK_FUNC, SK_TYPE, SK_CONST, SK_MODULE };
@@ -28,6 +29,9 @@ typedef struct {
     HxTy *ret_ty;
     int loop_depth;
     int defer_depth;
+    int loop_defer_depth;
+    int arena_depth;
+    int match_defer;
 } HxChecker;
 
 static void hx_scope_push(HxChecker *c) {
@@ -39,7 +43,7 @@ static void hx_scope_push(HxChecker *c) {
 static void hx_scope_pop(HxChecker *c) { c->scope = c->scope->parent; }
 
 static void hx_define(HxChecker *c, HxSym name, HxTy *ty, int kind, HxSpan span) {
-    HxSymEntry e = {name, ty, kind, span};
+    HxSymEntry e = {name, ty, kind, span, 0};
     HX_VEC_PUSH(c->scope->syms, e);
 }
 
@@ -184,6 +188,16 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
         HxSym sym = hx_intern_fold_ascii(c->intern, name, strlen(name));
         HxSymEntry *se = hx_lookup(c, sym);
         if (se) {
+            if (se->arena_depth > c->arena_depth) {
+                hx_diag_note(c->diags, parts[0].span, "E0407",
+                             hx_arena_sprintf(c->arena,
+                                              "'%s' pertenece a una arena que ya terminó",
+                                              hx_sym_str(parts[0].name)),
+                             "la memoria de una ARENA se libera al salir del bloque",
+                             "copia el valor fuera del bloque o devuelve un Result");
+                e->ty = se->ty;
+                return e;
+            }
             HxTy *t = se->ty;
             if (se->kind == SK_MODULE) {
                 t = hx_ty_builtin(c->arena, TY_VOID);
@@ -619,6 +633,12 @@ static void hx_define_pattern_binding(HxChecker *c, HxSym name, HxTy *ty, HxSpan
     hx_define(c, folded, ty, SK_VAR, sp);
 }
 
+static int hx_body_defer(HxStmtVec *body) {
+    for (int i = 0; i < body->len; i++)
+        if (body->data[i].kind == ST_DEFER) return 1;
+    return 0;
+}
+
 static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
     if (!pat) return;
     switch (pat->kind) {
@@ -691,6 +711,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->dim.name),
                                                  strlen(hx_sym_str(s->dim.name)));
             hx_define(c, folded, t, SK_VAR, s->dim.name_span);
+            if (c->arena_depth && t && t->kind == TY_ARRAY) c->scope->syms.data[c->scope->syms.len - 1].arena_depth = c->arena_depth;
             break;
         }
         case ST_CONST: {
@@ -725,7 +746,9 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             }
             break;
         case ST_IF: {
-            c->defer_depth++;
+            int had_defer = hx_body_defer(&s->if_.then) || s->if_.has_else;
+            if (had_defer) c->defer_depth++;
+            {
             hx_scope_push(c);
             s->if_.cond = hx_expr_check(c, s->if_.cond);
             if (s->if_.cond->ty && s->if_.cond->ty->kind != TY_BOOL)
@@ -744,24 +767,29 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_check_body(c, &s->if_.else_);
                 hx_scope_pop(c);
             }
-            c->defer_depth--;
+            }
+            if (had_defer) c->defer_depth--;
             break;
         }
         case ST_WHILE:
-            c->defer_depth++;
+            if (hx_body_defer(&s->while_.body)) c->defer_depth++;
+            {
             hx_scope_push(c);
             s->while_.cond = hx_expr_check(c, s->while_.cond);
             if (s->while_.cond->ty && s->while_.cond->ty->kind != TY_BOOL)
                 hx_error(c->diags, s->while_.cond->span, "E0312",
                          "la condición de WHILE debe ser BOOL");
             c->loop_depth++;
+            c->loop_defer_depth = c->defer_depth;
             hx_check_body(c, &s->while_.body);
             c->loop_depth--;
             hx_scope_pop(c);
-            c->defer_depth--;
+            }
+            if (hx_body_defer(&s->while_.body)) c->defer_depth--;
             break;
         case ST_FOR:
-            c->defer_depth++;
+            if (hx_body_defer(&s->for_.body)) c->defer_depth++;
+            {
             hx_scope_push(c);
             s->for_.start = hx_expr_check(c, s->for_.start);
             s->for_.end = hx_expr_check(c, s->for_.end);
@@ -772,10 +800,12 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                                                  strlen(hx_sym_str(s->for_.var)));
             hx_define(c, folded, vt, SK_VAR, s->for_.var_span);
             c->loop_depth++;
+            c->loop_defer_depth = c->defer_depth;
             hx_check_body(c, &s->for_.body);
             c->loop_depth--;
             hx_scope_pop(c);
-            c->defer_depth--;
+            }
+            if (hx_body_defer(&s->for_.body)) c->defer_depth--;
             break;
         case ST_RETURN:
             if (s->ret.value) {
@@ -788,6 +818,9 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             if (!c->loop_depth)
                 hx_error(c->diags, s->span, "E0313",
                          "BREAK y CONTINUE sólo pueden aparecer dentro de un bucle");
+            else if (c->defer_depth > c->loop_defer_depth)
+                hx_error(c->diags, s->span, "E0407",
+                         "BREAK o CONTINUE no puede saltar por encima de un DEFER");
             break;
         case ST_EXIT:
             if (s->exit_.code) {
@@ -812,16 +845,17 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_error(c->diags, s->span, "E0401", "DEFER requiere una sentencia");
                 break;
             }
-            if (c->defer_depth)
-                hx_error(c->diags, s->span, "E0406",
-                         "DEFER anidado en una rama no está soportado todavía; "
-                         "el DEFER de bloque llega con ARENA");
             hx_scope_push(c);
             hx_check_body(c, &s->inner);
             hx_scope_pop(c);
             break;
         case ST_MATCH: {
-            c->defer_depth++;
+            {
+                int md = 0;
+                for (int k = 0; k < s->match.cases.len; k++)
+                    if (hx_body_defer(&s->match.cases.data[k].body)) md = 1;
+                if (md) c->defer_depth++;
+                c->match_defer = md;
             hx_scope_push(c);
             s->match.subject = hx_expr_check(c, s->match.subject);
             if (s->match.subject_name) {
@@ -862,7 +896,8 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                              "MATCH exige CASE ELSE o cubrir todos los casos de Ok y Err");
             }
             hx_scope_pop(c);
-            c->defer_depth--;
+                if (c->match_defer) c->defer_depth--;
+            }
             break;
         }
         case ST_NOP: break;
@@ -874,16 +909,6 @@ static void hx_check_body(HxChecker *c, HxStmtVec *body) {
         hx_check_stmt(c, &body->data[i]);
         if (c->diags->errors > c->diags->max_errors) break;
     }
-}
-
-static int hx_is_self_call(HxExpr *e, HxSym fname, int *argc) {
-    if (!e || e->kind != EX_CALL) return 0;
-    HxExpr *callee = e->call.callee;
-    if (!callee || callee->kind != EX_PATH) return 0;
-    int n = callee->path.parts.len;
-    if (!hx_ascii_casecmp(hx_sym_str(callee->path.parts.data[n - 1].name), hx_sym_str(fname)))
-        return 1;
-    return 0;
 }
 
 static void hx_analyze_tail(HxFunc *f) {

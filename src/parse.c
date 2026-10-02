@@ -919,7 +919,7 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
     }
 
     HxExpr *e = hx_binary(p, 4);
-    if (e->kind == EX_PATH && hx_is_punct(p, "=")) {
+    if ((e->kind == EX_PATH || e->kind == EX_INDEX) && hx_is_punct(p, "=")) {
         hx_bump(p);
         hx_skip_nl(p);
         HxStmt *s = hx_stmt_new(p, ST_ASSIGN, sp);

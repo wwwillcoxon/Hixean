@@ -1,0 +1,62 @@
+"ARENA: reservas visibles y liberadas al salir del bloque"
+FUNCTION Sumar(n AS INT) AS INT
+  DIM total AS INT = 0
+  ARENA tmp
+    DIM buf AS INT[64]
+    FOR i = 0 TO 63
+      buf[i] = i * n
+    NEXT i
+    FOR i = 0 TO 63
+      total = total + buf[i]
+    NEXT i
+    PRINT "suma parcial: {total}"
+  END ARENA
+  PRINT "arena liberada"
+  RETURN total
+END FUNCTION
+
+PRINT Sumar(1)
+
+"la reserva es del tamano pedido: ni mas ni menos"
+ARENA grande
+  DIM v AS INT[1000]
+  v[0] = 11
+  v[999] = 22
+  PRINT v[0] + v[999]
+END ARENA
+
+' una arena puede anidarse y se liberan en orden inverso
+ARENA exterior
+  DIM a AS INT[16]
+  a[0] = 1
+  ARENA interior
+    DIM b AS INT[16]
+    b[0] = 2
+    PRINT a[0] + b[0]
+  END ARENA
+  PRINT "vuelvo a la exterior"
+  PRINT a[0]
+END ARENA
+
+"DEFER dentro de un bucle y dentro de una rama, con RETURN temprano"
+FUNCTION Temprano(n AS INT) AS INT
+  IF n > 0 THEN
+    DEFER PRINT "limpieza antes del RETURN"
+    RETURN 99
+  END IF
+  RETURN 0
+END FUNCTION
+
+PRINT Temprano(1)
+PRINT Temprano(0)
+
+FUNCTION Vueltas(n AS INT) AS INT
+  DIM total AS INT = 0
+  FOR i = 1 TO n
+    DEFER PRINT "vuelta {i} cerrada"
+    total = total + i
+  NEXT i
+  RETURN total
+END FUNCTION
+
+PRINT Vueltas(3)

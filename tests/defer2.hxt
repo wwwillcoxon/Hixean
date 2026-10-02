@@ -1,0 +1,34 @@
+"DEFER de bloque: el epilogo se encadena con goto"
+FUNCTION ViaError() AS Result<INT, STRING>
+  DIM r AS INT = 0
+  IF TRUE THEN
+    DEFER PRINT "limpieza antes de propagar"
+    DIM v AS INT = Nestia()?
+    r = v
+  END IF
+  RETURN Ok(r)
+END FUNCTION
+
+FUNCTION Nestia() AS Result<INT, STRING>
+  RETURN Err("fallo interno")
+END FUNCTION
+
+MATCH ViaError()
+  CASE Ok(v) THEN PRINT "ok {v}"
+  CASE Err(e) THEN PRINT "error {e}"
+END MATCH
+
+FUNCTION Anidados(n AS INT) AS INT
+  IF n > 0 THEN
+    DEFER PRINT "nivel 1"
+    IF n > 10 THEN
+      DEFER PRINT "nivel 2"
+      RETURN 2
+    END IF
+    RETURN 1
+  END IF
+  RETURN 0
+END FUNCTION
+
+PRINT Anidados(1)
+PRINT Anidados(20)

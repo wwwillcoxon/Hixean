@@ -18,13 +18,26 @@ Hola mundo
 | M2 | `IF`/`WHILE`/`FOR`, funciones, `TYPE`, módulos, `IMPORT`, aritmética verificada, TCO real | fib y TCO con pila de 128 KiB |
 | M3 | `STRING` inmutable, interpolación, `++`, intrínsecos, `CONST` | corpus de pruebas con salida esperada |
 | M4 | `Result`/`?` sin *unwinding*, `MATCH` con patrones y rangos | propagación verificada en el corpus |
-| M4b | `DEFER` en orden inverso en toda salida, sin pila de runtime | orden LIFO verificado en el corpus |
+| M4b | `DEFER` de bloque y de función, epílogos encadenados | orden LIFO verificado en el corpus |
+| M5a | `ARENA` con reservas reales (mmap en freestanding, malloc en libc) | escape de arena rechazado por el verificador |
 | M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
 | M6–M12 | vectores, capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
 como valor; el runtime no tiene tabla de personalidades (ver `docs/adr/0001`).
+
+```hixean
+ARENA temporal
+  DIM buf AS INT[64]      ' reserva visible; se libera al salir del bloque
+  buf[0] = 1
+END ARENA
+```
+
+`ARENA` es un bump allocator sobre `mmap` en el perfil freestanding (con
+respaldo estático fuera de Linux x86_64) y sobre `malloc` en el perfil libc.
+Los epílogos de bloque se encadenan con `goto` y una bandera de modo, así que
+`DEFER` y `ARENA` comparten el mismo mecanismo sin pila en runtime.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.
