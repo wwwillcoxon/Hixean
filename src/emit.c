@@ -410,7 +410,7 @@ static const char *HX_RT_CORE =
     "  return 1;\n"
     "}\n"
     "static inline void hx_panic(const char *msg, int64_t n) {\n"
-    "  hx_write(2, \"hx: error: \", 12);\n"
+    "  hx_write(2, \"hx: error: \", 11);\n"
     "  hx_write(2, msg, n);\n"
     "  hx_write(2, \"\\n\", 1);\n"
     "  hx_exit(70);\n"

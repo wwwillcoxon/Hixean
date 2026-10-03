@@ -9,6 +9,14 @@ $ ./build/hxc run examples/hola.hxe
 Hola mundo
 ```
 
+## Página
+
+`site/` es la página pública: `index.html`, `style.css` y `script.js`, sin
+dependencias ni fuentes remotas. Los ocho ejemplos de Hixean que hay en ella se
+ejecutan con `hxc` y se comparan con su salida real en cada `make test`, igual
+que los del manual (`tools/verificar-ejemplos.py`), porque una página con ejemplos
+que mienten es peor que no tener página.
+
 ## Manual
 
 `docs/manual.html` es el manual interactivo: los mismos ejemplos que el corpus,

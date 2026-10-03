@@ -272,13 +272,12 @@ PRINT f *| f                ' en FLOAT no satura: 2.25</code></pre>
 2.25</pre></div>
       </figure>
       <p>El <code>+</code> verificado no tiene vuelta: aborta en ejecución con el
-      nombre del operador y el tipo.</p>
+      nombre del operador y el tipo, y sale con el código 70.</p>
       <figure class="ej">
         <figcaption><span>no termina bien</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">DIM grande AS INT = 2000000000
 PRINT grande + grande</code></pre>
-        <div class="salida"><b>en stderr</b><pre>hx: error: desbordamiento de Entero en +
-codigo de salida 70</pre></div>
+        <div class="salida" data-como="stderr"><b>en stderr</b><pre>hx: error: desbordamiento de Entero en +</pre></div>
       </figure>
     </section>
 
@@ -551,7 +550,7 @@ p.nombre = "Rex"
 p.patas = 4
 
 DIM x AS Incompatible = p</code></pre>
-        <div class="salida"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Animal</pre></div>
+        <div class="salida" data-como="check-falla"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Animal</pre></div>
       </figure>
       <p>Cuando el verificador acepta la conversión, la materializa al emitir
       como un literal compuesto que copia los campos comunes, así el C generado
@@ -950,7 +949,7 @@ PRINT mate.Doble(21)
 PRINT mate.POR_TRES
 DIM e AS mate.Escala = mate.EscalaDe(7, "siega")
 PRINT e.valor, e.nombre</code></pre>
-        <div class="salida"><b>salida</b><pre>42
+        <div class="salida" data-modulo="tests/hxc"><b>salida</b><pre>42
 3
 7        siega</pre></div>
       </figure>

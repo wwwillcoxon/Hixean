@@ -207,3 +207,11 @@ printf 'QUERY lo que hay en el registro\n  VERSION >= 0.1\nEND QUERY\n' > build/
 printf 'aritmetica 1.0.0  build/reg/aritmetica/aritmetica.hxk\nbase 0.2.0  build/reg/base/base.hxk\n' > build/reg.expected
 diff -u build/reg.expected build/reg.out >/dev/null \
   && echo "ok     hxc query encuentra lo publicado en el registro"
+
+echo "== los documentos no mienten =="
+if command -v python3 >/dev/null 2>&1; then
+  python3 tools/verificar-ejemplos.py docs/manual.html site/index.html
+  python3 tools/verificar-runtime.py
+else
+  echo "ok     ejemplos y runtime omitidos: no hay python3"
+fi

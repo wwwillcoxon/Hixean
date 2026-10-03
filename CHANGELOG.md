@@ -61,6 +61,9 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   copiando su manifiesto y sus módulos, y `hxc install` lo trae desde el
   registro. El registro es un directorio, así que puede ser un repositorio git
   clonado; las consultas `.hxq` lo recorren sin cambiar de formato.
+- **Página pública**: `site/` con `index.html`, `style.css` y `script.js`, sin
+  dependencias ni fuentes remotas: tema claro/oscuro, pestañas de ejemplos,
+  copiado de código, contadores, barra de progreso y enlace de salto.
 - **Documentación**: `docs/grammar.md` (gramática completa con códigos de
   diagnóstico), `docs/manual.html` (manual interactivo con búsqueda, tema
   oscuro y tabla de errores filtrable) y trece ADR en `docs/adr/`.
@@ -82,6 +85,10 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   ahora es `E0315`. Sombrear en un ámbito más hondo sigue permitido.
 - Un `CONST` de cadena emitía `hx_lit(...)` como inicializador estático, que
   no es una constante en C; ahora la expresión se dobla en el emisor.
+- El runtime escribía 12 bytes donde el literal tenía 11: cada pánico de
+  desbordamiento salía precedido de un byte nulo. Ahora hay un verificador
+  (`tools/verificar-runtime.py`) que comprueba todas las longitudes fijas del
+  runtime contra sus literales.
 - Una cadena sin cerrar se lexaba hasta el final del archivo y arrastraba una
   cascada de errores falsos; ahora es `E0103`.
 - El listado de directorios de `hxc query` usaba `dirent.h`, que no compila

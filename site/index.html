@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hixean — lenguaje AOT que compila a C11</title>
+<meta name="description" content="Hixean es un lenguaje compilado, estático y estándar, evolución moderna de QBasic. Sin máquina virtual, sin unwinding y sin libc por defecto: hola mundo ocupa 8 896 bytes.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="aviso-flotante" id="sin-js" hidden>
+  <p>Esta página usa JavaScript para el tema, las pestañas y el copiado del
+  código. El contenido se lee igual sin él.</p>
+</div>
+
+<header class="cabecera" id="arriba">
+  <div class="barra-aviso" role="progressbar" aria-label="Progreso de lectura" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progreso"></div>
+  <nav class="barra">
+    <a class="marca" href="#arriba">Hixean</a>
+    <a class="saltar" href="#contenido">Saltar al contenido</a>
+    <div class="enlaces" id="enlaces">
+      <a href="#lenguaje">Lenguaje</a>
+      <a href="#lenguaje">Ejemplos</a>
+      <a href="#gates">Puertas</a>
+      <a href="#historia">Historia</a>
+      <a href="#instalar">Instalar</a>
+      <a href="#documentos">Documentos</a>
+    </div>
+    <div class="acciones">
+      <button id="tema" class="boton icono" type="button" aria-pressed="true" title="Cambiar entre tema oscuro y claro">
+        <span class="luna" aria-hidden="true"></span>
+        <span class="texto">Oscuro</span>
+      </button>
+      <a class="boton" href="https://github.com/wwwillcoxon/Hixean">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="contenido">
+
+  <section class="hero">
+    <div class="hero-texto">
+      <p class="kicker">lenguaje compilado · estático · sin VM</p>
+      <h1>Un lenguaje que<br>no esconde lo que hace</h1>
+      <p class="lema">Hixean compila a C11 y deja que el compilador del sistema
+      termine el trabajo. Sin máquina virtual, sin <em>unwinding</em>, sin tabla
+      de personalidades. <code>PRINT "Hola mundo"</code> sigue siendo un programa
+      válido: es la evolución moderna de QBasic.</p>
+      <div class="llamadas">
+        <a class="boton grande" href="#instalar">Instalar</a>
+        <a class="boton grande fantasma" href="../docs/manual.html">Leer el manual</a>
+      </div>
+      <ul class="cifras">
+        <li><b data-cuenta="8896">0</b><span>bytes, hola mundo</span></li>
+        <li><b data-cuenta="22" data-sufijo="/22">0</b><span>pruebas del corpus</span></li>
+        <li><b data-cuenta="0">0</b><span>dependencias fuera de C11</span></li>
+        <li><b data-cuenta="6">0</b><span>capacidades y silencios</span></li>
+      </ul>
+    </div>
+    <div class="hero-codigo">
+      <figure class="ventana">
+        <figcaption><span class="puntos"><i></i><i></i><i></i></span>hola.hxe</figcaption>
+        <pre><code class="lenguaje">PRINT "Hola mundo"</code></pre>
+        <div class="salida"><span>salida</span><pre>Hola mundo</pre></div>
+      </figure>
+      <figure class="ventana">
+        <figcaption><span class="puntos"><i></i><i></i><i></i></span>fib.hxe</figcaption>
+<pre><code class="lenguaje">FUNCTION Fib(n AS INT) AS INT
+  IF n &lt; 2 THEN RETURN n
+  RETURN Fib(n - 1) + Fib(n - 2)
+END FUNCTION
+
+FOR i = 0 TO 10
+  PRINT Fib(i)
+NEXT i</code></pre>
+        <div class="salida"><span>salida</span><pre>0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55</pre></div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="lenguaje" class="bloque">
+    <h2>Lo que trae, sin adornos</h2>
+    <p class="intro">Cada ejemplo de esta página se ejecuta con <code>hxc</code>
+    y su salida es la de verdad. Si algún día dejan de cuadrar, la CI lo dice.</p>
+
+    <div class="pestanas" data-pestanas>
+      <div class="pestana-barra" role="tablist" aria-label="Ejemplos del lenguaje">
+        <button type="button" role="tab" aria-selected="true" aria-controls="p-error" id="t-error">Errores</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="p-datos" id="t-datos">Datos</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="p-genericos" id="t-genericos">Genéricos</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="p-iteradores" id="t-iteradores">Iteradores</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="p-memoria" id="t-memoria">Memoria</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="p-paquetes" id="t-paquetes">Paquetes</button>
+      </div>
+
+      <div role="tabpanel" id="p-error" aria-labelledby="t-error">
+        <p><code>Result&lt;T,E&gt;</code> y <code>?</code> propagan el error como
+        valor. No hay excepciones ni <code>setjmp</code>: el runtime no tiene
+        tabla de personalidades.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>resultados.hxt</figcaption>
+<pre><code class="lenguaje">FUNCTION Pedir(n AS INT) AS Result&lt;STRING, STRING&gt;
+  IF n &lt; 0 THEN RETURN Err("nombre negativo")
+  RETURN Ok("Ana")
+END FUNCTION
+
+DIM nombre AS STRING = Pedir(1)?
+PRINT "hola, {nombre}"
+
+MATCH Pedir(-1)
+  CASE Ok(n) THEN PRINT "no deberia: {n}"
+  CASE Err(e) THEN PRINT "error esperado: {e}"
+END MATCH</code></pre>
+          <div class="salida"><span>salida</span><pre>hola, Ana
+error esperado: nombre negativo</pre></div>
+        </figure>
+      </div>
+
+      <div role="tabpanel" id="p-datos" aria-labelledby="t-datos" hidden>
+        <p>Los registros tienen subtipado structural de anchura: un
+        <code>Perro</code> sirve donde se pide un <code>Animal</code>, y el
+        compilador materializa la copia. Los <code>ENUM</code> nunca participan:
+        son nominales.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>estructural.hxt</figcaption>
+<pre><code class="lenguaje">TYPE Animal
+  nombre AS STRING
+  patas AS INT
+END TYPE
+
+TYPE Perro
+  nombre AS STRING
+  patas AS INT
+  ladridos AS INT
+END TYPE
+
+FUNCTION Describe(a AS Animal) AS VOID
+  PRINT "{a.nombre} con {a.patas} patas"
+END FUNCTION
+
+DIM p AS Perro
+p.nombre = "Rex"
+p.patas = 4
+p.ladridos = 7
+Describe(p)</code></pre>
+          <div class="salida"><span>salida</span><pre>Rex con 4 patas</pre></div>
+        </figure>
+      </div>
+
+      <div role="tabpanel" id="p-genericos" aria-labelledby="t-genericos" hidden>
+        <p>Una función genérica se compila una vez por cada combinación de tipos
+        que aparece. Sin tabla de despacho, sin boxing: el C generado es el
+        mismo que si se hubiera escrito a mano.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>genericos.hxt</figcaption>
+<pre><code class="lenguaje">FUNCTION Max&lt;T&gt;(a AS T, b AS T) AS T
+  IF a &gt; b THEN RETURN a
+  RETURN b
+END FUNCTION
+
+TYPE Caja&lt;T&gt;
+  valor AS T
+  veces AS INT
+END TYPE
+
+DIM c AS Caja&lt;INT&gt;
+c.valor = 7
+c.veces = 1
+PRINT c.valor
+
+PRINT Max(3, 9)
+PRINT Max(1.5, 0.5)</code></pre>
+          <div class="salida"><span>salida</span><pre>7
+9
+1.5</pre></div>
+        </figure>
+      </div>
+
+      <div role="tabpanel" id="p-iteradores" aria-labelledby="t-iteradores" hidden>
+        <p><code>Rango(a, b)</code> es <em>[a, b)</em>. Los iteradores son
+        perezosos: <code>TAKE</code> sobre mil elementos consume tres.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>iteradores.hxt</figcaption>
+<pre><code class="lenguaje">FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+
+FOR x IN Rango(1, 1000).Take(3)
+  PRINT x
+NEXT x
+
+FOR y IN Rango(1, 4).Map(Doble)
+  PRINT y
+NEXT y</code></pre>
+          <div class="salida"><span>salida</span><pre>1
+2
+3
+2
+4
+6</pre></div>
+        </figure>
+      </div>
+
+      <div role="tabpanel" id="p-memoria" aria-labelledby="t-memoria" hidden>
+        <p><code>ARENA</code> reserva de verdad (<code>mmap</code> en
+        freestanding, <code>malloc</code> en libc) y <code>DEFER</code> ejecuta
+        al salir del bloque, en orden inverso. Los dos comparten mecanismo: un
+        flag de modo y epílogos encadenados, sin pila en el runtime.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>arena.hxt</figcaption>
+<pre><code class="lenguaje">ARENA tmp
+  DIM buf AS INT[64]
+  FOR i = 0 TO 63
+    buf[i] = i
+  NEXT i
+  PRINT buf[63]
+END ARENA
+PRINT "arena liberada"</code></pre>
+          <div class="salida"><span>salida</span><pre>63
+arena liberada</pre></div>
+        </figure>
+      </div>
+
+      <div role="tabpanel" id="p-paquetes" aria-labelledby="t-paquetes" hidden>
+        <p>Un paquete es un manifiesto <code>.hxk</code> con lo que da, lo que
+        necesita y con qué perfil se construye. <code>hxc query</code> pregunta
+        qué hay en las rutas sin compilar nada.</p>
+        <figure class="ventana">
+          <figcaption><span class="puntos"><i></i><i></i><i></i></span>aritmetica.hxk</figcaption>
+<pre><code class="lenguaje hxk">KIT aritmetica 1.0.0
+  TARGET hixe &gt;= 0.1
+  PROFILE freestanding
+  ENTRY aritmetica.hxe
+  DEP base &gt;= 0.2
+  PROVIDES aritmetica
+  REQUIRE vectores
+  DEFINE HX_MATEMATICAS 1
+END KIT</code></pre>
+          <div class="salida"><span>terminal</span><pre>$ hxc build --kit aritmetica.hxk --path kits/ -o aritmetica
+$ ./aritmetica
+32</pre></div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="gates" class="bloque">
+    <h2>Puertas, no promesas</h2>
+    <p class="intro">El tamaño del ejecutable no es una curiosidad: es una
+    puerta que la CI comprueba en cada cambio. Si sube de 12 KiB, falla la
+    compilación.</p>
+    <div class="presupuesto">
+      <div class="barra-presupuesto" role="img" aria-label="8896 de 12288 bytes, 72 por ciento de la puerta">
+        <div class="relleno" id="relleno"></div>
+      </div>
+      <ul class="medidas">
+        <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
+        <li><b>12 288 B</b><span>la puerta</span></li>
+        <li><b>60 ms</b><span>front-end + emisión a C, 10 012 líneas</span></li>
+        <li><b>9 ms</b><span>20 módulos sin cambios (caché de objetos)</span></li>
+      </ul>
+    </div>
+    <div class="rejilla">
+      <article class="tarjeta">
+        <h3>Sin <em>unwinding</em></h3>
+        <p>Los errores son valores. La propagación con <code>?</code> se
+        traduce a una etiqueta y un <code>return</code>; si nadie la acepta, el
+        programa sale con el código 70. No hay tabla de personalidades en el
+        binario.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>Capacidades, no permisos</h3>
+        <p><code>ENABLE net</code> en el fuente dice qué usa el programa;
+        <code>CAPABILITY net</code> en el manifiesto dice qué se autoriza.
+        Si no coinciden, <code>hxc build --kit</code> se niega a construir.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>Verificado donde se puede</h3>
+        <p><code>1 / 0</code> es <code>E0305</code> en el verificador y una
+        trampa en ejecución. La suite manda un datagrama por loopback y lo
+        recibe: los sockets son syscalls directas, sin libc.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>Sin dependencias</h3>
+        <p>El front-end es C11 estándar. Se compila con <code>make</code>, se
+        prueba con <code>make test</code> y no descarga nada. No hay paso de
+        compilación previa ni biblioteca que instalar.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="historia" class="bloque">
+    <h2>Catorce hitos</h2>
+    <p class="intro">No fue una lista de features: cada hito cerró una puerta
+    que estaba abierta.</p>
+    <ol class="linea" data-linea>
+      <li><b>M0–M4</b><span>léxico, <code>MATCH</code>, <code>Result</code>, <code>DEFER</code>, <code>ARENA</code></span></li>
+      <li><b>M5–M8</b><span>genéricos, traits, iteradores, <code>ENUM</code>, lambdas, división verificada</span></li>
+      <li><b>M9</b><span><code>PTR</code>, compilación paralela, paquetes <code>.hxk</code></span></li>
+      <li><b>M10</b><span>subtipado structural con materialización</span></li>
+      <li><b>M11</b><span>capacidades y <code>std.net</code> con sockets reales</span></li>
+      <li><b>M12</b><span>consultas <code>.hxq</code></span></li>
+      <li><b>M13</b><span>0.1.0: <code>-Werror</code>, sanitizers, fuzzer, <code>check --json</code>, extensión de VS Code</span></li>
+      <li><b>M14</b><span>distribución: releases con checksum, Homebrew, winget, registro de paquetes</span></li>
+    </ol>
+  </section>
+
+  <section id="instalar" class="bloque">
+    <h2>Instalarlo</h2>
+    <div class="rejilla dos">
+      <article class="tarjeta">
+        <h3>Sin instalar nada</h3>
+        <pre class="copiable"><code>git clone https://github.com/wwwillcoxon/Hixean
+cd Hixean &amp;&amp; make &amp;&amp; make test</code></pre>
+        <p>Cero dependencias. Requiere un compilador de C11.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>Desde la release</h3>
+        <pre class="copiable"><code>curl -fsSL https://raw.githubusercontent.com/
+  wwwillcoxon/Hixean/main/tools/install.sh | sh
+hxc version</code></pre>
+        <p>Verifica el SHA256 y aborta si no coincide.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>Homebrew</h3>
+        <pre class="copiable"><code>brew tap wwwillcoxon/hixean
+brew install hixean</code></pre>
+        <p>macOS y Linux, x64 y arm64.</p>
+      </article>
+      <article class="tarjeta">
+        <h3>winget</h3>
+        <pre class="copiable"><code>winget install wwwillcoxon.Hixean</code></pre>
+        <p>Windows, con <code>hxc</code> disponible en el <code>PATH</code>.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="documentos" class="bloque">
+    <h2>Documentos</h2>
+    <div class="rejilla dos">
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="../docs/manual.html">Manual interactivo</a></h3>
+        <p>Búsqueda, tema oscuro, código copiable y la tabla de diagnósticos
+        filtrable por familia. Un solo archivo, sin JavaScript de terceros.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="../docs/grammar.md">Gramática</a></h3>
+        <p>La especificación completa: léxico, sentencias, tipos, paquetes,
+        capacidades y los códigos de error con lo que significa cada uno.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="https://github.com/wwwillcoxon/Hixean/blob/main/CHANGELOG.md">Changelog</a></h3>
+        <p>Qué hay en 0.1.0 y qué se corrigió por el camino. Los códigos
+        <code>E0xxx</code> son parte de la API.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="https://github.com/wwwillcoxon/Hixean/tree/main/docs/adr">Decisiones</a></h3>
+        <p>Catorce ADR con las alternativas descartadas y el porqué. La más
+        discutible de todas: por qué el registro de paquetes es un directorio.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="bloque cierre">
+    <h2>Lo que todavía no existe</h2>
+    <p>Está en la lista porque un manual que omite los límites se lee como un
+    manual de un lenguaje que sí los tiene.</p>
+    <ul class="faltan">
+      <li><code>audio</code> y <code>gpu</code> no existen: sin dispositivo ni
+      compilador por objetivo con el que probarlas.</li>
+      <li>Sin <code>async</code>, sin concurrencia, sin red más allá de
+      <code>127.0.0.1</code>.</li>
+      <li>El compilador se compila en C, no en Hixean.</li>
+      <li>Sin firma de paquetes y sin índice central de registro.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="pie">
+  <p>Hixean 0.1.0 · licencia MIT · <span id="anio">2026</span> ·
+  <a href="https://github.com/wwwillcoxon/Hixean">código</a> ·
+  <a href="https://github.com/wwwillcoxon/Hixean/issues">problemas</a></p>
+  <p class="fino">Escrito a mano en HTML, CSS y JavaScript. Sin fuentes
+  remotas, sin analítica, sin nada que cargar de fuera.</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
