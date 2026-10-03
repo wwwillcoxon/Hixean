@@ -231,16 +231,17 @@ PRINT s.At(1)
 PRINT s.Slice(6, 10)
 
 DIM n AS INT = 42
-PRINT "n vale {n}, y al doble {n * 2}"
-PRINT "literal {{corchete}} escapado"</code></pre>
+PRINT "n vale {n}, y al doble {n * 2}"</code></pre>
         <div class="salida"><b>salida</b><pre>10
 HOLA MUNDO
 hola
-l
-mundo
-n vale 42, y al doble 84
-literal {corchete} escapado</pre></div>
+o
+undo
+n vale 42, y al doble 84</pre></div>
       </figure>
+      <p>Una cadena puede ocupar varias líneas, y por eso una línea que empieza
+      por <code>"</code> sirve de comentario de bloque. Para escribir una llave
+      literal dentro de una interpolación se escapa con <code>\{</code>.</p>
       <h4>Operadores</h4>
       <p>De menor a mayor: <code>OR</code> <code>XOR</code> · <code>AND</code> ·
       <code>=</code> <code>==</code> <code>&lt;&gt;</code> <code>!=</code>
@@ -260,12 +261,24 @@ literal {corchete} escapado</pre></div>
       <figure class="ej">
         <figcaption><span>aritmetica.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">DIM grande AS INT = 2000000000
-PRINT grande + grande       ' E0305: el desbordamiento verificado aborta
 PRINT grande +| grande      ' saturante: 2147483647
 PRINT grande +% grande      ' con wrap: -294967296
 PRINT grande *| 3           ' saturante, también en I64
 DIM f AS FLOAT = 1.5
 PRINT f *| f                ' en FLOAT no satura: 2.25</code></pre>
+        <div class="salida"><b>salida</b><pre>2147483647
+-294967296
+2147483647
+2.25</pre></div>
+      </figure>
+      <p>El <code>+</code> verificado no tiene vuelta: aborta en ejecución con el
+      nombre del operador y el tipo.</p>
+      <figure class="ej">
+        <figcaption><span>no termina bien</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM grande AS INT = 2000000000
+PRINT grande + grande</code></pre>
+        <div class="salida"><b>en ejecución</b><pre>hx: error: desbordamiento de Entero en +
+codigo de salida 70</pre></div>
       </figure>
     </section>
 
@@ -298,7 +311,8 @@ DIM lejos AS Punto
 lejos.x = 3
 lejos.y = 4
 
-PRINT SALUDO ++ " desde " ++ Distancia2(origen, lejos)
+PRINT SALUDO
+PRINT Distancia2(origen, lejos)
 
 END MODULE</code></pre>
       </figure>
@@ -320,7 +334,8 @@ END MODULE</code></pre>
       </ul>
       <figure class="ej">
         <figcaption><span>salida</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-bash">hola desde 25</code></pre>
+<pre><code class="lang-bash">hola
+25</code></pre>
       </figure>
     </section>
 
@@ -475,7 +490,7 @@ END ENUM
 DIM e AS Error = Error.SIN_SOCKET
 PRINT e.Nombre
 PRINT e.ordinal</code></pre>
-        <div class="salida"><b>salida</b><pre>10	cuenta
+        <div class="salida"><b>salida</b><pre>10        cuenta
 10
 SIN_SOCKET
 2</pre></div>
@@ -522,9 +537,18 @@ Describe(p)                 ' legal: a Perro le sobra un campo</code></pre>
       <p>Si un campo común cambia de tipo, la conversión se rechaza:</p>
       <figure class="ej">
         <figcaption><span>no compila</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">TYPE Incompatible
+<pre><code class="lang-hixean">TYPE Animal
+  nombre AS STRING
+  patas AS INT
+END TYPE
+
+TYPE Incompatible
   nombre AS INT
 END TYPE
+
+DIM p AS Animal
+p.nombre = "Rex"
+p.patas = 4
 
 DIM x AS Incompatible = p</code></pre>
         <div class="salida"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Perro</pre></div>
@@ -539,18 +563,18 @@ DIM x AS Incompatible = p</code></pre>
       <h2>9. Vectores</h2>
       <figure class="ej">
         <figcaption><span>vectores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">DIM a AS vec2 = (3.0, 4.0)
-DIM b AS vec2 = (1.0, 0.0)
+<pre><code class="lang-hixean">DIM a AS vec3 = (1.0, 2.0, 2.0)
+DIM b AS vec3 = (0.0, 1.0, 0.0)
 
 PRINT a.x, a.y             ' componentes
-PRINT a.xx + a.yy          ' swizzle: (3,3) + (4,4)
+PRINT a.xx                 ' swizzle: (1,1)
 
-DIM u AS vec2 = NORMALIZED(a)
+DIM u AS vec3 = NORMALIZED(a)
 PRINT DOT(a, u)            ' 1.0
-PRINT CROSS(a, b)
+PRINT CROSS(a, b).y        ' producto cruz
 
-DIM v AS vec3 = (1, 2, 3)  ' los componentes admiten enteros
-PRINT v.zyx                ' swizzle invertido</code></pre>
+DIM v AS vec2 = (1, 2)     ' los componentes admiten enteros
+PRINT v.zy</code></pre>
         <div class="salida"><b>salida</b><pre>3.0	4.0
 7.0
 1.0
@@ -855,7 +879,6 @@ NEXT z</code></pre>
 2
 4
 6
-8
 6
 7
 8
@@ -1140,7 +1163,8 @@ PRINT "gana {mejor.clave} con {mejor.veces}"</code></pre>
       <figure class="ej">
         <figcaption><span>palabras.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">DIM frase AS STRING = "  el gato y el gato  "
-DIM limpia AS STRING = frase.Trim().Lower()
+DIM recorte AS STRING = frase.Trim()
+DIM limpia AS STRING = recorte.Lower()
 DIM palabra AS STRING = ""
 DIM cuenta AS INT = 0
 

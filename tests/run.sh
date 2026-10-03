@@ -127,3 +127,8 @@ if ./build/hxc check build/vec2dot.hxe 2>&1 | grep -q "E0402"; then
 else
   echo "FALLO: DOT con vec2 deberia dar E0402"; exit 1
 fi
+printf 'CONST S AS STRING = "ho" ++ "la"\nCONST T AS STRING = "hola"\nPRINT S, T\n' > build/constcadena.hxe
+./build/hxc run build/constcadena.hxe > build/constcadena.out 2>/dev/null
+printf 'hola        hola\n' > build/constcadena.expected
+diff -u build/constcadena.expected build/constcadena.out >/dev/null \
+  && echo "ok     CONST de cadena, literal y concatenado, sin C invalido"

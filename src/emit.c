@@ -2190,6 +2190,25 @@ static void hx_body(HxEmit *e, HxStmtVec *body, int ind) {
     for (int i = 0; i < body->len; i++) hx_stmt_emit(e, &body->data[i], ind);
 }
 
+/* Un CONST de cadena tiene que ser un inicializador constante de C: ni hx_lit
+   ni hx_concat lo son. La expresion se dobla aqui y sale un solo literal. */
+static int hx_const_str_fold(HxEmit *e, HxExpr *x, HxBuf *raw, int *ok) {
+    if (!x) return 0;
+    if (x->kind == EX_STR && !x->has_holes) {
+        hx_buf_put(raw, x->str.raw, (size_t)x->str.len);
+        return 1;
+    }
+    if (x->kind == EX_BIN && x->bin.op == OP_CONCAT)
+        return hx_const_str_fold(e, x->bin.lhs, raw, ok) &&
+               hx_const_str_fold(e, x->bin.rhs, raw, ok);
+    if (!*ok) {
+        *ok = 0;
+        hx_error(e->diags, x->span, "E0310",
+                 "un CONST de cadena tiene que ser un literal o una concatenacion de literales");
+    }
+    return 0;
+}
+
 static void hx_emit_decls(HxEmit *e, HxModule *m) {
     HxBuf *b = &e->out;
     if (!m->types.len) return;
@@ -2693,13 +2712,27 @@ static void hx_emit_module_source(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b
     for (int k = 0; k < m->consts.len; k++) {
         HxConst *kc = &m->consts.data[k];
         if (!kc->value) continue;
+        int es_cadena = kc->ty && kc->ty->kind == TY_STRING;
         if (!kc->is_export)
-            hx_buf_printf(b, "static const %s hx_v_%s = ", hx_c_ty(e, kc->ty),
-                          hx_sym_str(kc->name));
+            hx_buf_printf(b, "static %s%s hx_v_%s = ", es_cadena ? "" : "const ",
+                          hx_c_ty(e, kc->ty), hx_sym_str(kc->name));
         else
-            hx_buf_printf(b, "const %s hx_v_%s __attribute__((used)) = ", hx_c_ty(e, kc->ty),
-                          hx_sym_str(kc->name));
-        hx_expr_str(e, kc->value, 0, b);
+            hx_buf_printf(b, "%s%s hx_v_%s __attribute__((used)) = ", es_cadena ? "" : "const ",
+                          hx_c_ty(e, kc->ty), hx_sym_str(kc->name));
+        if (es_cadena) {
+            HxBuf crudo;
+            int ok = 1;
+            memset(&crudo, 0, sizeof(crudo));
+            if (hx_const_str_fold(e, kc->value, &crudo, &ok)) {
+                hx_buf_str(b, "{");
+                hx_put_c_string(b, crudo.data ? crudo.data : "", (int)crudo.len);
+                hx_buf_printf(b, ", %d}", (int)crudo.len);
+            } else {
+                hx_expr_str(e, kc->value, 0, b);
+            }
+        } else {
+            hx_expr_str(e, kc->value, 0, b);
+        }
         hx_buf_str(b, ";\n");
     }
     for (int i = 0; i < unit->n_instances; i++) {
