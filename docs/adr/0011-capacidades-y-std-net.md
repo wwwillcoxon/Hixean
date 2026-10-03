@@ -14,7 +14,7 @@ programa necesita un socket, ¿qué lo impide?
 Sin respuesta, `std.net` habría sido un módulo de la biblioteca estándar como
 cualquier otro, importable desde cualquier programa. Eso no es un problema
 mientras el lenguaje sea pequeño; lo es cuando el lenguaje pretenda ejecutar
-en(targets) donde abrir un socket es una decisión de seguridad.
+en destinos donde abrir un socket es una decisión de seguridad.
 
 ## Decisión
 
