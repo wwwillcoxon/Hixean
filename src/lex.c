@@ -297,7 +297,11 @@ void hx_lex(HxLexer *lx) {
                 lx->p++;
             }
             const char *end = lx->p;
-            if (*lx->p == '"') lx->p++;
+            int cerrada = *lx->p == '"';
+            if (cerrada) lx->p++;
+            if (!cerrada)
+                hx_error(lx->diags, hx_span(lx, start), "E0103",
+                         "cadena sin cerrar hasta el final del archivo");
             HX_VEC_PUSH(lx->tokens,
                         ((HxToken){.kind = TK_STRING,
                                    .span = hx_span(lx, start),

@@ -13,7 +13,10 @@ comentario   = "'" , { car , != "'" }        (* hasta fin de línea *)
              | "/*" , { … } , "*/" ;
 ```
 
-**No** hay comentarios entre comillas: `"…"` es siempre una cadena.
+**No** hay comentarios entre comillas: `"…"` es siempre una cadena. Una cadena
+puede abarcar varias líneas, y por eso una línea que empieza por `"` se usa en el
+corpus como bloque de comentario; si nunca se cierra, `E0103` la señala al llegar
+al final del archivo.
 
 ```
 entero      = [ "0" , ( "x" hex+ | "o" oct+ | "b" bin+ ) ]
@@ -173,11 +176,13 @@ Un desbordamiento en `+`/`-` aborta con `hx: error: desbordamiento de Entero en 
 | `.hxf` | biblioteca de funciones exportables |
 | `.hxs` | módulo interno importable |
 | `.hxt` | prueba (su salida esperada vive en `.hxt.out`) |
-| `.hxk` | kit de proyecto (M6) |
-| `.hxq` | paquete de capacidades (M7) |
-| `.hxc` | AST tipado serializado (M4) |
-| `.hxv` | build portable (M4) |
-| `.hxa` | binario nativo final (M4) |
+| `.hxk` | manifiesto de paquete (M9) |
+| `.hxq` | consulta de paquetes (M12) |
+| `.hxc` | interfaz + biblioteca publicada con `--emit-hxc` (M7) |
+
+La tabla de arriba son los sufijos que existen. `.hxv` (build portable) y
+`.hxa` (binario empaquetado) aparecen en ADR 0004 como objetivo, no como
+realidad: `hxc build` deja un ELF/Mach-O/PE nativo y nada más.
 
 ## 8. Result, ? y MATCH (implementado)
 

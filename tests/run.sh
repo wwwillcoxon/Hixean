@@ -57,6 +57,14 @@ for k in roto sin_permiso nuevo_dep churro; do
 done
 echo "ok     4 manifiestos rotos rechazados con diagnostico"
 
+echo "== recuperacion del lexer =="
+printf 'DIM s AS STRING = "sin cerrar\nPRINT s\n' > build/cadena.hxe
+if ./build/hxc check build/cadena.hxe 2>&1 | grep -q "E0103"; then
+  echo "ok     cadena sin cerrar hasta el fin de archivo con E0103"
+else
+  echo "FALLO: no se reporto la cadena sin cerrar"; exit 1
+fi
+
 echo "== consultas .hxq =="
 for q in base net aritmetica nada; do
   ./build/hxc query tests/queries/$q.hxq --path tests/kits > build/q_$q.out
