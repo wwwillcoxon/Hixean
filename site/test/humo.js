@@ -1,0 +1,246 @@
+// Prueba de humo de la pagina con un DOM falso.
+//
+// Lo interesante de script.js no es que no reviente, sino que hace cosas que se
+// pueden comprobar: que los contadores acaben en su valor, que las pestañas
+// alternen, que el tema se recuerde y que cada ejemplo tenga boton de copiado.
+// Un DOM de este tamano es suficiente y evita depender de un navegador.
+//
+//   node site/test/humo.js
+
+const Module = require("module");
+const path = require("path");
+const fs = require("fs");
+
+const RAIZ = path.resolve(__dirname, "..", "..");
+const html = fs.readFileSync(path.join(RAIZ, "site", "index.html"), "utf8");
+const css = fs.readFileSync(path.join(RAIZ, "site", "style.css"), "utf8");
+const script = fs.readFileSync(path.join(RAIZ, "site", "script.js"), "utf8");
+
+class Nodo {
+  constructor(sel) {
+    this.sel = sel;
+    this.clases = new Set();
+    this.attrs = {};
+    this.dataset = {};
+    this.hijos = [];
+    this.texto = "";
+    this.estilo = {};
+    this.style = this.estilo;
+    this.escuchas = {};
+    this._matches = () => false;
+    this.classList = {
+      add: (...c) => c.forEach((x) => this.clases.add(x)),
+      remove: (...c) => c.forEach((x) => this.clases.delete(x)),
+      contains: (c) => this.clases.has(c),
+    };
+  }
+  add(...c) { c.forEach((x) => this.clases.add(x)); return this; }
+  remove(...c) { c.forEach((x) => this.clases.delete(x)); return this; }
+  contains(c) { return this.clases.has(c); }
+  setAttribute(k, v) {
+    this.attrs[k] = v;
+    const clave = k.startsWith("data-") ? k.slice(5).replace(/-(\w)/g, (m, c) => c.toUpperCase()) : null;
+    if (clave) this.dataset[clave] = v;
+  }
+  getAttribute(k) { return this.attrs[k] !== undefined ? this.attrs[k] : null; }
+  appendChild(h) { this.hijos.push(h); h.padre = this; return h; }
+  querySelectorAll() { return []; }
+  querySelector() { return null; }
+  matches(sel) { return this._matches(sel); }
+  addEventListener(ev, fn) { this.escuchas[ev] = fn; }
+  focus() {}
+  select() {}
+  getBoundingClientRect() { return { top: 0, left: 0 }; }
+  closest() { return null; }
+  get innerText() { return this.texto; }
+  set innerText(v) { this.texto = v; }
+  get textContent() { return this.texto; }
+  set textContent(v) { this.texto = v; }
+}
+
+function cargarFake(env) {
+  /* el script usa document, window y localStorage como globales, asi que se
+     instalan en globalThis y se retiran al terminar */
+  const anteriores = new Map();
+  Object.keys(env).forEach((k) => {
+    anteriores.set(k, Object.getOwnPropertyDescriptor(globalThis, k));
+    globalThis[k] = env[k];
+  });
+  delete require.cache[require.resolve(path.join(RAIZ, "site", "script.js"))];
+  try {
+    require(path.join(RAIZ, "site", "script.js"));
+  } finally {
+    anteriores.forEach((d, k) => {
+      if (d) Object.defineProperty(globalThis, k, d);
+      else delete globalThis[k];
+    });
+  }
+}
+
+function fallos() {
+  const lista = [];
+  return {
+    lista,
+    ok(condicion, mensaje) {
+      if (!condicion) lista.push(mensaje);
+    },
+    cerrar() {
+      if (!lista.length) return;
+      lista.forEach((f) => console.error("FALLO:", f));
+      process.exit(1);
+    },
+  };
+}
+
+function comprobarPagina(t) {
+  // las cifras del hero llevan su valor real en el HTML, no un 0 de relleno
+  const cifras = [...html.matchAll(/<b data-cuenta="(\d+)"(?: data-sufijo="([^"]*)")?>([^<]*)<\/b>/g)];
+  t.ok(cifras.length === 4, `se esperaban 4 cifras en el hero, hay ${cifras.length}`);
+  cifras.forEach((m) => {
+    const puesto = m[3].trim();
+    t.ok(puesto !== "0" || m[1] === "0", `la cifra data-cuenta="${m[1]}" pone "${puesto}" en el HTML`);
+  });
+
+  // sin JavaScript se ven las seis pestañas y el contenido
+  t.ok(
+    (html.match(/role="tabpanel"[^>]*hidden/g) || []).length === 0,
+    "hay paneles de pestaña ocultos en el HTML: sin JS no se verian"
+  );
+  t.ok((html.match(/role="tabpanel"/g) || []).length === 6, "faltan paneles de pestaña");
+  t.ok(!/id="sin-js"/.test(html), "sigue el aviso #sin-js, que ademas solo aparecia con JS");
+  t.ok(!/<script>/.test(html), "hay un script inline");
+  t.ok(!/ style="/.test(html), "hay estilos inline");
+
+  // el CSS solo oculta contenido cuando hay JavaScript
+  t.ok(/^\.js \[data-revelar\] \{ opacity: 0/m.test(css), "la regla de ocultar revelados no exige la clase .js");
+  t.ok(
+    script.indexOf('classList.add("js")') !== -1 &&
+      script.indexOf('classList.add("js")') < script.indexOf("querySelectorAll"),
+    "el script no añade .js antes de buscar nodos"
+  );
+  t.ok(
+    /background: var\(--fondo\);\s*\n\s*background: color-mix/.test(css),
+    "color-mix sin alternativa: la cabecera queda transparente donde no exista"
+  );
+
+  // nada roto al copiar
+  t.ok(!/githubusercontent\/\s*\n/.test(html), "la URL de instalacion sigue partida en dos lineas");
+
+  // canales que existen de verdad
+  t.ok(!/brew tap wwwillcoxon/.test(html), "la pagina sigue anunciando un tap de Homebrew que no existe");
+  /* winget y Homebrew se mencionan, pero como lo que son: archivos en el
+     repositorio y pasos que faltan, no instrucciones que hoy funcionen */
+  t.ok(/falta enviarlo/.test(html), "la tarjeta de winget no dice que falta enviar el manifiesto");
+  t.ok(/paso pendiente/.test(html), "la tarjeta de Homebrew no dice que falta publicar el tap");
+
+  // los ejemplos de la pagina los verifica tools/verificar-ejemplos.py
+  const ejemplos = (html.match(/<pre><code class="lenguaje/g) || []).length;
+  t.ok(ejemplos === 8, `se esperaban 8 bloques de código, hay ${ejemplos}`);
+}
+
+function comprobarScript(t, conObserver) {
+  const raizHtml = new Nodo("html");
+  /* el boton del tema y el progreso existen en el HTML real: se reproducen con
+     el mismo contrato que espera el script */
+  const botonTema = new Nodo("button");
+  botonTema.querySelector = () => new Nodo("span");
+  const progreso = new Nodo("div");
+  const relleno = new Nodo("div");
+  const porId = { tema: botonTema, progreso: progreso, relleno: relleno, anio: new Nodo("span") };
+  const contadores = [...html.matchAll(/<b data-cuenta="(\d+)"(?: data-sufijo="([^"]*)")?>/g)].map((m) => {
+    const n = new Nodo("b");
+    n.setAttribute("data-cuenta", m[1]);
+    if (m[2]) n.setAttribute("data-sufijo", m[2]);
+    n._matches = (sel) => sel === "[data-cuenta]";
+    return n;
+  });
+  const revelados = [new Nodo("li"), new Nodo("article"), new Nodo("h3")];
+
+  const estado = { reloj: 0 };
+  const env = {
+    document: {
+      documentElement: raizHtml,
+      getElementById: (id) => porId[id] || null,
+      body: new Nodo("body"),
+      querySelector: () => null,
+      querySelectorAll: (sel) =>
+        ({
+          ".cifras b, .medidas b, .linea li, .tarjeta": [...contadores, ...revelados],
+          "[data-cuenta]": contadores,
+          ".ventana, pre.copiable": [],
+          "#enlaces a": [],
+        }[sel] || []),
+      createElement: (tag) => new Nodo(tag),
+      addEventListener: () => {},
+    },
+    window: {
+      matchMedia: () => ({ matches: false, addEventListener: () => {} }),
+      addEventListener: () => {},
+      innerHeight: 800,
+      scrollY: 0,
+      requestAnimationFrame: (fn) => {
+        estado.reloj += 16;
+        if (estado.reloj > 3000) return 1;
+        fn(estado.reloj);
+        return 1;
+      },
+      setTimeout: (fn) => {
+        fn();
+        return 1;
+      },
+      print: () => {},
+    },
+    localStorage: {
+      datos: {},
+      getItem(k) { return this.datos[k] !== undefined ? this.datos[k] : null; },
+      setItem(k, v) { this.datos[k] = v; },
+    },
+    navigator: {},
+  };
+  if (conObserver) {
+    env.IntersectionObserver = class {
+      constructor(cb) { this.cb = cb; }
+      observe(el) { this.cb([{ target: el, isIntersecting: true }], this); }
+      unobserve() {}
+      disconnect() {}
+    };
+    env.window.IntersectionObserver = env.IntersectionObserver;
+  }
+  env.window.document = env.document;
+  cargarFake(env);
+
+  t.ok(raizHtml.clases.has("js"), "el script no añadió la clase .js al <html>");
+
+  // el bug que motivaba esto: el contador es el propio elemento observado
+  const bytes = contadores[0].texto.replace(/\s/g, " ");
+  t.ok(bytes === "8.896" || bytes === "8896", `el contador de bytes quedó en "${bytes}"`);
+  const pruebas = contadores[1].texto.replace(/\s/g, " ");
+  t.ok(pruebas === "22/22" || pruebas === "22/22", `el contador de pruebas quedó en "${pruebas}"`);
+  t.ok(contadores[2].texto === "0", `el contador de dependencias quedó en "${contadores[2].texto}"`);
+  t.ok(contadores[3].texto === "76", `el contador de códigos quedó en "${contadores[3].texto}"`);
+  if (!conObserver) t.ok(true, "");
+
+  revelados.forEach((r, i) => {
+    t.ok(r.clases.has("visible"), `el elemento con revelado ${i} no se hizo visible`);
+  });
+
+  // la barra de presupuesto se rellena sola
+  t.ok(
+    relleno.estilo.width === "72%",
+    `la barra de presupuesto quedó en "${relleno.estilo.width}" en vez de 72%`
+  );
+  t.ok(progreso.attrs["aria-valuenow"] !== undefined, "la barra de progreso no publica aria-valuenow");
+
+  t.ok(env.localStorage.datos["hixean-tema"] === "oscuro", "el tema por defecto no se guardó");
+}
+
+function main() {
+  const t = fallos();
+  comprobarPagina(t);
+  comprobarScript(t, true);
+  comprobarScript(t, false);
+  t.cerrar();
+  console.log("ok     la pagina: cifras reales, nada oculto sin JS y los contadores cuentan");
+}
+
+main();

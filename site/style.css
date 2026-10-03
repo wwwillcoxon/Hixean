@@ -60,22 +60,13 @@ p code, li code, td code, h3 code, figcaption code {
   white-space: nowrap;
 }
 
-.aviso-flotante {
-  background: var(--acento-3);
-  color: #1a1916;
-  padding: .6rem 1rem;
-  font-size: .9rem;
-  text-align: center;
-}
-
-.aviso-flotante p { margin: 0; }
-
 /* ---------- cabecera ---------- */
 
 .cabecera {
   position: sticky;
   top: 0;
   z-index: 30;
+  background: var(--fondo);
   background: color-mix(in srgb, var(--fondo) 88%, transparent);
   backdrop-filter: saturate(140%) blur(10px);
   border-bottom: 1px solid var(--linea-suave);
@@ -419,8 +410,9 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
 
 /* ---------- aparecer al hacer scroll ---------- */
 
-[data-revelar] { opacity: 0; transform: translateY(10px); }
-[data-revelar].visible {
+/* .js lo pone el propio script: sin el, nada se oculta */
+.js [data-revelar] { opacity: 0; transform: translateY(10px); }
+.js [data-revelar].visible {
   opacity: 1;
   transform: none;
   transition: opacity .5s ease, transform .5s ease;
@@ -443,14 +435,14 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
-  [data-revelar] { opacity: 1; transform: none; }
+  .js [data-revelar] { opacity: 1; transform: none; }
 }
 
 @media print {
   .cabecera, .copiar, .pestana-barra { display: none !important; }
   .bloque { break-inside: avoid; }
   body { background: #fff; color: #000; }
-  [data-revelar] { opacity: 1; transform: none; }
+  .js [data-revelar] { opacity: 1; transform: none; }
   [role="tabpanel"][hidden] { display: block !important; }
 }
 /* El enlace de salto solo aparece al tabular con el teclado */

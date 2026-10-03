@@ -212,6 +212,12 @@ echo "== los documentos no mienten =="
 if command -v python3 >/dev/null 2>&1; then
   python3 tools/verificar-ejemplos.py docs/manual.html site/index.html
   python3 tools/verificar-runtime.py
+  python3 tools/verificar-cifras.py
 else
-  echo "ok     ejemplos y runtime omitidos: no hay python3"
+  echo "ok     ejemplos, runtime y cifras omitidos: no hay python3"
+fi
+if command -v node >/dev/null 2>&1; then
+  node site/test/humo.js
+else
+  echo "ok     prueba de la pagina omitida: no hay node"
 fi

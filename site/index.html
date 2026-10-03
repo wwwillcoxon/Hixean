@@ -9,11 +9,6 @@
 </head>
 <body>
 
-<div class="aviso-flotante" id="sin-js" hidden>
-  <p>Esta página usa JavaScript para el tema, las pestañas y el copiado del
-  código. El contenido se lee igual sin él.</p>
-</div>
-
 <header class="cabecera" id="arriba">
   <div class="barra-aviso" role="progressbar" aria-label="Progreso de lectura" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progreso"></div>
   <nav class="barra">
@@ -52,10 +47,10 @@
         <a class="boton grande fantasma" href="../docs/manual.html">Leer el manual</a>
       </div>
       <ul class="cifras">
-        <li><b data-cuenta="8896">0</b><span>bytes, hola mundo</span></li>
-        <li><b data-cuenta="22" data-sufijo="/22">0</b><span>pruebas del corpus</span></li>
+        <li><b data-cuenta="8896">8 896</b><span>bytes, hola mundo</span></li>
+        <li><b data-cuenta="22" data-sufijo="/22">22/22</b><span>pruebas del corpus</span></li>
         <li><b data-cuenta="0">0</b><span>dependencias fuera de C11</span></li>
-        <li><b data-cuenta="6">0</b><span>capacidades y silencios</span></li>
+        <li><b data-cuenta="76">76</b><span>códigos de diagnóstico</span></li>
       </ul>
     </div>
     <div class="hero-codigo">
@@ -127,7 +122,7 @@ error esperado: nombre negativo</pre></div>
         </figure>
       </div>
 
-      <div role="tabpanel" id="p-datos" aria-labelledby="t-datos" hidden>
+      <div role="tabpanel" id="p-datos" aria-labelledby="t-datos">
         <p>Los registros tienen subtipado structural de anchura: un
         <code>Perro</code> sirve donde se pide un <code>Animal</code>, y el
         compilador materializa la copia. Los <code>ENUM</code> nunca participan:
@@ -158,7 +153,7 @@ Describe(p)</code></pre>
         </figure>
       </div>
 
-      <div role="tabpanel" id="p-genericos" aria-labelledby="t-genericos" hidden>
+      <div role="tabpanel" id="p-genericos" aria-labelledby="t-genericos">
         <p>Una función genérica se compila una vez por cada combinación de tipos
         que aparece. Sin tabla de despacho, sin boxing: el C generado es el
         mismo que si se hubiera escrito a mano.</p>
@@ -187,7 +182,7 @@ PRINT Max(1.5, 0.5)</code></pre>
         </figure>
       </div>
 
-      <div role="tabpanel" id="p-iteradores" aria-labelledby="t-iteradores" hidden>
+      <div role="tabpanel" id="p-iteradores" aria-labelledby="t-iteradores">
         <p><code>Rango(a, b)</code> es <em>[a, b)</em>. Los iteradores son
         perezosos: <code>TAKE</code> sobre mil elementos consume tres.</p>
         <figure class="ventana">
@@ -212,7 +207,7 @@ NEXT y</code></pre>
         </figure>
       </div>
 
-      <div role="tabpanel" id="p-memoria" aria-labelledby="t-memoria" hidden>
+      <div role="tabpanel" id="p-memoria" aria-labelledby="t-memoria">
         <p><code>ARENA</code> reserva de verdad (<code>mmap</code> en
         freestanding, <code>malloc</code> en libc) y <code>DEFER</code> ejecuta
         al salir del bloque, en orden inverso. Los dos comparten mecanismo: un
@@ -232,7 +227,7 @@ arena liberada</pre></div>
         </figure>
       </div>
 
-      <div role="tabpanel" id="p-paquetes" aria-labelledby="t-paquetes" hidden>
+      <div role="tabpanel" id="p-paquetes" aria-labelledby="t-paquetes">
         <p>Un paquete es un manifiesto <code>.hxk</code> con lo que da, lo que
         necesita y con qué perfil se construye. <code>hxc query</code> pregunta
         qué hay en las rutas sin compilar nada.</p>
@@ -301,7 +296,7 @@ $ ./aritmetica
   </section>
 
   <section id="historia" class="bloque">
-    <h2>Catorce hitos</h2>
+    <h2>Quince hitos, de M0 a M14</h2>
     <p class="intro">No fue una lista de features: cada hito cerró una puerta
     que estaba abierta.</p>
     <ol class="linea" data-linea>
@@ -327,21 +322,24 @@ cd Hixean &amp;&amp; make &amp;&amp; make test</code></pre>
       </article>
       <article class="tarjeta">
         <h3>Desde la release</h3>
-        <pre class="copiable"><code>curl -fsSL https://raw.githubusercontent.com/
-  wwwillcoxon/Hixean/main/tools/install.sh | sh
+        <pre class="copiable"><code>curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
 hxc version</code></pre>
         <p>Verifica el SHA256 y aborta si no coincide.</p>
       </article>
       <article class="tarjeta">
         <h3>Homebrew</h3>
-        <pre class="copiable"><code>brew tap wwwillcoxon/hixean
-brew install hixean</code></pre>
-        <p>macOS y Linux, x64 y arm64.</p>
+        <pre class="copiable"><code>brew install --formula=packaging/homebrew/hixean.rb</code></pre>
+        <p>La fórmula está en el repositorio, con el <code>sha256</code> sin
+        rellenar: funciona cuando la release exista. Publicarla en un tap es un
+        paso pendiente, no una instrucción que hoy funcione.</p>
       </article>
       <article class="tarjeta">
         <h3>winget</h3>
-        <pre class="copiable"><code>winget install wwwillcoxon.Hixean</code></pre>
-        <p>Windows, con <code>hxc</code> disponible en el <code>PATH</code>.</p>
+        <pre class="copiable"><code># aún no está en winget-pkgs
+winget show wwwillcoxon.Hixean</code></pre>
+        <p>El manifiesto está en <code>packaging/winget/</code> y falta enviarlo
+        a <code>microsoft/winget-pkgs</code>. Cuando esté,
+        <code>winget install wwwillcoxon.Hixean</code>.</p>
       </article>
     </div>
   </section>
@@ -366,7 +364,7 @@ brew install hixean</code></pre>
       </article>
       <article class="tarjeta enlace-tarjeta">
         <h3><a href="https://github.com/wwwillcoxon/Hixean/tree/main/docs/adr">Decisiones</a></h3>
-        <p>Catorce ADR con las alternativas descartadas y el porqué. La más
+        <p>Quince ADR con las alternativas descartadas y el porqué. La más
         discutible de todas: por qué el registro de paquetes es un directorio.</p>
       </article>
     </div>

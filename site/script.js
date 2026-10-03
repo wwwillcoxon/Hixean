@@ -4,6 +4,11 @@
 (function () {
   "use strict";
 
+  /* Marca de que hay JavaScript: el CSS solo oculta contenido con revelados
+     cuando esta clase existe, para que un fallo del script no deje la pagina
+     en blanco. */
+  document.documentElement.classList.add("js");
+
   var raiz = document.documentElement;
   var reducir = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -164,13 +169,13 @@
       function (entradas) {
         entradas.forEach(function (entrada) {
           if (!entrada.isIntersecting) return;
-          entrada.target.classList.add("visible");
-          var cuenta = entrada.target.querySelector("[data-cuenta]");
-          if (cuenta) {
-            contar(cuenta);
-            observer.unobserve(entrada.target);
-          }
-          if (!entrada.target.hasAttribute("data-cuenta")) observer.unobserve(entrada.target);
+          var el = entrada.target;
+          el.classList.add("visible");
+          /* el contador puede ser el propio elemento observado: querySelector
+             solo busca descendientes, y con el se quedaba en cero */
+          var cuenta = el.matches("[data-cuenta]") ? el : el.querySelector("[data-cuenta]");
+          if (cuenta) contar(cuenta);
+          observer.unobserve(el);
         });
       },
       { rootMargin: "0px 0px -12% 0px", threshold: 0.15 }
@@ -224,8 +229,4 @@
   window.addEventListener("resize", alDesplazar);
   alDesplazar();
 
-  /* ---------- avisos si no hay JavaScript ---------- */
-
-  var sinJs = document.getElementById("sin-js");
-  if (sinJs) sinJs.hidden = false;
 })();

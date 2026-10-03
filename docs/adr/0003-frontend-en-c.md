@@ -16,8 +16,8 @@ binario `build/hxc` que compila con `cc -O2`.
 ## Motivos
 
 1. **Bootstrapping**: escribir el compilador en el lenguaje que compila es el
-   objetivo de la fase 5; hacerlo en C lo hace alcanzable y no河流域 agrega
-   una condición extra.
+   objetivo de la fase 5; hacerlo en C lo hace alcanzable y no agrega una
+   condición extra.
 2. **Cero dependencias**: `cc` es el único toolchain necesario. `rustup` no
    estaba instalado en el entorno y el objetivo del proyecto es no arrastrar
    toolchains.
