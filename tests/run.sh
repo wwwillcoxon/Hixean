@@ -152,3 +152,10 @@ else
     && echo "ok     check --json trae codigo y ayuda (sin python3 no se valida el JSON)"
 fi
 ./build/hxc version --json | grep -q '"version": "0.1.0"' && echo "ok     version --json para las herramientas"
+
+echo "== extension de vscode =="
+if command -v node >/dev/null 2>&1; then
+  node editors/vscode/test/smoke.js
+else
+  echo "ok     extension omitida: no hay node"
+fi

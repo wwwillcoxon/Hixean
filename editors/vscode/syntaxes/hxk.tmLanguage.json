@@ -1,0 +1,61 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hixean Kit",
+  "scopeName": "source.hxk",
+  "patterns": [
+    { "include": "#comentarios" },
+    { "include": "#version" },
+    { "include": "#instrucciones" }
+  ],
+  "repository": {
+    "comentarios": {
+      "patterns": [
+        {
+          "name": "comment.line.hxk",
+          "match": "('|#|//).*$"
+        },
+        {
+          "name": "comment.block.hxk",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "version": {
+      "patterns": [
+        {
+          "name": "constant.numeric.version.hxk",
+          "match": "\\b[0-9]+\\.[0-9]+(\\.[0-9]+)?\\b"
+        },
+        {
+          "name": "keyword.operator.comparison.hxk",
+          "match": "(>=|<=|>|<)"
+        }
+      ]
+    },
+    "instrucciones": {
+      "patterns": [
+        {
+          "name": "meta.block.hxk",
+          "begin": "\\b(KIT)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.kit.hxk" },
+            "2": { "name": "entity.name.type.kit.hxk" }
+          },
+          "end": "\\b(END\\s+KIT)\\b",
+          "endCaptures": {
+            "1": { "name": "keyword.declaration.kit.hxk" }
+          },
+          "patterns": [
+            { "include": "#comentarios" },
+            { "include": "#version" },
+            {
+              "name": "keyword.control.instruction.hxk",
+              "match": "\\b(ENTRY|TARGET|PROFILE|DEP|REQUIRE|FEATURE|PROVIDES|DEFINE|OPT|BENCH|EXPECT|LINK|BACKEND|CAPABILITY|ASSET)\\b"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

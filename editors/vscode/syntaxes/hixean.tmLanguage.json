@@ -1,0 +1,242 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hixean",
+  "scopeName": "source.hixean",
+  "patterns": [
+    { "include": "#comentarios" },
+    { "include": "#cadenas" },
+    { "include": "#numeros" },
+    { "include": "#capacidades" },
+    { "include": "#declaraciones" },
+    { "include": "#sentencias" },
+    { "include": "#operadores" },
+    { "include": "#tipos" },
+    { "include": "#constantes" },
+    { "include": "#llamadas" }
+  ],
+  "repository": {
+    "comentarios": {
+      "patterns": [
+        {
+          "name": "comment.line.apostrophe.hixean",
+          "begin": "'",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.hixean" }
+          }
+        },
+        {
+          "name": "comment.line.number-sign.hixean",
+          "begin": "#",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.hixean" }
+          }
+        },
+        {
+          "name": "comment.line.double-slash.hixean",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.hixean" }
+          }
+        },
+        {
+          "name": "comment.block.hixean",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.hixean" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.hixean" }
+          }
+        }
+      ]
+    },
+    "cadenas": {
+      "name": "string.quoted.double.hixean",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.hixean" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.hixean" }
+      },
+      "patterns": [
+        {
+          "name": "meta.embedded.expression.hixean",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": { "name": "punctuation.section.embedded.begin.hixean" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.section.embedded.end.hixean" }
+          },
+          "patterns": [
+            { "include": "$self" }
+          ]
+        },
+        {
+          "name": "constant.character.escape.hixean",
+          "match": "\\\\(\\\\|n|r|t|0|\\\"|\\{|\\}|x[0-9a-fA-F]{2}|u\\{[0-9a-fA-F]+\\})"
+        }
+      ]
+    },
+    "numeros": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.hixean",
+          "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?([eE][+-]?[0-9]+)?[fF]?\\b"
+        },
+        {
+          "name": "constant.numeric.hex.hixean",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.hixean",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.hixean",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.hixean",
+          "match": "\\b[0-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.duration.hixean",
+          "match": "\\b[0-9][0-9_.]*\\s*(ns|us|ms|s|m|h|d)\\b"
+        }
+      ]
+    },
+    "capacidades": {
+      "patterns": [
+        {
+          "name": "meta.capability.hixean",
+          "match": "\\b(ENABLE)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.capability.hixean" },
+            "2": { "name": "entity.name.tag.capability.hixean" }
+          }
+        }
+      ]
+    },
+    "declaraciones": {
+      "patterns": [
+        {
+          "name": "meta.function.hixean",
+          "begin": "\\b(MODULE|FUNCTION|OPERATOR)\\b",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.function.hixean" }
+          },
+          "end": "(?=\\bEND\\b|$)",
+          "patterns": [
+            {
+              "name": "meta.function.signature.hixean",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*(\\(|AS))",
+              "captures": {}
+            }
+          ]
+        },
+        {
+          "name": "meta.type.hixean",
+          "begin": "\\bTYPE\\b",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.type.hixean" }
+          },
+          "end": "(?=\\bEND\\s+TYPE\\b)"
+        },
+        {
+          "name": "meta.enum.hixean",
+          "begin": "\\bENUM\\b",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.enum.hixean" }
+          },
+          "end": "(?=\\bEND\\s+ENUM\\b)"
+        },
+        {
+          "name": "meta.trait.hixean",
+          "begin": "\\b(TRAIT|IMPLEMENTAR)\\b",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.trait.hixean" }
+          },
+          "end": "(?=\\bEND\\s+(TRAIT|IMPLEMENTAR)\\b)"
+        }
+      ]
+    },
+    "sentencias": {
+      "keywords": {
+        "patterns": [
+          {
+            "name": "keyword.control.hixean",
+            "match": "\\b(IF|THEN|ELSEIF|ELSE|END|WHILE|WEND|FOR|TO|STEP|NEXT|BREAK|CONTINUE|EXIT|MATCH|CASE|WHEN|ELSE)\\b"
+          },
+          {
+            "name": "keyword.other.hixean",
+            "match": "\\b(RETURN|GOTO|DEFER|ARENA|DIM|CONST|PRINT|IMPORT|MODULE|EXPORT|PUBLIC|AS|DONDE|PARA|METODO|METHOD|IMPLEMENTAR|SELF|EXTIENDE)\\b"
+          }
+        ]
+      }
+    },
+    "operadores": {
+      "patterns": [
+        {
+          "name": "keyword.operator.hixean",
+          "match": "\\b(AND|OR|XOR|NOT|MOD|MAYBE)\\b"
+        },
+        {
+          "name": "keyword.operator.arithmetic.hixean",
+          "match": "(<->|\\*\\*|\\+%|-\\*%|-\\+|%|-%|-%|\\*%|\\+\\||-\\||\\*\\||<<|>>|<>|!=|==|<=|>=|&&|\\|\\||\\+=|-=|\\*=|/=|\\+\\+|\\.\\.|->)"
+        },
+        {
+          "name": "keyword.operator.comparison.hixean",
+          "match": "(<=|>=|<>|=|<|>)"
+        },
+        {
+          "name": "keyword.operator.arrow.hixean",
+          "match": "(\\?|&|\\^|\\+|-|\\*|/|!|~|\\||\\.|\\(|\\)|\\[|\\]|,|;|:)"
+        }
+      ]
+    },
+    "tipos": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.hixean",
+          "match": "\\b(BOOL|INT|I64|FLOAT|STRING|DURATION|VOID|ARRAY|MAYBE|REF|PTR|UNIQUE)\\b"
+        },
+        {
+          "name": "entity.name.type.hixean",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "constantes": {
+      "patterns": [
+        {
+          "name": "constant.language.hixean",
+          "match": "\\b(TRUE|FALSE|NIL)\\b"
+        },
+        {
+          "name": "variable.language.self.hixean",
+          "match": "\\bSELF\\b"
+        }
+      ]
+    },
+    "llamadas": {
+      "patterns": [
+        {
+          "name": "entity.name.function.hixean",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        },
+        {
+          "name": "variable.other.member.hixean",
+          "match": "(?<=\\.)\\s*[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    }
+  }
+}

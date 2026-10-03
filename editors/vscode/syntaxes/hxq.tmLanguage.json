@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hixean Query",
+  "scopeName": "source.hxq",
+  "patterns": [
+    { "include": "#comentarios" },
+    { "include": "#consulta" }
+  ],
+  "repository": {
+    "comentarios": {
+      "patterns": [
+        {
+          "name": "comment.line.hxq",
+          "match": "('|#|//).*$"
+        }
+      ]
+    },
+    "consulta": {
+      "patterns": [
+        {
+          "name": "meta.block.query.hxq",
+          "begin": "\\bQUERY\\b",
+          "beginCaptures": {
+            "0": { "name": "keyword.control.query.hxq" }
+          },
+          "end": "\\bEND\\s+QUERY\\b",
+          "endCaptures": {
+            "0": { "name": "keyword.control.query.hxq" }
+          },
+          "patterns": [
+            { "include": "#comentarios" },
+            {
+              "name": "keyword.operator.predicate.hxq",
+              "match": "\\b(PROVIDES|FEATURE|CAPABILITY|DEP|VERSION)\\b"
+            },
+            {
+              "name": "keyword.operator.comparison.hxq",
+              "match": "(>=|<=|>|<)"
+            },
+            {
+              "name": "constant.numeric.version.hxq",
+              "match": "\\b[0-9]+\\.[0-9]+(\\.[0-9]+)?\\b"
+            },
+            {
+              "name": "support.constant.query.hxq",
+              "match": "\\b[0-9][0-9_]*\\b"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

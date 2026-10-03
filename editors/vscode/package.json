@@ -1,0 +1,134 @@
+{
+  "name": "hixean",
+  "displayName": "Hixean",
+  "description": "Lenguaje Hixean: resaltado, compilación y diagnósticos reales de hxc",
+  "version": "0.1.0",
+  "publisher": "hixean",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "hixean",
+    "hxc"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hixean/hixean.git",
+    "directory": "editors/vscode"
+  },
+  "activationEvents": [
+    "onLanguage:hixean",
+    "workspaceContains:**/*.hxe"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "hixean",
+        "aliases": [
+          "Hixean",
+          "hixean"
+        ],
+        "extensions": [
+          ".hxe",
+          ".hxs",
+          ".hxf",
+          ".hxt"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "hxk",
+        "aliases": [
+          "Hixean Kit"
+        ],
+        "extensions": [
+          ".hxk"
+        ]
+      },
+      {
+        "id": "hxq",
+        "aliases": [
+          "Hixean Query"
+        ],
+        "extensions": [
+          ".hxq"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "hixean",
+        "scopeName": "source.hixean",
+        "path": "./syntaxes/hixean.tmLanguage.json"
+      },
+      {
+        "language": "hxk",
+        "scopeName": "source.hxk",
+        "path": "./syntaxes/hxk.tmLanguage.json"
+      },
+      {
+        "language": "hxq",
+        "scopeName": "source.hxq",
+        "path": "./syntaxes/hxq.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "hixean",
+        "path": "./snippets/hixean.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "hixean.build",
+        "title": "Hixean: compilar el programa",
+        "category": "Hixean"
+      },
+      {
+        "command": "hixean.test",
+        "title": "Hixean: ejecutar el corpus",
+        "category": "Hixean"
+      },
+      {
+        "command": "hixean.checkActive",
+        "title": "Hixean: comprobar el archivo activo",
+        "category": "Hixean"
+      }
+    ],
+    "configuration": {
+      "title": "Hixean",
+      "properties": {
+        "hixean.path": {
+          "type": "string",
+          "default": "hxc",
+          "description": "Ruta al ejecutable hxc. Por defecto se busca en el PATH."
+        },
+        "hixean.profile": {
+          "type": "string",
+          "enum": [
+            "freestanding",
+            "libc"
+          ],
+          "default": "freestanding",
+          "description": "Perfil de binario que se usa al compilar."
+        },
+        "hixean.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Comprobar los archivos guardados con hxc check --json."
+        },
+        "hixean.checkDelay": {
+          "type": "number",
+          "default": 400,
+          "description": "Milisegundos de espera antes de comprobar tras guardar."
+        }
+      }
+    }
+  }
+}

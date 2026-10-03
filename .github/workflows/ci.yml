@@ -27,3 +27,32 @@ jobs:
         run: |
           ./build/hxc build examples/tco.hxe -o build/tco
           (ulimit -s 128; ./build/tco)
+
+  # El compilador manipula el AST del programa que esta compilando: un error de
+  # memoria ahi no sale como un error de memoria, sino como un diagnostico raro
+  # en el programa de otra persona. Por eso el corpus entero pasa instrumentado.
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make asan
+
+  # El parser promete recuperacion de errores (ADR 0002). Una promesa asi solo
+  # se sostiene con entradas que nadie eligio.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+      - name: mutaciones del corpus
+        run: make fuzz FUZZ_N=600 FUZZ_SEED=1
+      - name: mutaciones con otra semilla
+        run: make fuzz FUZZ_N=600 FUZZ_SEED=99
+
+  # La extension de VS Code se prueba con un vscode falso, sin abrir el editor.
+  editors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+      - run: node editors/vscode/test/smoke.js

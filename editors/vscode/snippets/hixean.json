@@ -1,0 +1,134 @@
+{
+  "funcion": {
+    "prefix": "fun",
+    "body": [
+      "FUNCTION ${1:nombre}(${2:parametros}) AS ${3:INT}",
+      "  ${4:RETURN 0}",
+      "END FUNCTION"
+    ],
+    "description": "Una función con tipo de retorno"
+  },
+  "funcion exportada": {
+    "prefix": "funx",
+    "body": [
+      "EXPORT FUNCTION ${1:nombre}(${2:parametros}) AS ${3:INT}",
+      "  ${4:RETURN 0}",
+      "END FUNCTION"
+    ],
+    "description": "Una función visible desde otros módulos"
+  },
+  "funcion generica": {
+    "prefix": "fung",
+    "body": [
+      "FUNCTION ${1:nombre}<T>(${2:a AS T, b AS T}) AS T",
+      "  RETURN a",
+      "END FUNCTION"
+    ],
+    "description": "Una función genérica que se monomorfiza"
+  },
+  "tipo": {
+    "prefix": "tipo",
+    "body": [
+      "TYPE ${1:Nombre}",
+      "  ${2:campo} AS ${3:INT}",
+      "END TYPE"
+    ],
+    "description": "Un registro"
+  },
+  "enum": {
+    "prefix": "enum",
+    "body": [
+      "ENUM ${1:Nombre}",
+      "  ${2:VARIANTE_A}",
+      "  ${3:VARIANTE_B}",
+      "END ENUM"
+    ],
+    "description": "Una enumeración"
+  },
+  "trait": {
+    "prefix": "trait",
+    "body": [
+      "TRAIT ${1:Nombre}",
+      "  METODO ${2:Metodo}(${3:a AS SELF}) AS ${4:INT}",
+      "END TRAIT"
+    ],
+    "description": "Un trait"
+  },
+  "implementar": {
+    "prefix": "impl",
+    "body": [
+      "IMPLEMENTAR ${1:Tipo} PARA ${2:Trait}",
+      "  METODO ${3:Metodo}(${4:a AS Tipo}) AS ${5:Tipo}",
+      "    RETURN a",
+      "  END METHOD",
+      "END IMPLEMENTAR"
+    ],
+    "description": "La implementación de un trait para un tipo"
+  },
+  "result": {
+    "prefix": "res",
+    "body": [
+      "FUNCTION ${1:nombre}(${2:x AS INT}) AS Result<INT, STRING>",
+      "  IF ${3:condicion} THEN RETURN Err(\"${4:mensaje}\")",
+      "  RETURN Ok(${5:valor})",
+      "END FUNCTION"
+    ],
+    "description": "Una función que puede fallar"
+  },
+  "arena": {
+    "prefix": "arena",
+    "body": [
+      "ARENA ${1:nombre}",
+      "  DIM ${2:buf} AS ${3:INT}[${4:64}]",
+      "  ${5:buf[0] = 1}",
+      "END ARENA"
+    ],
+    "description": "Reservas que se liberan al salir del bloque"
+  },
+  "defer": {
+    "prefix": "defer",
+    "body": ["DEFER ${1:PRINT \"limpieza\"}"],
+    "description": "Limpieza al salir del bloque"
+  },
+  "match": {
+    "prefix": "match",
+    "body": [
+      "MATCH ${1:expresion}",
+      "  CASE ${2:patron} THEN ${3:PRINT \"caso\"}",
+      "  CASE ELSE THEN ${4:PRINT \"otro\"}",
+      "END MATCH"
+    ],
+    "description": "Un MATCH con CASE ELSE"
+  },
+  "for in": {
+    "prefix": "forin",
+    "body": [
+      "FOR ${1:x} IN ${2:Rango(1, 10)}",
+      "  PRINT ${1:x}",
+      "NEXT ${1:x}"
+    ],
+    "description": "Un bucle sobre un iterador perezoso"
+  },
+  "modulo": {
+    "prefix": "mod",
+    "body": [
+      "MODULE ${1:nombre}",
+      "",
+      "END MODULE"
+    ],
+    "description": "Un módulo"
+  },
+  "prueba": {
+    "prefix": "prueba",
+    "body": [
+      "\"${1:que prueba esto}\"",
+      "PRINT ${2:1 + 1}"
+    ],
+    "description": "El arranque de un archivo .hxt"
+  },
+  "capacidad": {
+    "prefix": "enable",
+    "body": ["ENABLE ${1:net}"],
+    "description": "Declarar una capacidad en el fuente"
+  }
+}

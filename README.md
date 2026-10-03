@@ -21,6 +21,14 @@ documento paginado con el diálogo del navegador.
 make manual
 ```
 
+## Editores
+
+`editors/vscode/` es una extensión de VS Code con resaltado, plantillas y los
+diagnósticos reales de `hxc` en el panel de problemas: lee `hxc check --json`,
+así que el mensaje, el código y la posición son los del compilador. Se prueba
+sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
+`make test`). El detalle está en `editors/vscode/README.md`.
+
 ## Estado
 
 | hito | qué funciona | puerta |
@@ -41,6 +49,7 @@ make manual
 | M10 | subtipado estructural (LSP) con materialización de la conversión | `Perro` sirve donde se pide `Animal` |
 | M11 | capacidades: `ENABLE net` con sockets por syscall directa y puerta `CAPABILITY` del manifiesto | ida y vuelta UDP por loopback |
 | M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen; manual HTML interactivo | consulta por `PROVIDES`+`VERSION` acierta y filtra |
+| M13 | 0.1.0: licencia, changelog, política de versiones, `hxc check --json`, extensión de VS Code, `-Werror`, sanitizers y fuzzer | el corpus pasa instrumentado y 3 000 mutaciones no matan al front-end |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
