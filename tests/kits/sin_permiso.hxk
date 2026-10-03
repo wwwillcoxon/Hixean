@@ -1,0 +1,4 @@
+KIT sin_permiso 0.1.0
+  ENTRY roto.hxe
+  REQUIRE red
+END KIT

@@ -1,0 +1,7 @@
+KIT base 0.2.0
+  TARGET hixe >= 0.1
+  PROFILE freestanding
+  ENTRY base.hxe
+  PROVIDES base
+  FEATURE vectores
+END KIT

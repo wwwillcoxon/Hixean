@@ -34,6 +34,20 @@ else
   echo "FALLO: no se rechazo la unidad con magia incorrecta"; exit 1
 fi
 
+echo "== paquetes .hxk =="
+./build/hxc build --kit tests/kits/aritmetica.hxk --path tests/kits -o build/kit_aritmetica
+./build/kit_aritmetica > build/kit.out
+echo "32" > build/kit.expected
+diff -u build/kit.expected build/kit.out && echo "ok     el paquete aritmetica se construye y ejecuta"
+./build/hxc kit tests/kits/aritmetica.hxk --path tests/kits | grep -q "resolution base 0.2.0" \
+  && echo "ok     resolucion de dependencias"
+for k in roto sin_permiso nuevo_dep churro; do
+  if ./build/hxc kit tests/kits/$k.hxk --path tests/kits >/dev/null 2>&1; then
+    echo "FALLO: el manifiesto $k deberia fallar"; exit 1
+  fi
+done
+echo "ok     4 manifiestos rotos rechazados con diagnostico"
+
 echo "== cache de objetos =="
 rm -rf build/inc build/obj
 cp -r bench/multi build/inc

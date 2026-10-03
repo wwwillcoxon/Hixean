@@ -301,6 +301,7 @@ static HxTy *hx_type(HxParser *p) {
     if (hx_is_kw(p, TK_KW_REF) || hx_is_kw(p, TK_KW_PTR)) {
         int is_ref = hx_is_kw(p, TK_KW_REF);
         hx_bump(p);
+        hx_eat_type_marker(p); /* se admite REF T y REF AS T */
         HxTy *inner = hx_type(p);
         HxTy *t = hx_ty_mk(p->arena, is_ref ? TY_REF : TY_PTR);
         t->inner = inner;
@@ -410,9 +411,22 @@ static int hx_binop_for(HxParser *p, int prec, HxBinOp *out) {
     return 0;
 }
 
+/* `&x` toma la direccion de una variable: es el unico puntero que se puede
+   formar en el lenguaje. */
+static HxExpr *hx_addr(HxParser *p) {
+    HxSpan asp = hx_cur(p)->span;
+    hx_bump(p);
+    HxExpr *operand = hx_primary(p);
+    HxExpr *e = hx_expr_new(p, EX_UN, hx_join(asp, operand->span));
+    e->un.op = UOP_ADDR;
+    e->un.operand = operand;
+    return e;
+}
+
 static HxExpr *hx_primary(HxParser *p) {
     HxToken *t = hx_cur(p);
     HxSpan sp = t->span;
+    if (hx_is_punct(p, "&")) return hx_addr(p);
 
     if (t->kind == TK_PUNCT) {
         const char *s = t->str_raw;
@@ -647,6 +661,26 @@ static HxExpr *hx_postfix(HxParser *p) {
             e = idx;
             continue;
         }
+        if (hx_is_punct(p, ".") && hx_at(p, 1)->kind == TK_PUNCT && hx_at(p, 1)->str_len == 1 &&
+            hx_at(p, 1)->str_raw[0] == '^' &&
+            (hx_at(p, 2)->kind == TK_IDENT || hx_tok_is_kw(hx_at(p, 2)->kind))) {
+            /* `p^.campo`: el ^ se aplica antes de elegir el miembro */
+            HxSpan csp = hx_at(p, 1)->span;
+            hx_bump(p);
+            hx_bump(p);
+            HxSym nm = hx_cur(p)->sym;
+            HxSpan nsp = hx_cur(p)->span;
+            hx_bump(p);
+            HxExpr *d = hx_expr_new(p, EX_DEREF, hx_join(e->span, csp));
+            d->deref = 1;
+            d->try.inner = e;
+            HxExpr *m = hx_expr_new(p, EX_MEMB, hx_join(e->span, nsp));
+            m->member.base = d;
+            m->member.name = nm;
+            m->member.name_span = nsp;
+            e = m;
+            continue;
+        }
         if (hx_is_punct(p, ".") &&
             (hx_at(p, 1)->kind == TK_IDENT || hx_tok_is_kw(hx_at(p, 1)->kind))) {
             hx_bump(p);
@@ -658,6 +692,24 @@ static HxExpr *hx_postfix(HxParser *p) {
             m->member.name = nm;
             m->member.name_span = nsp;
             e = m;
+            /* `p^.campo` y `p^()`: tras el miembro puede venir una desreferencia */
+            if (hx_is_punct(p, "^")) {
+                HxSpan csp = hx_cur(p)->span;
+                hx_bump(p);
+                HxExpr *d = hx_expr_new(p, EX_DEREF, hx_join(nsp, csp));
+                d->deref = 1;
+                d->try.inner = m;
+                e = d;
+            }
+            continue;
+        }
+        if (hx_is_punct(p, "^")) {
+            HxSpan csp = hx_cur(p)->span;
+            hx_bump(p);
+            HxExpr *d = hx_expr_new(p, EX_DEREF, hx_join(e->span, csp));
+            d->deref = 1;
+            d->try.inner = e;
+            e = d;
             continue;
         }
         if (hx_is_punct(p, "?")) {
@@ -1030,7 +1082,9 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
     }
 
     HxExpr *e = hx_binary(p, 4);
-    if ((e->kind == EX_PATH || e->kind == EX_INDEX) && hx_is_punct(p, "=")) {
+    if ((e->kind == EX_PATH || e->kind == EX_INDEX || e->kind == EX_DEREF ||
+         e->kind == EX_MEMB) &&
+        hx_is_punct(p, "=")) {
         hx_bump(p);
         hx_skip_nl(p);
         HxStmt *s = hx_stmt_new(p, ST_ASSIGN, sp);
@@ -1042,8 +1096,17 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
         return;
     }
     static const char *ops[] = {"+=", "-=", "*=", "/="};
+    int asignable = e->kind == EX_PATH || e->kind == EX_INDEX || e->kind == EX_DEREF ||
+                    e->kind == EX_MEMB;
     for (int i = 0; i < 4; i++) {
         if (!hx_is_punct(p, ops[i])) continue;
+        if (!asignable) {
+            hx_error(p->diags, e->span, "E0209", "expresión no asignable");
+            hx_bump(p);
+            hx_skip_nl(p);
+            hx_expr(p);
+            continue;
+        }
         hx_bump(p);
         hx_skip_nl(p);
         HxStmt *s = hx_stmt_new(p, ST_ASSIGN, sp);

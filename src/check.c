@@ -178,6 +178,16 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report);
 static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *what) {
     if (!from || !to) return 1;
     if (from->kind == TY_UNKNOWN || to->kind == TY_UNKNOWN) return 1;
+    /* el literal 0 es el puntero nulo */
+    if (to->kind == TY_PTR) {
+        if (from->kind == TY_PTR) return 1;
+        if (from->kind == TY_INT || from->kind == TY_I64) return 1;
+        hx_diag_note(c->diags, sp, "E0301",
+                     hx_arena_sprintf(c->arena, "se esperaba %s, se encontró %s",
+                                      hx_ty_name(to), hx_ty_name(from)),
+                     what, NULL);
+        return 0;
+    }
     if (hx_ty_equal(from, to)) return 1;
     int fr = hx_ty_rank(from), tr = hx_ty_rank(to);
     if (fr && tr && from->kind == to->kind) return 1;
@@ -960,12 +970,32 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
         return e;
     }
     if (is_cmp) {
+        if (l && r && (l->kind == TY_PTR || r->kind == TY_PTR)) {
+            /* los punteros se comparan por identidad o con 0; ya se ha comprobado */
+            e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+            return e;
+        }
         if (l && r && (hx_ty_rank(l) || hx_ty_enum_like(l)) &&
             (hx_ty_rank(r) || hx_ty_enum_like(r)) && (hx_ty_rank(l) || hx_ty_rank(r)))
             hx_coerce(c, r, l, e->span, NULL);
         int eq_only = op == OP_EQ || op == OP_NE;
         int ok = 1;
         if (l && r) {
+            if (op == OP_EQ || op == OP_NE) {
+                HxExpr *le = e->bin.lhs, *re = e->bin.rhs;
+                int ptr_nulo = (l && l->kind == TY_PTR && re && re->kind == EX_INT &&
+                                re->ival == 0) ||
+                               (r && r->kind == TY_PTR && le && le->kind == EX_INT &&
+                                le->ival == 0);
+                if (ptr_nulo) {
+                    e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+                    return e;
+                }
+                if (l && l->kind == TY_PTR && r && r->kind == TY_PTR) {
+                    e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+                    return e;
+                }
+            }
             int comparable = hx_ty_is_numeric(l) && hx_ty_is_numeric(r);
             /* igualdad entre cadenas y entre booleanos si tiene sentido */
             int same = hx_ty_equal(l, r);
@@ -1275,6 +1305,15 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             e->ty = f && f->ret ? f->ret : hx_ty_builtin(c->arena, TY_UNKNOWN);
             return e;
         }
+        case EX_DEREF: {
+            e->try.inner = hx_expr_check(c, e->try.inner);
+            HxTy *pt = e->try.inner->ty;
+            if (!pt || pt->kind != TY_PTR)
+                hx_error(c->diags, e->span, "E0722",
+                         "'^' sólo se puede aplicar a un PTR");
+            e->ty = pt && pt->kind == TY_PTR ? pt->inner : hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
         case EX_PATH:
             return hx_path_check(c, e);
         case EX_CALL:
@@ -1283,6 +1322,30 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             return hx_bin_check(c, e);
         case EX_UN: {
             e->un.operand = hx_expr_check(c, e->un.operand);
+            if (e->un.op == UOP_ADDR) {
+                HxExpr *o = e->un.operand;
+                if (!o || o->kind != EX_PATH || o->path.parts.len != 1)
+                    hx_error(c->diags, e->span, "E0720",
+                             "'&' sólo se puede aplicar a una variable con nombre");
+                else {
+                    HxSym folded = hx_intern_fold_ascii(c->intern,
+                                                         hx_sym_str(o->path.parts.data[0].name),
+                                                         strlen(hx_sym_str(
+                                                             o->path.parts.data[0].name)));
+                    HxSymEntry *se = hx_lookup(c, folded);
+                    if (se && se->arena_depth > c->arena_depth)
+                        hx_error(c->diags, e->span, "E0721",
+                                 "'&' sobre una variable de ARENA: el puntexto quedaria "
+                                 "colgado al salir del bloque");
+                }
+                HxTy *inner = o && o->ty ? o->ty : hx_ty_builtin(c->arena, TY_UNKNOWN);
+                if (inner->kind == TY_REF || inner->kind == TY_PTR) inner = inner->inner;
+                HxTy *pt = (HxTy *)hx_arena_calloc(c->arena, sizeof(HxTy));
+                pt->kind = TY_PTR;
+                pt->inner = inner;
+                e->ty = pt;
+                return e;
+            }
             if (e->un.op == UOP_NOT) {
                 if (e->un.operand->ty && e->un.operand->ty->kind != TY_BOOL)
                     hx_error(c->diags, e->un.operand->span, "E0307",
@@ -1544,6 +1607,16 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             }
             break;
         case ST_ASSIGN: {
+            /* no se puede escribir en un miembro de un temporal: `f(a).v = 1`
+               no tiene a donde escribir */
+            if (s->assign.target && s->assign.target->kind == EX_MEMB) {
+                HxExpr *base = s->assign.target->member.base;
+                if (base && base->kind != EX_PATH && base->kind != EX_INDEX &&
+                    base->kind != EX_DEREF)
+                    hx_error(c->diags, s->assign.target->span, "E0723",
+                             "no se puede asignar a un miembro de un valor temporal");
+            }
+        } {
             s->assign.target = hx_expr_check(c, s->assign.target);
             s->assign.value = hx_expr_propagate(c, s->assign.value, s->assign.value->span);
             if (s->assign.compound && s->assign.op == OP_ADD && s->assign.target->ty &&

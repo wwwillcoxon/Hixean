@@ -1,0 +1,5 @@
+IMPORT base
+FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+PRINT Doble(base.Cuadrado(4))

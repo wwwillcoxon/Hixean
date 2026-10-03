@@ -53,6 +53,7 @@ typedef enum {
     EX_TRY,
     EX_VEC,
     EX_MEMB,
+    EX_DEREF, /* p^ */
     EX_FUNC /* FUNC(...) ... END: se eleva a una funcion del modulo */
 } HxExprKind;
 
@@ -79,7 +80,7 @@ typedef enum {
     OP_XOR
 } HxBinOp;
 
-typedef enum { UOP_NEG, UOP_NOT } HxUnOp;
+typedef enum { UOP_NEG, UOP_NOT, UOP_ADDR } HxUnOp;
 
 typedef struct HxExpr HxExpr;
 

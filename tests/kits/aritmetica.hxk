@@ -1,0 +1,9 @@
+KIT aritmetica 1.0.0
+  TARGET hixe >= 0.1
+  PROFILE freestanding
+  ENTRY aritmetica.hxe
+  DEP base >= 0.2
+  PROVIDES aritmetica
+  REQUIRE vectores
+  DEFINE HX_MATEMATICAS 1
+END KIT

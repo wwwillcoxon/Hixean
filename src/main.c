@@ -4,6 +4,7 @@
 #include "hx/diag.h"
 #include "hx/emit.h"
 #include "hx/hxc.h"
+#include "hx/kit.h"
 #include "hx/parse.h"
 
 #include <stdlib.h>
@@ -36,6 +37,14 @@ typedef struct {
     const char *out_bin;
     const char *emit_hxc;
     const char *use_hxc;
+    int jobs; /* 0 = tantos como nucleos */
+    const char *kit_file;
+    const char *defines[HX_KIT_MAX];
+    int n_defines;
+    const char *extra_opts[HX_KIT_MAX];
+    int n_opts;
+    const char *mod_dirs[HX_KIT_MAX];
+    int n_mod_dirs;
     HxProfile profile;
     int emit_only;
     int verbose;
@@ -66,6 +75,28 @@ static int hx_run(char **argv) {
     waitpid(pid, &status, 0);
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 #endif
+}
+
+/* Lanza cc sin esperar: permite compilar varias unidades a la vez. */
+static pid_t hx_spawn(char **argv) {
+#ifdef _WIN32
+    return 0;
+#else
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    return pid;
+#endif
+}
+
+static int hx_wait(pid_t pid) {
+    if (pid <= 0) return 0;
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return 1;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
 static int hx_file_size(const char *path) {
@@ -109,6 +140,9 @@ static HxModule *hx_load_module(HxSession *s, const char *path, int is_entry) {
 
 static int o_verbose;
 
+static const char **g_extra_mod_dirs;
+static int g_n_extra_mod_dirs;
+
 static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
@@ -134,13 +168,23 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
             const char *dot = strrchr(sp, '.');
             char *stem = dot ? hx_arena_strndup(&s->arena, sp, (size_t)(dot - sp)) : (char *)sp;
             char *cand = hx_arena_sprintf(&s->arena, "%s/%s.hxs", dir, stem);
-            if (hx_file_exists(cand)) {
+            int found = hx_file_exists(cand);
+            char *encontrado = found ? cand : NULL;
+            for (int d = 0; !found && d < g_n_extra_mod_dirs; d++) {
+                /* los paquetes del manifiesto aportan sus modulos */
+                char *c2 = hx_arena_sprintf(&s->arena, "%s/%s.hxs", g_extra_mod_dirs[d], stem);
+                if (hx_file_exists(c2)) {
+                    encontrado = c2;
+                    found = 1;
+                }
+            }
+            if (found) {
                 int seen = 0;
                 for (int k = 0; k < done.len; k++)
-                    if (!strcmp(done.data[k], cand)) seen = 1;
+                    if (!strcmp(done.data[k], encontrado)) seen = 1;
                 if (!seen) {
-                    HX_VEC_PUSH(done, cand);
-                    HX_VEC_PUSH(pending, cand);
+                    HX_VEC_PUSH(done, encontrado);
+                    HX_VEC_PUSH(pending, encontrado);
                 }
             } else {
                 char *cand2 = hx_arena_sprintf(&s->arena, "%s/%s.hxf", dir, stem);
@@ -203,6 +247,8 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
 typedef struct {
     const char *cfile;
     const char *obj;
+    char **argv; /* vector de argumentos propio cuando se compila en paralelo */
+    pid_t pid;   /* 0 si no hay proceso en vuelo */
 } HxTu;
 
 static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
@@ -243,9 +289,8 @@ static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
     return 0;
 }
 
-static int hx_compile_tu(const char *cc_file, const char *obj_file, int optimize,
-                         HxProfile profile, int verbose) {
-    char *argv[32];
+static int hx_cc_argv(char **argv, const char *cc_file, const char *obj_file, int optimize,
+                      HxProfile profile) {
     int n = 0;
     argv[n++] = "cc";
     argv[n++] = "-c";
@@ -266,6 +311,30 @@ static int hx_compile_tu(const char *cc_file, const char *obj_file, int optimize
     argv[n++] = "-ffunction-sections";
     argv[n++] = "-fdata-sections";
     argv[n++] = NULL;
+    return n;
+}
+
+
+/* Espera el cc mas antiguo en vuelo y avisa si fallo. */
+static int hx_flush_one(HxTu *tus, int ntus, int *inflight) {
+    for (int j = 0; j < ntus; j++) {
+        if (!tus[j].pid) continue;
+        int rc = hx_wait(tus[j].pid);
+        tus[j].pid = 0;
+        (*inflight)--;
+        if (rc != 0) {
+            fprintf(stderr, "hx: fallo cc al compilar %s\n", tus[j].cfile);
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+static int hx_compile_tu(const char *cc_file, const char *obj_file, int optimize,
+                         HxProfile profile, int verbose) {
+    char *argv[32];
+    hx_cc_argv(argv, cc_file, obj_file, optimize, profile);
     double t = hx_now_ms();
     if (hx_run(argv) != 0) {
         fprintf(stderr, "hx: fallo cc al compilar %s\n", cc_file);
@@ -287,6 +356,7 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
     hx_collect_modules2(s, entry, o->use_hxc);
     hx_check_unit(&s->unit);
     if (s->diags.errors) return 1;
+
 
     char *gen_dir = hx_arena_strdup(&s->arena, "build/gen");
     char *obj_dir = hx_arena_strdup(&s->arena, "build/obj");
@@ -326,25 +396,40 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
         }
         if (m->is_entry) continue;
         char *cf = hx_arena_sprintf(&s->arena, "%s/%s.c", gen_dir, hx_sym_str(m->name));
-        HxTu tu = {cf, NULL};
+        HxTu tu = {cf, NULL, NULL, 0};
         HX_VEC_PUSH(tus, tu);
     }
     int entry_tu = -1;
     {
         char *cf = hx_arena_sprintf(&s->arena, "%s/_entry.c", gen_dir);
-        HxTu tu = {cf, NULL};
+        HxTu tu = {cf, NULL, NULL, 0};
         entry_tu = tus.len;
         HX_VEC_PUSH(tus, tu);
     }
     if (o->profile == HX_PROFILE_FREESTANDING) {
         char *cf = hx_arena_sprintf(&s->arena, "%s/_rtmem.c", gen_dir);
-        HxTu tu = {cf, NULL};
+        HxTu tu = {cf, NULL, NULL, 0};
         HX_VEC_PUSH(tus, tu);
     }
 
     HxTu *tu_entry = &tus.data[entry_tu];
 
     int rebuilt = 0;
+    int jobs = 1;
+#ifdef _WIN32
+    jobs = 1; /* sin waitpid: se compila en serie */
+#else
+    /* una compilacion por nucleo; cc ya usa varios hilos por dentro */
+    if (o->jobs > 0) jobs = o->jobs;
+    else {
+        long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+        jobs = (int)(ncpu > 0 ? ncpu : 2);
+    }
+    if (jobs > 8) jobs = 8;
+    if (jobs > tus.len) jobs = tus.len;
+    if (jobs < 1) jobs = 1;
+#endif
+    int inflight = 0;
     for (int i = 0; i < tus.len; i++) {
         HxTu *tu = &tus.data[i];
         HxHash hx;
@@ -375,11 +460,35 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
         hx_fnv_hex(&hx, hex, sizeof(hex));
         tu->obj = hx_arena_sprintf(&s->arena, "%s/%s.o", obj_dir, hex);
         if (!hx_file_exists(tu->obj)) {
-            if (hx_compile_tu(tu->cfile, tu->obj, o->optimize, o->profile, o->verbose) != 0)
-                return 1;
+            if (jobs > 1) {
+                /* cada unidad guarda su argv en memoria propia: hx_cc_argv
+                   escribe punteros, no se puede compartir el mismo vector */
+                tu->argv = (char **)hx_arena_calloc(&s->arena, sizeof(char *) * 32);
+                hx_cc_argv(tu->argv, tu->cfile, tu->obj, o->optimize, o->profile);
+                pid_t pid = hx_spawn(tu->argv);
+                if (pid < 0) {
+                    if (hx_compile_tu(tu->cfile, tu->obj, o->optimize, o->profile, o->verbose) != 0)
+                        return 1;
+                } else {
+                    tu->pid = pid;
+                    inflight++;
+                    rebuilt++;
+                    /* no lanzar mas hasta que haya hueco */
+                    while (inflight >= jobs) {
+                        int bad = hx_flush_one(tus.data, tus.len, &inflight);
+                        if (bad) return 1;
+                    }
+                    continue;
+                }
+            } else {
+                if (hx_compile_tu(tu->cfile, tu->obj, o->optimize, o->profile, o->verbose) != 0)
+                    return 1;
+            }
             rebuilt++;
         }
     }
+    while (inflight > 0)
+        if (hx_flush_one(tus.data, tus.len, &inflight)) return 1;
     double t_objs = hx_now_ms();
 
     if (o->emit_hxc) {
@@ -471,6 +580,8 @@ static void hx_usage(void) {
             "  hxc build <archivo.hxe> [-o salida] [--emit-only] [--keep-c]\n"
             "  hxc build <archivo.hxe> --emit-hxc DIR   (escribe una unidad .hxc por modulo)\n"
             "  hxc build <archivo.hxe> --use-hxc DIR     (compila contra interfaces .hxc)\n"
+            "  hxc build --kit <archivo.hxk>   (construye el paquete)\n"
+            "  hxc kit   <archivo.hxk> [--path DIR]   (resuelve dependencias)\n"
             "  hxc check <archivo.hxe>\n"
             "  hxc size <binario>\n"
             "  hxc version\n", HX_VERSION);
@@ -497,6 +608,43 @@ int main(int argc, char **argv) {
             return 1;
         }
         printf("%s %d bytes (%.2f KiB)\n", argv[2], sz, (double)sz / 1024.0);
+        return 0;
+    }
+    if (!strcmp(cmd, "kit")) {
+        const char *file = NULL;
+        HxPathList paths;
+        memset(&paths, 0, sizeof(paths));
+        paths.data[paths.len++] = ".";
+        for (int i = 2; i < argc; i++) {
+            if (!strcmp(argv[i], "--path") && i + 1 < argc)
+                paths.data[paths.len++] = argv[++i];
+            else if (!argv[i][0])
+                continue;
+            else if (!file)
+                file = argv[i];
+        }
+        if (!file) {
+            hx_usage();
+            return 2;
+        }
+        HxArena arena;
+        hx_arena_init(&arena);
+        HxDiagBag diags;
+        hx_diag_init(&diags, &arena);
+        HxKit kit;
+        if (!hx_kit_resolve(&arena, file, &paths, &diags, &kit)) {
+            hx_diag_render(&diags, NULL, stderr);
+            return 1;
+        }
+        printf("%s %s\n", kit.name, kit.version);
+        printf("  entry    %s\n", kit.entry);
+        for (int i = 0; i < kit.deps.len; i++)
+            printf("  %-8s %s %s\n",
+                   kit.deps.data[i].is_require ? "require" : "dep",
+                   kit.deps.data[i].name, kit.deps.data[i].version);
+        for (int i = 0; i < kit.n_features; i++) printf("  feature  %s\n", kit.features[i]);
+        for (int i = 0; i < kit.n_kits; i++)
+            printf("  resolution %s %s\n", kit.kits[i]->name, kit.kits[i]->version);
         return 0;
     }
     if (!strcmp(cmd, "test")) {
@@ -570,6 +718,9 @@ int main(int argc, char **argv) {
         } else if (!strcmp(a, "--timing")) o.verbose = 1;
         else if (!strcmp(a, "--emit-hxc") && i + 1 < argc) o.emit_hxc = argv[++i];
         else if (!strcmp(a, "--use-hxc") && i + 1 < argc) o.use_hxc = argv[++i];
+        else if (!strcmp(a, "--jobs") && i + 1 < argc) o.jobs = atoi(argv[++i]);
+        else if (!strcmp(a, "--kit") && i + 1 < argc) { o.kit_file = argv[++i]; if (!entry) entry = ""; }
+        else if (!strcmp(a, "--path") && i + 1 < argc) ++i; /* se lee antes */
         else if (a[0] == '-') {
             fprintf(stderr, "hx: opción desconocida '%s'\n", a);
             return 2;
@@ -585,13 +736,55 @@ int main(int argc, char **argv) {
         hx_usage();
         return 2;
     }
-    if (!entry) {
+    HxSession *s = (HxSession *)malloc(sizeof(HxSession));
+    hx_session_init(s);
+    HxPathList kitpaths;
+    memset(&kitpaths, 0, sizeof(kitpaths));
+    for (int i = 0; i < argc; i++)
+        if (!strcmp(argv[i], "--path") && i + 1 < argc) kitpaths.data[kitpaths.len++] = argv[i + 1];
+    if (!kitpaths.len) kitpaths.data[kitpaths.len++] = ".";
+    if (o.kit_file) {
+        /* el manifiesto decide el punto de entrada, el perfil y los DEFINE */
+        HxKit kit;
+        if (!hx_kit_resolve(&s->arena, o.kit_file, &kitpaths, &s->diags, &kit)) {
+            hx_diag_render(&s->diags, NULL, stderr);
+            return 1;
+        }
+        if (o.verbose) {
+            fprintf(stderr, "hx: kit %s %s\n", kit.name, kit.version);
+            for (int i = 0; i < kit.n_defines; i++)
+                fprintf(stderr, "hx:   define %s\n", kit.defines[i]);
+        }
+        entry = hx_kit_entry_path(&s->arena, &kit, o.kit_file);
+        if (!hx_file_exists(entry)) {
+            fprintf(stderr, "hx: el manifiesto %s apunta a %s y no existe\n", o.kit_file, entry);
+            return 1;
+        }
+        if (kit.profile && !hx_ascii_casecmp(kit.profile, "libc")) o.profile = HX_PROFILE_LIBC;
+        /* cada dependencia resuelta aporta su directorio a la busqueda */
+        for (int i = 0; i < kit.n_kits && i < HX_KIT_MAX; i++) {
+            const char *dir = kitpaths.data[0];
+            if (kit.kits[i]->file) {
+                char *d = hx_arena_strdup(&s->arena, kit.kits[i]->file);
+                char *slash = strrchr(d, '/');
+                if (slash) {
+                    *slash = 0;
+                    o.mod_dirs[o.n_mod_dirs++] = d;
+                }
+            }
+            (void)dir;
+        }
+        for (int i = 0; i < kit.n_defines && o.n_defines < HX_KIT_MAX; i++)
+            o.defines[o.n_defines++] = kit.defines[i];
+        for (int i = 0; i < kit.n_opts && o.n_opts < HX_KIT_MAX; i++)
+            o.extra_opts[o.n_opts++] = kit.opts[i];
+    }
+    if (!entry || !*entry) {
         hx_usage();
         return 2;
     }
 
-    HxSession *s = (HxSession *)malloc(sizeof(HxSession));
-    hx_session_init(s);
+
 
     const char *base = hx_path_basename(&s->arena, entry);
     if (!strcmp(base, "build")) {
@@ -610,6 +803,8 @@ int main(int argc, char **argv) {
         bin_path = hx_arena_sprintf(&s->arena, "build/%s.bin", stem);
     }
 
+    g_extra_mod_dirs = o.mod_dirs;
+    g_n_extra_mod_dirs = o.n_mod_dirs;
     double ms = 0;
     if (hx_build_main(s, entry, &o, bin_path, &ms) != 0) {
         const char *src = NULL;

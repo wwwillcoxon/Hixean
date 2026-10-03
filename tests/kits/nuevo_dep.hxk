@@ -1,0 +1,4 @@
+KIT nuevo_dep 0.1.0
+  ENTRY roto.hxe
+  DEP base >= 9.0
+END KIT

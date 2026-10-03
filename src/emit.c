@@ -779,7 +779,11 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
             hx_scan_expr(e, s->exit_.code);
             break;
         case ST_BLOCK: body = &s->block.stmts; break;
-        case ST_ARENA: body = &s->arena.body; break;
+        case ST_ARENA:
+            /* el tipo hx_arena se declara en _runtime.h, que se escribe antes */
+            e->uses_arena = 1;
+            body = &s->arena.body;
+            break;
         case ST_DEFER: hx_scan_body(e, &s->inner); break;
         default: break;
     }
@@ -1161,6 +1165,11 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             break;
         }
         case EX_UN:
+            if (x->un.op == UOP_ADDR) {
+                hx_buf_printf(b, "(&hx_v_%s)",
+                              hx_sym_str(x->un.operand->path.parts.data[0].name));
+                break;
+            }
             if (x->un.op == UOP_NOT) {
                 hx_buf_str(b, "!");
                 hx_expr_str(e, x->un.operand, 7, b);
@@ -1183,6 +1192,11 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             break;
         }
+        case EX_DEREF:
+            hx_buf_str(b, "(*");
+            hx_expr_str(e, x->try.inner, 0, b);
+            hx_buf_str(b, ")");
+            break;
         case EX_MEMB: {
             if (x->is_intrin == 5) {
                 hx_enum_member_str(e, x, b);

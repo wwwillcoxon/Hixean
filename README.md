@@ -25,7 +25,8 @@ Hola mundo
 | M5 | genéricos monomorfizados, `TRAIT`/`IMPLEMENTAR PARA` con despacho estático, iteradores lazy (`ITER<T>`, `FOR x IN`, `MAP`/`FILTER`/`TAKE`) | `TAKE` sobre 1 000 sin materializar |
 | M7 | compilación por módulos con caché de objetos y unidad `.hxc` (interfaz + biblioteca) | recompilar 1 de 20 módulos: 240 ms |
 | M8 | `ENUM` con `MATCH` exhaustivo, `DONDE T: Trait`, funciones anónimas `FUNC`, división verificada | `1 / 0` da `E0305`; `n / 0` aborta con 70 |
-| M9–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
+| M9 | `PTR` con `&`/`^`, compilación paralela, paquetes `.hxk` con resolución de dependencias | 20 módulos: 4 636 ms → 1 767 ms |
+| M10–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -119,6 +120,49 @@ NEXT x
 La división y el módulo se comprueban: `1 / 0` no compila (`E0305`) y un
 divisor que sólo se conoce en ejecución aborta con 70 en vez de provocar una
 `SIGFPE`.
+
+M9 cierra las herramientas que faltaban:
+
+`PTR` es un tipo declarable con `&x` para tomar la dirección de una variable y
+`p^` para leer o escribir a través de ella. Es el puntero crudo del lenguaje:
+no hay conversiones implícitas, `&` no acepta un literal (`E0720`), `&` sobre
+una variable de `ARENA` se rechaza porque el puntero quedaría colgando
+(`E0721`), `^` fuera de un `PTR` da `E0722` y no se puede escribir en un
+miembro de un temporal (`E0723`).
+
+```
+DIM x AS INT = 5
+DIM p AS PTR AS INT = &x
+p^ = p^ + 1
+PRINT p^              ' 6
+IF p == 0 THEN PRINT "nulo"
+```
+
+La compilación de las unidades de traducción es paralela: hasta ocho procesos
+`cc` simultáneos, uno por núcleo por defecto y `--jobs N` para fijarlo. En 20
+módulos el tiempo de `cc` baja de 4 636 ms a 1 767 ms en esta máquina de 4
+núcleos, y el resultado del programa no cambia.
+
+Los paquetes se describen en un manifiesto `.hxk`:
+
+```
+KIT aritmetica 1.0.0
+  TARGET hixe >= 0.1
+  PROFILE freestanding
+  ENTRY aritmetica.hxe
+  DEP base >= 0.2          ' se busca en las rutas de --path
+  REQUIRE vectores         ' una FEATURE propia o heredada
+  PROVIDES aritmetica
+  DEFINE HX_MATEMATICAS 1
+END KIT
+```
+
+`hxc kit <manifiesto> --path DIR` resuelve y muestra el grafo; `hxc build --kit
+<manifiesto>` construye el paquete: toma `ENTRY`, aplica `PROFILE` y pasa los
+`DEFINE` a `cc`, y los directorios de las dependencias se añaden a la búsqueda de
+módulos. Un paquete que no está, una versión que no encaja (`E0806`), una
+`REQUIRE` sin `FEATURE` (`E0808`) o una instrucción desconocida (`E0804`) se
+rechazan con el archivo y la línea.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.

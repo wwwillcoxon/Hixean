@@ -364,7 +364,54 @@ aborta con 70 (`division por cero` / `modulo por cero`) y `INT_MIN / -1`
 aborta con desbordamiento. Si el divisor es una constante cero, el error es de
 compilación (`E0305`). La división entre `FLOAT` conserva el resultado de IEEE.
 
-## 17. Lo que este documento *no* cubre todavía
+## 17. Punteros
 
-`COMPTIME`, subtipado estructural (LSP), `.hxk`/`.hxq`, capacidades
-(`std.net`, `audio`, `gpu`), `PTR` como tipo declarable.
+```
+tipo       = ... | "PTR" [ ( ":" | "AS" ) ] tipo | "REF" [ ( ":" | "AS" ) ] tipo ;
+unario     = "&" primario | "^" postfijo ;
+postfijo   = ... | "^" | "." identificador "^" | ...
+```
+
+`&x` toma la dirección de una variable y `p^` lee o escribe a través del
+puntero. `PTR T` es el tipo; `0` es el puntero nulo y se puede comparar con `==`
+y `!=`. No hay conversiones implícitas ni aritmética de punteros.
+
+| código | significa |
+|---|---|
+| `E0720` | `&` sobre algo que no es una variable con nombre |
+| `E0721` | `&` sobre una variable de `ARENA`: quedaría colgando |
+| `E0722` | `^` sobre algo que no es `PTR` |
+| `E0723` | asignar a un miembro de un valor temporal (`f(a).v = 1`) |
+
+## 18. Paquetes
+
+```
+manifiesto = "KIT" ident version ,
+              { instruccion } , "END" "KIT" ;
+instruccion = "ENTRY" ruta | "TARGET" version | "PROFILE" perfil
+            | "DEP" ident [ ">=" version ] | "REQUIRE" ident
+            | "FEATURE" ident | "PROVIDES" ident | "ASSET" ruta
+            | "DEFINE" texto | "OPT" texto | "BENCH" texto | "EXPECT" texto
+            | "LINK" texto | "BACKEND" texto ;
+```
+
+Un `DEP` se busca como `<ruta>/<nombre>/<nombre>.hxk` o `<ruta>/<nombre>.hxk` en
+las rutas de `--path`; su `ENTRY` no se construye, pero sus `FEATURE` y
+`PROVIDES` se heredan y su directorio entra en la búsqueda de módulos. Un
+`REQUIRE` se satisface con una `FEATURE` propia o heredada.
+
+| código | significa |
+|---|---|
+| `E0801` | el manifiesto no existe |
+| `E0802` | falta `KIT` inicial o `END KIT` final |
+| `E0803` | falta `ENTRY` |
+| `E0804` | instrucción desconocida |
+| `E0805` | cadena de dependencias más profunda de 16 |
+| `E0806` | la versión encontrada no cumple la petición |
+| `E0807` | el paquete no está en ninguna ruta |
+| `E0808` | un `REQUIRE` sin `FEATURE` que lo satisfaga |
+
+## 19. Lo que este documento *no* cubre todavía
+
+`COMPTIME`, subtipado estructural (LSP), consultas `.hxq`, capacidades
+(`std.net`, `audio`, `gpu`).

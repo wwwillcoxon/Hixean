@@ -1,0 +1,32 @@
+"PTR: direcciones, comparacion con nulo y errores"
+DIM x AS INT = 5
+DIM p AS PTR AS INT = &x
+PRINT p^
+p^ = p^ + 1
+PRINT p^
+PRINT x
+
+"comparar con nulo"
+DIM nulo AS PTR AS INT = 0
+IF p == nulo THEN PRINT "no deberia llegar aqui"
+PRINT "p no es nulo"
+IF nulo == 0 THEN PRINT "nulo es nulo"
+
+"un puntero a un TYPE"
+TYPE Caja
+  v AS INT
+END TYPE
+DIM c AS Caja
+c.v = 3
+DIM pc AS PTR AS Caja = &c
+pc^.v = 42
+PRINT c.v
+
+"tomar la direccion de un literal no tiene sentido"
+
+"ARENA a nivel de bloque y punteros"
+ARENA tmp
+  DIM buf AS INT[8]
+  buf[0] = 99
+  PRINT buf[0]
+END ARENA
