@@ -9,6 +9,18 @@ $ ./build/hxc run examples/hola.hxe
 Hola mundo
 ```
 
+## Manual
+
+`docs/manual.html` es el manual interactivo: los mismos ejemplos que el corpus,
+con búsqueda, tema oscuro, copia de código y la tabla de diagnósticos filtrable
+por familia. No necesita nada externo (un solo archivo, sin JavaScript de
+terceros) y trae estilos de impresión, así que «Guardar PDF» produce un
+documento paginado con el diálogo del navegador.
+
+```
+make manual
+```
+
 ## Estado
 
 | hito | qué funciona | puerta |
@@ -28,7 +40,7 @@ Hola mundo
 | M9 | `PTR` con `&`/`^`, compilación paralela, paquetes `.hxk` con resolución de dependencias | 20 módulos: 4 636 ms → 1 767 ms |
 | M10 | subtipado estructural (LSP) con materialización de la conversión | `Perro` sirve donde se pide `Animal` |
 | M11 | capacidades: `ENABLE net` con sockets por syscall directa y puerta `CAPABILITY` del manifiesto | ida y vuelta UDP por loopback |
-| M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen | consulta por `PROVIDES`+`VERSION` acierta y filtra |
+| M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen; manual HTML interactivo | consulta por `PROVIDES`+`VERSION` acierta y filtra |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga

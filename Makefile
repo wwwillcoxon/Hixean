@@ -25,7 +25,12 @@ size: build/hxc
 	@./build/hxc build examples/hola.hxe -o build/hola && ./build/hxc size build/hola
 	@sz=$$(wc -c < build/hola); if [ $$sz -gt 12288 ]; then echo "FALLO: $$sz bytes > 12288"; exit 1; fi; echo "OK: $$sz <= 12288 bytes"
 
+manual:
+	@echo "docs/manual.html: abriend en un navegador busqueda, tema oscuro y tabla de errores con filtro"
+	@echo "para PDF: el boton 'Guardar PDF' usa el dialogo de impresión del navegador"
+	@ls -l docs/manual.html
+
 clean:
 	rm -rf build $(OBJS) $(DEPS)
 
-.PHONY: all clean test size
+.PHONY: all clean test size manual

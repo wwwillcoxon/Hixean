@@ -158,7 +158,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <figure class="ej">
         <figcaption><span>fib.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">FUNCTION Fib(n AS INT) AS INT
-  IF n < 2 THEN RETURN n
+  IF n &lt; 2 THEN RETURN n
   RETURN Fib(n - 1) + Fib(n - 2)
 END FUNCTION
 
@@ -277,7 +277,7 @@ PRINT f *| f                ' en FLOAT no satura: 2.25</code></pre>
         <figcaption><span>no termina bien</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">DIM grande AS INT = 2000000000
 PRINT grande + grande</code></pre>
-        <div class="salida"><b>en ejecución</b><pre>hx: error: desbordamiento de Entero en +
+        <div class="salida"><b>en stderr</b><pre>hx: error: desbordamiento de Entero en +
 codigo de salida 70</pre></div>
       </figure>
     </section>
@@ -352,20 +352,20 @@ PRINT total
 DIM j AS INT = 0
 WHILE TRUE
   j = j + 1
-  IF j >= 10 THEN EXIT WHILE
+  IF j &gt;= 10 THEN EXIT WHILE
 END WHILE
 PRINT j
 
 FOR k = 0 TO 20 STEP 2
   IF k = 6 THEN CONTINUE
-  IF k >= 12 THEN BREAK
+  IF k &gt;= 12 THEN BREAK
   PRINT k
 NEXT k
 
 DIM x AS INT = 5
-IF x > 10 THEN
+IF x &gt; 10 THEN
   PRINT "grande"
-ELSEIF x > 3 THEN
+ELSEIF x &gt; 3 THEN
   PRINT "mediano"
 ELSE
   PRINT "chico"
@@ -432,12 +432,12 @@ rango alto</pre></div>
       <figure class="ej">
         <figcaption><span>funciones.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">FUNCTION Max(a AS INT, b AS INT) AS INT
-  IF a > b THEN RETURN a
+  IF a &gt; b THEN RETURN a
   RETURN b
 END FUNCTION
 
 FUNCTION SumaHasta(n AS INT, acc AS I64) AS I64
-  IF n <= 0 THEN RETURN acc
+  IF n &lt;= 0 THEN RETURN acc
   RETURN SumaHasta(n - 1, acc + n)
 END FUNCTION
 
@@ -551,7 +551,7 @@ p.nombre = "Rex"
 p.patas = 4
 
 DIM x AS Incompatible = p</code></pre>
-        <div class="salida"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Perro</pre></div>
+        <div class="salida"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Animal</pre></div>
       </figure>
       <p>Cuando el verificador acepta la conversión, la materializa al emitir
       como un literal compuesto que copia los campos comunes, así el C generado
@@ -566,20 +566,20 @@ DIM x AS Incompatible = p</code></pre>
 <pre><code class="lang-hixean">DIM a AS vec3 = (1.0, 2.0, 2.0)
 DIM b AS vec3 = (0.0, 1.0, 0.0)
 
-PRINT a.x, a.y             ' componentes
-PRINT a.xx                 ' swizzle: (1,1)
+PRINT a.x, a.y             ' los componentes de uno en uno
+PRINT a.xx                 ' un swizzle imprime como vector
 
 DIM u AS vec3 = NORMALIZED(a)
-PRINT DOT(a, u)            ' 1.0
+PRINT DOT(a, u)            ' producto escalar
 PRINT CROSS(a, b).y        ' producto cruz
 
 DIM v AS vec2 = (1, 2)     ' los componentes admiten enteros
-PRINT v.zy</code></pre>
-        <div class="salida"><b>salida</b><pre>3.0	4.0
-7.0
-1.0
-0.0	1.0
-3.0	2.0	1.0</pre></div>
+PRINT v.yx</code></pre>
+        <div class="salida"><b>salida</b><pre>1        2
+(1, 1)
+3
+0
+(2, 1)</pre></div>
       </figure>
       <p>Los literales de vector llegan hasta 4 componentes; <code>(a,b)</code> es
       <code>vec2</code>, <code>(a,b,c)</code> <code>vec3</code> y
@@ -645,7 +645,7 @@ hx_str hx_v_r = hx_t0.s;          ' si no, propaga y sale con 70</code></pre>
       <figure class="ej">
         <figcaption><span>defer.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">FUNCTION Temprano(n AS INT) AS INT
-  IF n > 0 THEN
+  IF n &gt; 0 THEN
     DEFER PRINT "limpieza antes del RETURN"
     RETURN 99
   END IF
@@ -925,19 +925,38 @@ NEXT x</code></pre>
         <figcaption><span>mate.hxs</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">MODULE mate
 
-EXPORT FUNCTION Cuadra(x AS INT) AS INT
-  RETURN x * x
+EXPORT CONST POR_TRES AS INT = 3
+
+EXPORT TYPE Escala
+  valor AS INT
+  nombre AS STRING
+END TYPE
+
+EXPORT FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
 END FUNCTION
 
-FUNCTION Oculto(x AS INT) AS INT
-  RETURN x
+FUNCTION Oculto(n AS INT) AS INT
+  RETURN n
 END FUNCTION
 
 END MODULE</code></pre>
-        <div class="salida"><b>usa.hxe</b><pre>import mate
-PRINT mate.Cuadra(7)
-' mate.Oculto(7)  ' E0302: no está exportado</pre></div>
       </figure>
+      <figure class="ej">
+        <figcaption><span>usa.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">IMPORT mate
+
+PRINT mate.Doble(21)
+PRINT mate.POR_TRES
+DIM e AS mate.Escala = mate.EscalaDe(7, "siega")
+PRINT e.valor, e.nombre</code></pre>
+        <div class="salida"><b>salida</b><pre>42
+3
+7        siega</pre></div>
+      </figure>
+      <p>Lo que no esté marcado <code>EXPORT</code> no se ve desde fuera:
+      <code>mate.Oculto(7)</code> da <code>E0302</code> diciendo qué elementos
+      exporta el módulo.</p>
       <p>Una biblioteca se publica como una unidad <code>.hxc</code> (interfaz
       con tipos, constantes y firmas) más un <code>lib&lt;modulo&gt;.a</code> con
       la implementación. Quien la usa no necesita sus fuentes:</p>
@@ -1106,7 +1125,78 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
       </div>
       <table id="tabla-errores">
         <tr><th>Código</th><th>Qué significa</th></tr>
-        <!--TABLA-->
+        <tr class="fila" data-codigo="E0101"><td><code>E0101</code></td><td>literal entero inválido · literal flotante inválido · literal numérico inválido</td></tr>
+        <tr class="fila" data-codigo="E0102"><td><code>E0102</code></td><td>carácter inesperado &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0103"><td><code>E0103</code></td><td>cadena sin cerrar hasta el final del archivo</td></tr>
+        <tr class="fila" data-codigo="E0201"><td><code>E0201</code></td><td>en un TRAIT sólo se admiten METODO · en una implementación sólo se admiten METODO · se esperaba &#x27;…&#x27;se encontró … aquí · se esperaba …se encontró … aquí</td></tr>
+        <tr class="fila" data-codigo="E0202"><td><code>E0202</code></td><td>se esperaba un nombre de tipo</td></tr>
+        <tr class="fila" data-codigo="E0203"><td><code>E0203</code></td><td>ITER necesita un tipo de elemento · se esperaba un tipo</td></tr>
+        <tr class="fila" data-codigo="E0204"><td><code>E0204</code></td><td>un literal de vector tiene como máximo 4 componentes</td></tr>
+        <tr class="fila" data-codigo="E0205"><td><code>E0205</code></td><td>se esperaba una expresión</td></tr>
+        <tr class="fila" data-codigo="E0206"><td><code>E0206</code></td><td>se esperaba el nombre de la variable de bucle · se esperaba un nombre de variable · se esperaba un patrón · un rango debe empezar con un literal</td></tr>
+        <tr class="fila" data-codigo="E0207"><td><code>E0207</code></td><td>demasiadas ramas ELSEIF</td></tr>
+        <tr class="fila" data-codigo="E0208"><td><code>E0208</code></td><td>en un ENUM sólo se admiten variantes · se esperaba el nombre de la función · se esperaba el nombre del ENUM · se esperaba el nombre del METODO · se esperaba el nombre del TRAIT · se esper…</td></tr>
+        <tr class="fila" data-codigo="E0209"><td><code>E0209</code></td><td>expresión no asignable · se esperaba el nombre de un parámetro</td></tr>
+        <tr class="fila" data-codigo="E0301"><td><code>E0301</code></td><td>REF … espera un … · se esperaba …, se encontró …</td></tr>
+        <tr class="fila" data-codigo="E0302"><td><code>E0302</code></td><td>&#x27;…&#x27; no está exportado por el módulo &#x27;…&#x27;sólo los elementos EXPORT (funciones, constantes, tipos) son visibles al importar</td></tr>
+        <tr class="fila" data-codigo="E0303"><td><code>E0303</code></td><td>&#x27;…&#x27; no tiene miembrosSTRING tiene: …Len IsEmpty Upper Lower Trim Slice At Repeat · &#x27;…&#x27; no tiene un miembro llamado &#x27;…&#x27; · … no tiene una variante llamada &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0304"><td><code>E0304</code></td><td>no se encontró &#x27;…&#x27;las variables deben declararse con DIM antes de usarseDIM … AS INT</td></tr>
+        <tr class="fila" data-codigo="E0305"><td><code>E0305</code></td><td>el divisor de &#x27;…&#x27; es cero y el programa no puede dividirse · interpolación sin cerrar en la cadena · no se encontró la función &#x27;…&#x27;? · una interpolación debe ser un escalar imprimible</td></tr>
+        <tr class="fila" data-codigo="E0306"><td><code>E0306</code></td><td>&#x27;…&#x27; espera exactamente 1 argumentoOkErr · &#x27;…&#x27; espera … argumento(s), recibió … · &#x27;…&#x27; espera …..… argumentos, recibió …firma: FUNCTION …( · TAKE espera 1 argumento · … espera 1 argumento ·…</td></tr>
+        <tr class="fila" data-codigo="E0307"><td><code>E0307</code></td><td>&#x27;++&#x27; requiere dos operandos STRING · &#x27;…&#x27; no admite operandos … y … · &#x27;…&#x27; no está definido entre … y … · AND, OR y XOR requieren operandos BOOL · NOT requiere un operando BOOL · no se pued…</td></tr>
+        <tr class="fila" data-codigo="E0308"><td><code>E0308</code></td><td>tipo desconocido &#x27;…&#x27;los tipos incorporados son BOOL INT I64 FLOAT STRING DURATION · un ENUM no admite aritmética; compara variantes o conviértelo con ENUM_A_INT</td></tr>
+        <tr class="fila" data-codigo="E0309"><td><code>E0309</code></td><td>&#x27;+&#x27; no concatena cadenas; usa &#x27;++&#x27; para STRING · el error de un Result debe ser STRING en esta versión</td></tr>
+        <tr class="fila" data-codigo="E0310"><td><code>E0310</code></td><td>CONST requiere un valor inicial · CONST sólo admite literales y operaciones constantes · un CONST de cadena tiene que ser un literal o una concatenacion de literales</td></tr>
+        <tr class="fila" data-codigo="E0311"><td><code>E0311</code></td><td>PRINT no admite valores de ese tipo</td></tr>
+        <tr class="fila" data-codigo="E0312"><td><code>E0312</code></td><td>la condición de IF debe ser BOOL · la condición de WHILE debe ser BOOL</td></tr>
+        <tr class="fila" data-codigo="E0313"><td><code>E0313</code></td><td>BREAK y CONTINUE sólo pueden aparecer dentro de un bucle</td></tr>
+        <tr class="fila" data-codigo="E0314"><td><code>E0314</code></td><td>el código de salida debe ser INT</td></tr>
+        <tr class="fila" data-codigo="E0315"><td><code>E0315</code></td><td>&#x27;…&#x27; ya está declarado en este ámbito</td></tr>
+        <tr class="fila" data-codigo="E0401"><td><code>E0401</code></td><td>DEFER requiere una sentencia</td></tr>
+        <tr class="fila" data-codigo="E0402"><td><code>E0402</code></td><td>&#x27;…&#x27; espera un vector · &#x27;…&#x27; espera un vector de … componentes · &#x27;…&#x27; no es un componente o swizzle válido aquí · &#x27;…&#x27; no está definido entre … y … · un literal de vector sólo admite FLOAT o INT</td></tr>
+        <tr class="fila" data-codigo="E0403"><td><code>E0403</code></td><td>&#x27;?&#x27; sólo puede aparecer como valor completo de una asignación, DIM o RETURN · &#x27;?&#x27; sólo puede ser el valor completo de una asignación, DIM o RETURN</td></tr>
+        <tr class="fila" data-codigo="E0404"><td><code>E0404</code></td><td>&#x27;?&#x27; sólo se aplica a un valor de tipo Result</td></tr>
+        <tr class="fila" data-codigo="E0405"><td><code>E0405</code></td><td>MATCH exige CASE ELSE o cubrir todos los casos de Ok y Err</td></tr>
+        <tr class="fila" data-codigo="E0406"><td><code>E0406</code></td><td>el patrón no puede ser … aquí</td></tr>
+        <tr class="fila" data-codigo="E0407"><td><code>E0407</code></td><td>&#x27;…&#x27; pertenece a una arena que ya terminóla memoria de una ARENA se libera al salir del bloquecopia el valor fuera del bloque o devuelve un Result · BREAK o CONTINUE no puede saltar por en…</td></tr>
+        <tr class="fila" data-codigo="E0408"><td><code>E0408</code></td><td>&#x27;…&#x27; ya está prestadouna variable se presta a lo sumo una vez por ambito (unicidad) · un REF sólo puede tomar prestada una variable con nombresi necesitas arithmetic cruda usa PTR</td></tr>
+        <tr class="fila" data-codigo="E0501"><td><code>E0501</code></td><td>no hay fuente ni unidad .hxc para &#x27;…&#x27;publica la biblioteca con --emit-hxc DIR · no se encontró el módulo &#x27;…&#x27; (busqué ….hxs y ….hxf)las rutas de IMPORT se resuelven relativas al archivo de…</td></tr>
+        <tr class="fila" data-codigo="E0502"><td><code>E0502</code></td><td>&#x27;…&#x27; está declarado más de una vez en &#x27;…&#x27;Hixean no admite sobrecarga de funciones</td></tr>
+        <tr class="fila" data-codigo="E0601"><td><code>E0601</code></td><td>… no es una unidad .hxc</td></tr>
+        <tr class="fila" data-codigo="E0602"><td><code>E0602</code></td><td>tipo demasiado anidado en … · … declara demasiados tipos · … está dañada o truncada · … está dañada: el hash del cuerpo no coincide · … está truncada: el cuerpo declara …lu bytes y el arc…</td></tr>
+        <tr class="fila" data-codigo="E0603"><td><code>E0603</code></td><td>… usa formato …/abi … y esta versión entiende …/…</td></tr>
+        <tr class="fila" data-codigo="E0701"><td><code>E0701</code></td><td>&#x27;…&#x27; espera … parametro(s) de tipo, recibió …</td></tr>
+        <tr class="fila" data-codigo="E0702"><td><code>E0702</code></td><td>no se pudo inferir el tipo de &#x27;…&#x27; en &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0703"><td><code>E0703</code></td><td>&#x27;…&#x27; deduce … y … en la misma llamada</td></tr>
+        <tr class="fila" data-codigo="E0704"><td><code>E0704</code></td><td>al instanciar … para …una funcion generica se comprueba una vez por cada combinacion de argumentos de tipo que aparece en el programa</td></tr>
+        <tr class="fila" data-codigo="E0705"><td><code>E0705</code></td><td>&#x27;…&#x27; espera … argumento(s) de tipo</td></tr>
+        <tr class="fila" data-codigo="E0706"><td><code>E0706</code></td><td>SELF sólo se puede usar dentro de una implementación de TRAIT</td></tr>
+        <tr class="fila" data-codigo="E0707"><td><code>E0707</code></td><td>… no implementa el METODO ….… · … no implementa ….…</td></tr>
+        <tr class="fila" data-codigo="E0710"><td><code>E0710</code></td><td>el metodo … del TRAIT … espera un receptor</td></tr>
+        <tr class="fila" data-codigo="E0711"><td><code>E0711</code></td><td>no existe el TRAIT &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0712"><td><code>E0712</code></td><td>FOR ... IN espera un iterador construido con Rango</td></tr>
+        <tr class="fila" data-codigo="E0713"><td><code>E0713</code></td><td>… sólo se puede aplicar a un iterador</td></tr>
+        <tr class="fila" data-codigo="E0714"><td><code>E0714</code></td><td>… espera el nombre de una funcion</td></tr>
+        <tr class="fila" data-codigo="E0715"><td><code>E0715</code></td><td>FILTER espera una funcion de … a BOOL · MAP espera una funcion de un argumento · MAP espera una funcion de …, … toma …</td></tr>
+        <tr class="fila" data-codigo="E0716"><td><code>E0716</code></td><td>&#x27;…&#x27; no es un parametro de tipo de &#x27;…&#x27; · … no implementa el TRAIT … que exige &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0720"><td><code>E0720</code></td><td>&#x27;&amp;&#x27; sólo se puede aplicar a una variable con nombre</td></tr>
+        <tr class="fila" data-codigo="E0721"><td><code>E0721</code></td><td>&#x27;&amp;&#x27; sobre una variable de ARENA: el puntexto quedaria colgado al salir del bloque</td></tr>
+        <tr class="fila" data-codigo="E0722"><td><code>E0722</code></td><td>&#x27;^&#x27; sólo se puede aplicar a un PTR</td></tr>
+        <tr class="fila" data-codigo="E0723"><td><code>E0723</code></td><td>no se puede asignar a un miembro de un valor temporal</td></tr>
+        <tr class="fila" data-codigo="E0801"><td><code>E0801</code></td><td>no se encontró el manifiesto …</td></tr>
+        <tr class="fila" data-codigo="E0802"><td><code>E0802</code></td><td>falta el nombre del KIT · se esperaba END KIT · un manifiesto empieza con KIT · …: falta END KIT</td></tr>
+        <tr class="fila" data-codigo="E0803"><td><code>E0803</code></td><td>falta ENTRY</td></tr>
+        <tr class="fila" data-codigo="E0804"><td><code>E0804</code></td><td>línea …: instrucción desconocida &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0805"><td><code>E0805</code></td><td>cadena de dependencias demasiado profunda en &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0806"><td><code>E0806</code></td><td>…: se pidió &#x27;… …&#x27; pero el manifiesto encontrado es …</td></tr>
+        <tr class="fila" data-codigo="E0807"><td><code>E0807</code></td><td>no se encontró el paquete &#x27;…&#x27; en … ruta(s)</td></tr>
+        <tr class="fila" data-codigo="E0808"><td><code>E0808</code></td><td>&#x27;…&#x27; requiere la capacidad &#x27;…&#x27; y no hay FEATURE que la proporcione</td></tr>
+        <tr class="fila" data-codigo="E0811"><td><code>E0811</code></td><td>no se encontró la consulta …</td></tr>
+        <tr class="fila" data-codigo="E0812"><td><code>E0812</code></td><td>falta END QUERY · se esperaba END QUERY · una consulta empieza con QUERY</td></tr>
+        <tr class="fila" data-codigo="E0813"><td><code>E0813</code></td><td>la consulta no pide nada</td></tr>
+        <tr class="fila" data-codigo="E0814"><td><code>E0814</code></td><td>línea …: falta el valor de … · línea …: falta la version · línea …: falta la version tras &#x27;…&#x27; · línea …: predicado desconocido &#x27;…&#x27; (usa PROVIDES, FEATURE, CAPABILITY, DEP o VERSION) · lín…</td></tr>
+        <tr class="fila" data-codigo="E0902"><td><code>E0902</code></td><td>…: el argumento … debe ser INT, I64 o STRING</td></tr>
+        <tr class="fila" data-codigo="familias"><td><code>familia</code></td><td><code>E01</code> léxico, <code>E02</code> sintaxis, <code>E03</code> tipos y nombres, <code>E04</code> semántica, <code>E05</code> módulos, <code>E06</code> unidades .hxc, <code>E07</code> genéricos y traits, <code>E08</code> paquetes y consultas, <code>E09</code> capacidades</td></tr>
       </table>
     </section>
 
