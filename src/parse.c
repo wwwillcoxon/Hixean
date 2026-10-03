@@ -142,6 +142,7 @@ static void hx_sync_stmt(HxParser *p) {
 
 static HxExpr *hx_expr(HxParser *p);
 static HxTy *hx_type(HxParser *p);
+static void hx_block_body(HxParser *p, HxStmtVec *out);
 static void hx_stmt_into(HxParser *p, HxStmtVec *out);
 static HxPattern *hx_pattern(HxParser *p);
 static HxExpr *hx_expr_new(HxParser *p, HxExprKind k, HxSpan sp);
@@ -532,6 +533,49 @@ static HxExpr *hx_primary(HxParser *p) {
         e->un.operand = operand;
         return e;
     }
+    if (hx_is_kw(p, TK_KW_FUNC)) {
+        /* FUNC(params) [AS tipo] { sentencia } END: una funcion sin capturas */
+        hx_bump(p);
+        struct HxFunc *f = (struct HxFunc *)hx_arena_calloc(p->arena, sizeof(struct HxFunc));
+        f->span = sp;
+        f->name_span = sp;
+        hx_expect_punct(p, "(");
+        if (!hx_is_punct(p, ")")) {
+            for (;;) {
+                HxParam prm;
+                memset(&prm, 0, sizeof(prm));
+                if (!hx_is_kw(p, TK_IDENT)) {
+                    hx_error(p->diags, hx_cur(p)->span, "E0209",
+                             "se esperaba el nombre de un parámetro");
+                    p->panicking = 1;
+                    break;
+                }
+                prm.name = hx_cur(p)->sym;
+                prm.span = hx_cur(p)->span;
+                hx_bump(p);
+                if (hx_eat_type_marker(p)) prm.ty = hx_type(p);
+                HX_VEC_PUSH(f->params, prm);
+                if (!hx_eat_punct(p, ",")) break;
+            }
+        }
+        hx_expect_punct(p, ")");
+        f->ret = hx_eat_kw(p, TK_KW_AS) ? hx_type(p) : hx_ty_mk(p->arena, TY_VOID);
+        /* el cuerpo de un FUNC termina en END, sin palabra de cierre */
+        for (;;) {
+            hx_skip_nl(p);
+            if (hx_is_kw(p, TK_KW_END) || hx_cur(p)->kind == TK_EOF) break;
+            if (p->panicking) break;
+            int before = p->pos;
+            hx_stmt_into(p, &f->body);
+            if (p->pos == before) hx_bump(p);
+        }
+        hx_expect_kw(p, TK_KW_END, "END");
+        hx_eat_kw(p, TK_KW_FUNC); /* END FUNC o END */
+        HxExpr *e = hx_expr_new(p, EX_FUNC, sp);
+        e->lit = f;
+        e->span = hx_join(sp, hx_tok_span(p, -1));
+        return e;
+    }
     if (t->kind == TK_IDENT || hx_tok_is_kw(t->kind)) {
         HxExpr *e = hx_expr_new(p, EX_PATH, sp);
         HX_VEC_PUSH(e->path.parts, ((HxPathPart){t->sym, sp}));
@@ -662,7 +706,8 @@ static int hx_at_block_end(HxParser *p) {
     return !hx_ascii_casecmp(text, "if") || !hx_ascii_casecmp(text, "while") ||
            !hx_ascii_casecmp(text, "for") || !hx_ascii_casecmp(text, "arena") ||
            !hx_ascii_casecmp(text, "function") || !hx_ascii_casecmp(text, "match") ||
-           !hx_ascii_casecmp(text, "metodo") || !hx_ascii_casecmp(text, "method");
+           !hx_ascii_casecmp(text, "metodo") || !hx_ascii_casecmp(text, "method") ||
+           !hx_ascii_casecmp(text, "func");
 }
 
 static void hx_block_body(HxParser *p, HxStmtVec *out) {
@@ -1094,6 +1139,30 @@ static void hx_parse_func(HxParser *p, struct HxFunc *f, int is_export) {
     }
     hx_expect_punct(p, ")");
     f->ret = hx_eat_kw(p, TK_KW_AS) ? hx_type(p) : hx_ty_mk(p->arena, TY_VOID);
+    /* DONDE T: Trait, U: OtroTrait */
+    if (hx_is_kw(p, TK_KW_DONDE)) {
+        hx_bump(p);
+        while (hx_cur(p)->kind != TK_NL && hx_cur(p)->kind != TK_EOF && hx_is_kw(p, TK_IDENT)) {
+            HxSym tp = hx_cur(p)->sym;
+            hx_bump(p);
+            if (!hx_eat_punct(p, ":"))
+                hx_expect_punct(p, ":");
+            if (!hx_is_kw(p, TK_IDENT)) {
+                hx_error(p->diags, hx_cur(p)->span, "E0208",
+                         "se esperaba el nombre del TRAIT");
+                p->panicking = 1;
+                break;
+            }
+            HxSym tr = hx_cur(p)->sym;
+            hx_bump(p);
+            if (f->n_constraints < HX_MAX_TPARAMS) {
+                f->constrained[f->n_constraints] = tp;
+                f->ctraits[f->n_constraints] = tr;
+                f->n_constraints++;
+            }
+            if (!hx_eat_punct(p, ",")) break;
+        }
+    }
     if (hx_eat_kw(p, TK_KW_TAIL)) f->is_comptime_only = 1;
     hx_skip_nl(p);
     hx_block_body(p, &f->body);
@@ -1207,6 +1276,50 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             }
             HX_VEC_PUSH(m->imports, im);
             hx_skip_rest_of_line(&p);
+            continue;
+        }
+        if (hx_is_kw(&p, TK_KW_ENUM)) {
+            HxTypeDecl td;
+            memset(&td, 0, sizeof(td));
+            td.is_export = is_export;
+            td.is_enum = 1;
+            td.module = m->index;
+            td.span = hx_cur(&p)->span;
+            hx_bump(&p);
+            if (!hx_is_kw(&p, TK_IDENT)) {
+                hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                         "se esperaba el nombre del ENUM");
+                p.panicking = 1;
+                hx_sync_stmt(&p);
+                continue;
+            }
+            td.name = hx_cur(&p)->sym;
+            hx_bump(&p);
+            hx_skip_nl(&p);
+            while (!hx_is_kw(&p, TK_KW_END) && hx_cur(&p)->kind != TK_EOF) {
+                if (p.panicking) {
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                if (!hx_is_kw(&p, TK_IDENT)) {
+                    hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                             "en un ENUM sólo se admiten variantes");
+                    p.panicking = 1;
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                HxField f;
+                memset(&f, 0, sizeof(f));
+                f.span = hx_cur(&p)->span;
+                f.name = hx_cur(&p)->sym;
+                hx_bump(&p);
+                HX_VEC_PUSH(td.fields, f);
+                if (!hx_eat_kw(&p, TK_NL)) hx_expect_kw(&p, TK_NL, "fin de línea");
+            }
+            hx_expect_kw(&p, TK_KW_END, "END");
+            hx_expect_kw(&p, TK_KW_ENUM, "ENUM");
+            td.index = m->types.len;
+            HX_VEC_PUSH(m->types, td);
             continue;
         }
         if (hx_is_kw(&p, TK_KW_TRAIT)) {

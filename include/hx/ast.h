@@ -52,7 +52,8 @@ typedef enum {
     EX_MEMBER,
     EX_TRY,
     EX_VEC,
-    EX_MEMB
+    EX_MEMB,
+    EX_FUNC /* FUNC(...) ... END: se eleva a una funcion del modulo */
 } HxExprKind;
 
 typedef enum {
@@ -127,6 +128,7 @@ struct HxExpr {
     int is_intrin;
     HxExpr *recv;
     struct HxFunc *fn;
+    struct HxFunc *lit; /* EX_FUNC: la funcion anonima */
     union {
         int64_t ival;
         double fval;
@@ -190,6 +192,7 @@ struct HxTypeDecl {
     HxSym name;
     HX_VEC_ANON(HxField) fields;
     HxSpan span;
+    int is_enum; /* ENUM: sus campos son variantes y valen 0, 1, 2... */
     HxSym tparams[HX_MAX_TPARAMS];
     int n_tparams;
     int module;
@@ -217,6 +220,10 @@ struct HxFunc {
     HxSpan name_span;
     HxSym tparams[HX_MAX_TPARAMS];
     int n_tparams;
+    /* DONDE T: Trait, U: Trait -- se comprueba en cada instancia */
+    HxSym constrained[HX_MAX_TPARAMS];
+    HxSym ctraits[HX_MAX_TPARAMS];
+    int n_constraints;
     int module;
     int is_generic;
     int is_instance;
@@ -447,6 +454,10 @@ typedef struct {
     HxFunc **instances;
     int n_instances;
     int cap_instances;
+    /* funciones anonimas (FUNC ... END) elevadas a funciones del modulo */
+    HxFunc **lambdas;
+    int n_lambdas;
+    int cap_lambdas;
     HxTypeDecl **type_instances;
     int n_type_instances;
     int cap_type_instances;

@@ -315,7 +315,56 @@ la secuencia y consume sólo tres elementos.
 | `E0714` | `MAP`/`FILTER` sin una función de primer orden |
 | `E0715` | la función no tiene la firma que exige el adaptador |
 
-## 13. Lo que este documento *no* cubre todavía
+## 13. ENUM
 
-`COMPTIME`, restricciones `DONDE T: Trait` sobre funciones genéricas, funciones
-anónimas, `.hxk`/`.hxq`, capacidades (`std.net`, `audio`, `gpu`).
+```
+enum       = [ "EXPORT" ] "ENUM" ident , { ident } , "END" "ENUM" ;
+```
+
+Cada variante es una constante con nombre `ENUM_VARIANTE` que vale su posición.
+El tipo se representa como `int32_t` en C, pero conserva su nombre: se puede
+comparar, pasar a funciones, guardar en un `TYPE` y usar en un `MATCH`. No
+admite aritmética (`E0308`).
+
+| método | devuelve |
+|---|---|
+| `.ordinal` / `.ENUM_A_INT` | `INT` con el valor de la variante |
+| `.Nombre` | `STRING` con el nombre de la variante |
+
+Un `MATCH` sobre un `ENUM` es exhaustivo cuando aparecen todas las variantes,
+igual que un `Result` con `Ok` y `Err`; si falta una, `E0405`.
+
+## 14. Restricciones sobre genéricos
+
+```
+funcion    = ... , [ "DONDE" ident ":" ident { "," ident ":" ident } ] , ...
+```
+
+`DONDE T: Compara` exige que el tipo concreto que se ligue a `T` tenga una
+implementación de ese `TRAIT`. La comprobación ocurre al instanciar: si falta,
+`E0716` en el punto de llamada. Dentro del cuerpo, `Compara.Mayor(a, b)` se
+resuelve por el tipo ya sustituido de `a`.
+
+## 15. Funciones anónimas
+
+```
+lambda     = "FUNC" "(" parametros ")" [ "AS" tipo ] , { sentencia } ,
+             ( "END" ) ( "FUNC" ) ;
+```
+
+Una `FUNC` no captura el entorno: el compilador la eleva a una función del
+módulo con nombre generado y la referencia se toma como puntero a función. Se
+acepta donde el lenguaje espera una función de primer orden, es decir en `MAP`
+y `FILTER`.
+
+## 16. División verificada
+
+`/` y `MOD` sobre enteros emiten una comprobación en ejecución: divisor cero
+aborta con 70 (`division por cero` / `modulo por cero`) y `INT_MIN / -1`
+aborta con desbordamiento. Si el divisor es una constante cero, el error es de
+compilación (`E0305`). La división entre `FLOAT` conserva el resultado de IEEE.
+
+## 17. Lo que este documento *no* cubre todavía
+
+`COMPTIME`, subtipado estructural (LSP), `.hxk`/`.hxq`, capacidades
+(`std.net`, `audio`, `gpu`), `PTR` como tipo declarable.

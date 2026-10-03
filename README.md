@@ -24,7 +24,8 @@ Hola mundo
 | M6 | vectores: literales, componentes, swizzle, `DOT`/`CROSS`/`NORMALIZED` | `v.zyx` y `f(a,b).y` en el corpus |
 | M5 | genéricos monomorfizados, `TRAIT`/`IMPLEMENTAR PARA` con despacho estático, iteradores lazy (`ITER<T>`, `FOR x IN`, `MAP`/`FILTER`/`TAKE`) | `TAKE` sobre 1 000 sin materializar |
 | M7 | compilación por módulos con caché de objetos y unidad `.hxc` (interfaz + biblioteca) | recompilar 1 de 20 módulos: 240 ms |
-| M8–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
+| M8 | `ENUM` con `MATCH` exhaustivo, `DONDE T: Trait`, funciones anónimas `FUNC`, división verificada | `1 / 0` da `E0305`; `n / 0` aborta con 70 |
+| M9–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -77,6 +78,47 @@ FOR x IN Rango(1, 1000000).Map(Doble).Take(3)
   PRINT x            ' 2, 4, 6: la cadena no se materializa
 NEXT x
 ```
+
+M8 cierra el lenguaje del núcleo:
+
+```
+ENUM Color                 ' un ENUM es un INT con nombre y se compara
+  ROJO                     ' por valor, no por aritmética
+  VERDE
+  AZUL
+END ENUM
+
+DIM c AS Color = Color.AZUL
+PRINT c.ordinal            ' 2
+PRINT c.Nombre             ' "AZUL"
+
+MATCH c                    ' el MATCH sobre un ENUM es exhaustivo
+  CASE ROJO THEN PRINT "rojo"
+  CASE VERDE THEN PRINT "verde"
+  CASE AZUL THEN PRINT "azul"
+END MATCH
+```
+
+```
+FUNCTION Max<T>(a AS T, b AS T) AS T DONDE T: Compara
+  RETURN Compara.Mayor(a, b)     ' Compara.Mayor está disponible por el DONDE
+END FUNCTION
+```
+
+`MAP` y `FILTER` aceptan una `FUNC(...) ... END` sin capturas, que el
+compilador eleva a una función del módulo:
+
+```
+FOR x IN Rango(1, 1000).Map(FUNC(n AS INT) AS INT
+  RETURN n * n
+END).Take(3)
+  PRINT x
+NEXT x
+```
+
+La división y el módulo se comprueban: `1 / 0` no compila (`E0305`) y un
+divisor que sólo se conoce en ejecución aborta con 70 en vez de provocar una
+`SIGFPE`.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.

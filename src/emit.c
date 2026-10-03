@@ -19,6 +19,7 @@ typedef struct {
     int uses_string;
     int uses_arena;
     int uses_iter;
+    int uses_enum;
     int iter_depth;
     int iter_n; /* contador global de variables de iterador por funcion */
     /* tipos de elemento usados por iteradores, para generar sus ayudantes */
@@ -61,7 +62,9 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
         case TY_QUAT: return "hx_quat";
         case TY_NAMED:
             if (hx_ty_is_result(t)) return "hx_result";
-            if (t->decl) return hx_arena_sprintf(e->arena, "hx_T_%s", hx_sym_str(t->decl->name));
+            /* un ENUM es un INT con nombre: en C basta con int32_t */
+            if (t->decl && !t->decl->is_enum)
+                return hx_arena_sprintf(e->arena, "hx_T_%s", hx_sym_str(t->decl->name));
             return "int32_t";
         default: return "int32_t";
     }
@@ -292,6 +295,28 @@ static const char *HX_RT_CHECKED =
     "  if (__builtin_sub_overflow(a, b, &r))\n"
     "    hx_panic(\"desbordamiento de I64 en -\", sizeof(\"desbordamiento de I64 en -\") - 1);\n"
     "  return r;\n"
+    "}\n"
+    "static inline int32_t hx_div_i32(int32_t a, int32_t b) {\n"
+    "  if (b == 0) hx_panic(\"division por cero\", sizeof(\"division por cero\") - 1);\n"
+    "  if (a == -2147483647 - 1 && b == -1)\n"
+    "    hx_panic(\"desbordamiento de Entero en /\", sizeof(\"desbordamiento de Entero en /\") - 1);\n"
+    "  return a / b;\n"
+    "}\n"
+    "static inline int64_t hx_div_i64(int64_t a, int64_t b) {\n"
+    "  if (b == 0) hx_panic(\"division por cero\", sizeof(\"division por cero\") - 1);\n"
+    "  if (a == -9223372036854775807LL - 1 && b == -1)\n"
+    "    hx_panic(\"desbordamiento de I64 en /\", sizeof(\"desbordamiento de I64 en /\") - 1);\n"
+    "  return a / b;\n"
+    "}\n"
+    "static inline int32_t hx_mod_i32(int32_t a, int32_t b) {\n"
+    "  if (b == 0) hx_panic(\"modulo por cero\", sizeof(\"modulo por cero\") - 1);\n"
+    "  if (a == -2147483647 - 1 && b == -1) return 0;\n"
+    "  return a % b;\n"
+    "}\n"
+    "static inline int64_t hx_mod_i64(int64_t a, int64_t b) {\n"
+    "  if (b == 0) hx_panic(\"modulo por cero\", sizeof(\"modulo por cero\") - 1);\n"
+    "  if (a == -9223372036854775807LL - 1 && b == -1) return 0;\n"
+    "  return a % b;\n"
     "}\n"
     "static inline int32_t hx_add_sat_i32(int32_t a, int32_t b) {\n"
     "  int64_t r = (int64_t)a + (int64_t)b;\n"
@@ -658,6 +683,7 @@ static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to);
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
 static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b);
 static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name);
+static HxConst *hx_find_const_named(HxEmit *e, const char *name);
 static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int cap, int ind);
 
 static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind);
@@ -902,6 +928,7 @@ static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
     for (int i = 1; i < pre; i++) hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
 }
 
+static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
 static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
     int myprec = hx_prec_of(x);
     int paren = myprec < prec;
@@ -950,6 +977,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
         case EX_PATH: {
             if (x->vec_component > 0) {
                 hx_emit_vec_access(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 5) {
+                hx_enum_member_str(e, x, b);
                 break;
             }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
@@ -1014,6 +1045,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, "hx_normalized(");
                 hx_expr_str(e, x->call.args.data[0].value, 0, b);
                 hx_buf_str(b, ")");
+                break;
+            }
+            if (x->is_intrin == 5) {
+                hx_enum_member_str(e, x, b);
                 break;
             }
             if (x->is_intrin) {
@@ -1089,6 +1124,17 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                     break;
                 }
             }
+            if ((x->bin.op == OP_DIV || x->bin.op == OP_MOD) && x->ty &&
+                x->ty->kind != TY_FLOAT) {
+                /* el divisor se comprueba en ejecucion: no se sabe su valor */
+                const char *k = x->ty->kind == TY_I64 || x->ty->kind == TY_DURATION ? "i64" : "i32";
+                hx_buf_printf(b, "hx_%s_%s(", x->bin.op == OP_DIV ? "div" : "mod", k);
+                hx_expr_str(e, x->bin.lhs, 0, b);
+                hx_buf_str(b, ", ");
+                hx_expr_str(e, x->bin.rhs, 0, b);
+                hx_buf_str(b, ")");
+                break;
+            }
             if (x->bin.op == OP_ADD || x->bin.op == OP_SUB || x->bin.op == OP_ADDS ||
                 x->bin.op == OP_SUBS) {
                 const char *kind = x->ty && x->ty->kind == TY_FLOAT   ? "f64"
@@ -1138,6 +1184,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             break;
         }
         case EX_MEMB: {
+            if (x->is_intrin == 5) {
+                hx_enum_member_str(e, x, b);
+                break;
+            }
             hx_expr_str(e, x->member.base, 7, b);
             hx_buf_printf(b, ".%s", hx_sym_str(x->member.name));
             break;
@@ -1318,6 +1368,17 @@ static void hx_emit_pattern_test(HxEmit *e, HxPattern *pat, const char *subj, Hx
             if (!hx_ascii_casecmp(hx_sym_str(pat->ctor), "Err")) {
                 hx_buf_printf(b, "!hx_is_ok(%s)", subj);
                 return;
+            }
+            /* una variante de ENUM se compara con su constante */
+            if (subj_ty && subj_ty->kind == TY_NAMED && subj_ty->decl &&
+                subj_ty->decl->is_enum) {
+                char *cn = hx_arena_sprintf(e->arena, "%s_%s",
+                                             hx_sym_str(subj_ty->decl->name),
+                                             hx_sym_str(pat->ctor));
+                if (hx_find_const_named(e, cn)) {
+                    hx_buf_printf(b, "(%s == hx_v_%s)", subj, cn);
+                    return;
+                }
             }
             hx_buf_str(b, "1");
             return;
@@ -1771,6 +1832,7 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
                       hx_sym_str(m->types.data[i].name));
     for (int i = 0; i < m->types.len; i++) {
         HxTypeDecl *t = &m->types.data[i];
+        if (t->is_enum) continue;
         hx_buf_printf(b, "struct hx_T_%s {\n", hx_sym_str(t->name));
         for (int j = 0; j < t->fields.len; j++)
             hx_buf_printf(b, "  %s %s;\n", hx_c_ty(e, t->fields.data[j].ty),
@@ -1983,6 +2045,14 @@ static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b) {
     hx_buf_str(b, tag);
 }
 
+static HxConst *hx_find_const_named(HxEmit *e, const char *name) {
+    for (int m = 0; m < e->unit->modules.len; m++)
+        for (int i = 0; i < e->unit->modules.data[m].consts.len; i++)
+            if (!hx_ascii_casecmp(hx_sym_str(e->unit->modules.data[m].consts.data[i].name), name))
+                return &e->unit->modules.data[m].consts.data[i];
+    return NULL;
+}
+
 static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name) {
     for (int m = 0; m < e->unit->modules.len; m++)
         for (int i = 0; i < e->unit->modules.data[m].funcs.len; i++)
@@ -2034,11 +2104,10 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
         return;
     }
     HxExpr *farg = x->call.args.data[0].value;
-    const char *fname =
-        farg->kind == EX_PATH
-            ? hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name)
-            : hx_sym_str(farg->method);
-    struct HxFunc *fn = farg->fn ? farg->fn : hx_find_func_named(e, fname);
+    struct HxFunc *fn = NULL;
+    if (farg->kind == EX_FUNC && farg->lit) fn = farg->lit;
+    else if (farg->kind == EX_PATH && farg->path.parts.len)
+        fn = hx_find_func_named(e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
     hx_buf_printf(&e->out, "hx_iter %s = hx_iter_%s_", out,
                   !hx_ascii_casecmp(nm, "Map") ? "map" : "filter");
     hx_iter_suffix(e, t, &e->out);
@@ -2047,7 +2116,7 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
         hx_iter_suffix(e, out_t, &e->out);
     }
     hx_buf_printf(&e->out, "(&%s, %s, (void *)&hx_call_%s);\n", arena, inner,
-                  hx_sym_str(fn ? fn->name : fname));
+                  hx_sym_str(fn ? fn->name : "?"));
 }
 
 static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
@@ -2072,6 +2141,40 @@ static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
     b->len = e->out.len;
     b->cap = e->out.cap;
     e->out = *saved;
+}
+
+/* `.Ordinal` y `.ENUM_A_INT` dan el entero; `.Nombre` da el texto de la
+   variante mediante una cadena constante generada por el compilador. */
+static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b) {
+    HxTypeDecl *ed = x->payload_ty && x->payload_ty->decl ? x->payload_ty->decl : NULL;
+    const char *mn = hx_sym_str(x->method);
+    if (ed && !hx_ascii_casecmp(mn, "Nombre")) {
+        e->uses_string = 1;
+        hx_buf_printf(b, "hx_enum_nombre_%s(", hx_sym_str(ed->name));
+        hx_expr_str(e, x->recv, 0, b);
+        hx_buf_str(b, ")");
+        return;
+    }
+    hx_expr_str(e, x->recv, 0, b);
+}
+
+/* El nombre de una variante se decide en tiempo de ejecucion con una cadena
+   constante por variante; el compilador la genera para cada ENUM usado. */
+static void hx_emit_enum_names(HxEmit *e, HxBuf *b, HxUnit *unit) {
+    for (int m = 0; m < unit->modules.len; m++)
+        for (int i = 0; i < unit->modules.data[m].types.len; i++) {
+            HxTypeDecl *td = &unit->modules.data[m].types.data[i];
+            if (!td->is_enum) continue;
+            hx_buf_printf(b, "static inline hx_str hx_enum_nombre_%s(int32_t v) {\n",
+                          hx_sym_str(td->name));
+            hx_buf_str(b, "  switch (v) {\n");
+            for (int f = 0; f < td->fields.len; f++) {
+                hx_buf_printf(b, "    case %d: return hx_lit(\"%s\", %d);\n", f,
+                              hx_sym_str(td->fields.data[f].name),
+                              (int)strlen(hx_sym_str(td->fields.data[f].name)));
+            }
+            hx_buf_str(b, "    default: return hx_lit(\"?\", 1);\n  }\n}\n");
+        }
 }
 
 static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
@@ -2107,6 +2210,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_STRFUNS);
         hx_buf_str(b, HX_RT_STRMORE);
     }
+    if (e->uses_enum) hx_emit_enum_names(e, b, e->unit);
     hx_buf_str(b, HX_RT_MEM_DECL);
     hx_buf_str(b, "#endif\n");
 }
@@ -2239,6 +2343,8 @@ static void hx_emit_module_source(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b
         hx_emit_param_list(e, f, b);
         hx_buf_str(b, ");\n");
     }
+    for (int i = 0; i < unit->n_lambdas; i++)
+        if (unit->lambdas[i]->module == m->index) hx_emit_func(e, unit->lambdas[i]);
     for (int i = 0; i < m->impls.len; i++)
         for (int j = 0; j < m->impls.data[i].methods.len; j++)
             hx_emit_func(e, &m->impls.data[i].methods.data[j]);
@@ -2251,6 +2357,7 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     memset(&e, 0, sizeof(e));
     e.arena = arena;
     e.unit = unit;
+    e.uses_enum = 0;
     e.diags = unit->diags;
     e.profile = opt->profile;
     e.out.arena = arena;
@@ -2265,6 +2372,10 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
                 if (hx_ty_is_result(m->funcs.data[j].params.data[q].ty)) e.uses_result = 1;
         }
         for (int t = 0; t < m->types.len; t++) {
+            if (m->types.data[t].is_enum) {
+                e.uses_enum = 1;
+                e.uses_string = 1;
+            }
             for (int q = 0; q < m->types.data[t].fields.len; q++) {
                 HxTy *ft = m->types.data[t].fields.data[q].ty;
                 if (hx_ty_is_result(ft)) e.uses_result = 1;
@@ -2346,6 +2457,12 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     if (entry) {
         HxBuf saved_f = e.out;
         e.out = main_b;
+        for (int i = 0; i < unit->n_lambdas; i++)
+            if (unit->lambdas[i]->module == entry->index)
+                hx_buf_printf(&e.out, "static %s hx_call_%s(",
+                              hx_c_ty(&e, unit->lambdas[i]->ret),
+                              hx_sym_str(unit->lambdas[i]->name)), hx_emit_param_list(&e, unit->lambdas[i], &e.out),
+                hx_buf_str(&e.out, ");\n");
         for (int j = 0; j < entry->funcs.len; j++) {
             struct HxFunc *f = &entry->funcs.data[j];
             if (f->is_export || f->is_generic) continue;
@@ -2373,6 +2490,8 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     if (entry) {
         HxBuf saved = e.out;
         e.out = main_b;
+        for (int i = 0; i < unit->n_lambdas; i++)
+            if (unit->lambdas[i]->module == entry->index) hx_emit_func(&e, unit->lambdas[i]);
         for (int i = 0; i < entry->impls.len; i++)
             for (int j = 0; j < entry->impls.data[i].methods.len; j++)
                 hx_emit_func(&e, &entry->impls.data[i].methods.data[j]);

@@ -1,0 +1,25 @@
+ENUM Color
+  ROJO
+  VERDE
+  AZUL
+END ENUM
+
+FUNCTION Nombre(c AS Color) AS STRING
+  RETURN c.Nombre
+END FUNCTION
+
+DIM r AS Color = Color.ROJO
+DIM a AS Color = Color.AZUL
+PRINT r
+PRINT a.ordinal
+PRINT Nombre(a)
+PRINT Nombre(r)
+
+MATCH a
+  CASE ROJO THEN PRINT "es rojo"
+  CASE VERDE THEN PRINT "es verde"
+  CASE AZUL THEN PRINT "es azul"
+END MATCH
+
+DIM i AS INT = r.ENUM_A_INT
+PRINT i + 1

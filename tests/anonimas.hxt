@@ -1,0 +1,14 @@
+"funciones anonimas en MAP y FILTER"
+FOR x IN Rango(1, 10).Map(FUNC(n AS INT) AS INT
+  RETURN n * n
+END).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n > 20
+END).Take(3)
+  PRINT x
+NEXT x
+
+FOR s IN Rango(1, 3).Map(FUNC(n AS INT) AS STRING
+  RETURN "n{n}"
+END)
+  PRINT s
+NEXT s

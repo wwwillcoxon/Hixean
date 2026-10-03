@@ -1,0 +1,24 @@
+"restricciones DONDE T: Trait sobre funciones genericas"
+TRAIT Compara
+  METODO Mayor(a AS SELF, b AS SELF) AS SELF
+END TRAIT
+
+IMPLEMENTAR INT PARA Compara
+  METODO Mayor(a AS INT, b AS INT) AS INT
+    IF a > b THEN RETURN a
+    RETURN b
+  END METHOD
+END IMPLEMENTAR
+
+IMPLEMENTAR STRING PARA Compara
+  METODO Mayor(a AS STRING, b AS STRING) AS STRING
+    RETURN a
+  END METHOD
+END IMPLEMENTAR
+
+FUNCTION Max<T>(a AS T, b AS T) AS T DONDE T: Compara
+  RETURN Compara.Mayor(a, b)
+END FUNCTION
+
+PRINT Max(3, 9)
+PRINT Max("alfa", "beta")

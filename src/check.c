@@ -27,6 +27,7 @@ typedef struct {
     HxArena *arena;
     HxIntern *intern;
     HxDiagBag *diags;
+    int uses_enum;
     struct HxFunc *cur_func;
     HxTy *ret_ty;
     int loop_depth;
@@ -42,7 +43,10 @@ typedef struct {
 } HxChecker;
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
+static int hx_ty_enum_like(const HxTy *t);
+static int hx_enum_member(HxChecker *c, HxExpr *e, const char *member, HxExpr *recv);
 static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
+static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e);
 static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g);
 static void hx_define_module_scope(HxChecker *c, HxModule *mod);
 static void hx_collect_names(HxChecker *c, HxModule *mod);
@@ -398,9 +402,74 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                                                       : TY_VEC4);
                     return e;
                 }
-                if (t->decl) {
+                /* `Color.AZUL`: el simbolo de la izquierda es el ENUM */
+                if (se->kind == SK_TYPE && split < n) {
+                    HxTypeDecl *ed = hx_find_type(c, parts[0].name);
+                    if (ed && ed->is_enum) {
+                        for (int fi = 0; fi < ed->fields.len; fi++) {
+                            if (hx_ascii_casecmp(hx_sym_str(ed->fields.data[fi].name),
+                                                 member))
+                                continue;
+                            HxSym cn = hx_intern_cstr(
+                                c->intern, hx_arena_sprintf(c->arena, "%s_%s",
+                                                            hx_sym_str(ed->name),
+                                                            hx_sym_str(ed->fields.data[fi].name)));
+                            HxConst *kc = hx_find_const(c, cn);
+                            if (!kc) continue;
+                            e->path.parts.len = 0;
+                            HX_VEC_PUSH(e->path.parts, ((HxPathPart){kc->name, parts[split].span}));
+                            e->prefix_len = 0;
+                            e->ty = kc->ty;
+                            return e;
+                        }
+                        hx_error(c->diags, parts[split].span, "E0303",
+                                 hx_arena_sprintf(c->arena,
+                                                  "%s no tiene una variante llamada '%s'",
+                                                  hx_sym_str(ed->name), member));
+                        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+                        return e;
+                    }
+                }
+                int es_metodo_enum = !hx_ascii_casecmp(member, "Ordinal") ||
+                                     !hx_ascii_casecmp(member, "ENUM_A_INT") ||
+                                     !hx_ascii_casecmp(member, "Nombre");
+                if (t && t->decl && t->decl->is_enum && split < n && es_metodo_enum) {
+                    HxExpr *recvexpr = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
+                    recvexpr->kind = EX_PATH;
+                    recvexpr->span = e->span;
+                    for (int k = 0; k < split; k++) HX_VEC_PUSH(recvexpr->path.parts, parts[k]);
+                    recvexpr->ty = t;
+                    if (hx_enum_member(c, e, member, recvexpr)) return e;
+                }
+                if (t && t->decl && t->decl->is_enum && split < n) {
+                    /* Color.AZUL: la variante es una constante con el nombre del
+                       enum delante, para que en C no choque con otra AZUL */
+                    HxTypeDecl *ed = t->decl;
+                    for (int fi = 0; fi < ed->fields.len; fi++) {
+                        if (hx_ascii_casecmp(hx_sym_str(ed->fields.data[fi].name), member)) continue;
+                        HxConst *kc = hx_find_const(
+                            c, hx_intern_cstr(c->intern,
+                                              hx_arena_sprintf(c->arena, "%s_%s",
+                                                                hx_sym_str(ed->name),
+                                                                hx_sym_str(ed->fields.data[fi].name))));
+                        if (!kc) continue;
+                        e->path.parts.len = 0;
+                        HX_VEC_PUSH(e->path.parts,
+                                    ((HxPathPart){kc->name, parts[split].span}));
+                        e->prefix_len = 0;
+                        e->ty = kc->ty;
+                        return e;
+                    }
+                    hx_error(c->diags, parts[split].span, "E0303",
+                             hx_arena_sprintf(c->arena, "%s no tiene una variante llamada '%s'",
+                                              hx_sym_str(ed->name), member));
+                    e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+                    return e;
+                }
+                if (t && t->decl) {
                     for (int fi = 0; fi < t->decl->fields.len; fi++) {
                         HxField *fld = &t->decl->fields.data[fi];
+                        if (!fld->ty) continue;
                         if (hx_ascii_casecmp(hx_sym_str(fld->name), member)) continue;
                         e->prefix_len = split + 1;
                         e->ty = fld->ty;
@@ -418,7 +487,7 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                 hx_diag_note(c->diags, parts[split].span, "E0303",
                              hx_arena_sprintf(c->arena, "'%s' no tiene miembros",
                                               hx_sym_str(parts[0].name)),
-                             t->kind == TY_STRING
+                             t && t->kind == TY_STRING
                                  ? hx_arena_sprintf(c->arena,
                                                     "STRING tiene: %s",
                                                     "Len IsEmpty Upper Lower Trim Slice At Repeat")
@@ -591,6 +660,10 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             if (se && se->kind == SK_FUNC) f = hx_find_func(c, folded);
         }
     }
+    if (!f && callee->kind == EX_MEMB) {
+        HxExpr *recv = hx_expr_check(c, callee->member.base);
+        if (hx_enum_member(c, e, hx_sym_str(callee->member.name), recv)) return e;
+    }
     if (!f && callee->kind == EX_STR && callee->method) {
         HxExpr *recv = hx_expr_check(c, callee);
         const char *member = hx_sym_str(callee->method);
@@ -747,6 +820,44 @@ static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **tar
         struct HxFunc *inst = c->unit->instances[i];
         if (inst->name && !strcmp(hx_sym_str(inst->name), key)) return inst;
     }
+    /* DONDE T: Trait se comprueba contra el tipo concreto antes de crear la
+       instancia: si falta la implementación, el programa no tiene sentido. */
+    for (int ci = 0; ci < g->n_constraints; ci++) {
+        int ti = -1;
+        for (int k = 0; k < n; k++)
+            if (g->tparams[k] == g->constrained[ci]) ti = k;
+        if (ti < 0) {
+            hx_error(c->diags, sp, "E0716",
+                     hx_arena_sprintf(c->arena, "'%s' no es un parametro de tipo de '%s'",
+                                      hx_sym_str(g->constrained[ci]), hx_sym_str(g->name)));
+            return NULL;
+        }
+        HxTraitDecl *tr = hx_find_trait(c, g->ctraits[ci]);
+        if (!tr) {
+            hx_error(c->diags, sp, "E0711",
+                     hx_arena_sprintf(c->arena, "no existe el TRAIT '%s'",
+                                      hx_sym_str(g->ctraits[ci])));
+            return NULL;
+        }
+        char tn[128];
+        if (targs[ti]->kind == TY_NAMED)
+            snprintf(tn, sizeof(tn), "%s", hx_sym_str(targs[ti]->name));
+        else
+            snprintf(tn, sizeof(tn), "%s", hx_ty_name(targs[ti]));
+        int hay = 0;
+        for (int m = 0; m < c->unit->modules.len && !hay; m++)
+            for (int k = 0; k < c->unit->modules.data[m].impls.len && !hay; k++) {
+                HxImplDecl *im = &c->unit->modules.data[m].impls.data[k];
+                if (hx_ascii_casecmp(hx_sym_str(im->trait_name), hx_sym_str(tr->name))) continue;
+                if (!hx_ascii_casecmp(hx_sym_str(im->type_name), tn)) hay = 1;
+            }
+        if (!hay) {
+            hx_error(c->diags, sp, "E0716",
+                     hx_arena_sprintf(c->arena, "%s no implementa el TRAIT %s que exige '%s'",
+                                      tn, hx_sym_str(tr->name), hx_sym_str(g->name)));
+            return NULL;
+        }
+    }
     struct HxFunc *inst = hx_func_instantiate(c->arena, c->intern, g, targs, n, g->module,
                                        hx_sym_str(c->unit->modules.data[g->module].name), sp,
                                        c->diags);
@@ -849,7 +960,9 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
         return e;
     }
     if (is_cmp) {
-        if (l && r && hx_ty_rank(l) && hx_ty_rank(r)) hx_coerce(c, r, l, e->span, NULL);
+        if (l && r && (hx_ty_rank(l) || hx_ty_enum_like(l)) &&
+            (hx_ty_rank(r) || hx_ty_enum_like(r)) && (hx_ty_rank(l) || hx_ty_rank(r)))
+            hx_coerce(c, r, l, e->span, NULL);
         int eq_only = op == OP_EQ || op == OP_NE;
         int ok = 1;
         if (l && r) {
@@ -888,7 +1001,24 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
         return e;
     }
+    if (op == OP_DIV || op == OP_MOD) {
+        HxExpr *div = e->bin.rhs;
+        int cero = 0;
+        if (div->kind == EX_INT) cero = div->ival == 0;
+        else if (div->kind == EX_FLOAT) cero = div->fval == 0.0;
+        if (cero)
+            hx_error(c->diags, div->span, "E0305",
+                     "el divisor de '%s' es cero y el programa no puede dividirse",
+                     hx_binop_symbol(op));
+    }
     if (is_arith) {
+        if (hx_ty_enum_like(l) || hx_ty_enum_like(r)) {
+            hx_error(c->diags, e->span, "E0308",
+                     "un ENUM no admite aritmética; compara variantes o conviértelo con "
+                     "ENUM_A_INT");
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
         if ((l && !hx_ty_is_numeric(l)) || (r && !hx_ty_is_numeric(r))) {
             hx_diag_note(c->diags, e->span, "E0307",
                          hx_arena_sprintf(c->arena, "'%s' no admite operandos %s y %s",
@@ -967,6 +1097,29 @@ static struct HxFunc *hx_find_func_named(HxChecker *c, HxSym name) {
 }
 
 /* Devuelve 1 si el nombre es un constructor o adaptador de iteradores. */
+/* Una FUNC(...) ... END se comprueba como cualquier otra funcion pero con un
+   nombre generado, porque en C no hay valores de funcion. */
+static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e) {
+    if (!e->lit) return NULL;
+    struct HxFunc *f = e->lit;
+    if (!f->name) {
+        char *nm = hx_arena_sprintf(c->arena, "hx_anon_%s_%d", hx_sym_str(c->mod->name),
+                                     c->unit->n_lambdas);
+        f->name = hx_intern_cstr(c->intern, nm);
+        f->module = c->mod->index;
+        f->is_export = 0;
+        if (c->unit->n_lambdas == c->unit->cap_lambdas) {
+            c->unit->cap_lambdas = c->unit->cap_lambdas ? c->unit->cap_lambdas * 2 : 8;
+            c->unit->lambdas = (struct HxFunc **)hx_arena_realloc_tmp(
+                c->unit->lambdas, sizeof(struct HxFunc *) * (size_t)c->unit->cap_lambdas);
+        }
+        c->unit->lambdas[c->unit->n_lambdas++] = f;
+    }
+    hx_resolve_signature(c, f);
+    hx_check_func(c, f);
+    return f;
+}
+
 static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv) {
     /* un nombre declarado por el programa tiene prioridad sobre el constructor */
     HxSymEntry *declarado = NULL;
@@ -1037,6 +1190,7 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     }
     HxExpr *arg = e->call.args.data[0].value;
     struct HxFunc *f = NULL;
+    if (arg->kind == EX_FUNC) f = hx_lambda_func(c, arg);
     if (arg->kind == EX_PATH && arg->path.parts.len) {
         HxSym fname = arg->path.parts.data[arg->path.parts.len - 1].name;
         f = hx_find_func_named(c, fname);
@@ -1075,6 +1229,26 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     return 1;
 }
 
+static int hx_ty_enum_like(const HxTy *t) {
+    return t && t->kind == TY_NAMED && t->decl && t->decl->is_enum;
+}
+
+/* La conversion de un ENUM a INT y a STRING la resuelve el verificador: hace
+   falta el tipo declarado, no solo el valor. */
+static int hx_enum_member(HxChecker *c, HxExpr *e, const char *member, HxExpr *recv) {
+    if (!hx_ty_enum_like(recv->ty)) return 0;
+    int es_ordinal = !hx_ascii_casecmp(member, "Ordinal");
+    int es_int = !hx_ascii_casecmp(member, "ENUM_A_INT");
+    int es_nombre = !hx_ascii_casecmp(member, "Nombre");
+    if (!es_ordinal && !es_int && !es_nombre) return 0;
+    e->is_intrin = 5;
+    e->method = hx_intern_cstr(c->intern, es_ordinal ? "Ordinal" : es_int ? "ENUM_A_INT" : "Nombre");
+    e->recv = recv;
+    e->payload_ty = recv->ty;
+    e->ty = es_nombre ? hx_ty_builtin(c->arena, TY_STRING) : hx_ty_builtin(c->arena, TY_INT);
+    return 1;
+}
+
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
     if (!e) return e;
     switch (e->kind) {
@@ -1096,6 +1270,11 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
         case EX_NIL:
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             break;
+        case EX_FUNC: {
+            struct HxFunc *f = hx_lambda_func(c, e);
+            e->ty = f && f->ret ? f->ret : hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
         case EX_PATH:
             return hx_path_check(c, e);
         case EX_CALL:
@@ -1141,9 +1320,15 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                                                   : TY_VEC4);
                 break;
             }
+            if (bt && bt->decl && bt->decl->is_enum && hx_enum_member(c, e, member, e->member.base))
+                break;
+            if (bt && bt->decl && bt->decl->is_enum &&
+                hx_enum_member(c, e, member, e->member.base))
+                break;
             if (bt && bt->decl) {
                 for (int fi = 0; fi < bt->decl->fields.len; fi++) {
                     HxField *fld = &bt->decl->fields.data[fi];
+                    if (!fld->ty) continue;
                     if (hx_ascii_casecmp(hx_sym_str(fld->name), member)) continue;
                     e->is_intrin = 4;
                     e->method = e->member.name;
@@ -1303,6 +1488,17 @@ static int hx_body_defer(HxStmtVec *body) {
 
 static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
     if (!pat) return;
+    /* En un MATCH sobre un ENUM, un nombre desnudo es una variante si existe;
+       si no, sigue siendo un binding. */
+    if (subj && hx_ty_enum_like(subj) && subj->decl && pat->kind == PAT_BIND && pat->name) {
+        for (int i = 0; i < subj->decl->fields.len; i++)
+            if (!hx_ascii_casecmp(hx_sym_str(subj->decl->fields.data[i].name),
+                                  hx_sym_str(pat->name))) {
+                pat->kind = PAT_CONSTRUCTOR;
+                pat->ctor = subj->decl->fields.data[i].name;
+                break;
+            }
+    }
     switch (pat->kind) {
         case PAT_BIND:
             hx_define_pattern_binding(c, pat->name, subj, pat->span);
@@ -1402,7 +1598,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                     if (t && t->kind != TY_STRING && t->kind != TY_INT && t->kind != TY_I64 &&
                         t->kind != TY_FLOAT && t->kind != TY_BOOL && t->kind != TY_DURATION &&
                         t->kind != TY_UNKNOWN && !hx_vec_len(t) && t->kind != TY_MAT4 &&
-                        t->kind != TY_QUAT)
+                        t->kind != TY_QUAT && !hx_ty_enum_like(t))
                         hx_error(c->diags, it->expr->span, "E0311",
                                  "PRINT no admite valores de ese tipo");
                 }
@@ -1588,7 +1784,29 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                     if (!hx_ascii_casecmp(hx_sym_str(pt->ctor), "Ok")) covered_ok = 1;
                     if (!hx_ascii_casecmp(hx_sym_str(pt->ctor), "Err")) covered_err = 1;
                 }
-                if (!(hx_ty_is_result(subj) && covered_ok && covered_err))
+                /* un ENUM se considera cubierto cuando aparecen todas sus
+                   variantes, igual que un Result con Ok y Err */
+                int enum_cubierto = 0;
+                if (subj && hx_ty_enum_like(subj) && subj->decl) {
+                    enum_cubierto = 1;
+                    for (int f = 0; f < subj->decl->fields.len && enum_cubierto; f++) {
+                        int visto = 0;
+                        for (int i = 0; i < s->match.cases.len; i++) {
+                            HxPattern *pt = s->match.cases.data[i].pattern;
+                            if (pt->kind == PAT_WILDCARD || pt->kind == PAT_BIND) {
+                                visto = 1;
+                                break;
+                            }
+                            HxSym nm = pt->kind == PAT_CONSTRUCTOR ? pt->ctor
+                                                                   : (pt->name ? pt->name : NULL);
+                            if (nm && !hx_ascii_casecmp(hx_sym_str(nm),
+                                                        hx_sym_str(subj->decl->fields.data[f].name)))
+                                visto = 1;
+                        }
+                        if (!visto) enum_cubierto = 0;
+                    }
+                }
+                if (!((hx_ty_is_result(subj) && covered_ok && covered_err) || enum_cubierto))
                     hx_error(c->diags, s->span, "E0405",
                              "MATCH exige CASE ELSE o cubrir todos los casos de Ok y Err");
             }
@@ -1728,6 +1946,34 @@ int hx_check_unit(HxUnit *unit) {
         for (int t = 0; t < mod->types.len; t++) {
             if (mod->types.data[t].n_tparams) {
                 mod->types.data[t].is_generic = 1;
+                continue;
+            }
+            if (mod->types.data[t].is_enum) {
+                /* ENUM Color / ROJO / VERDE: cada variante es una constante
+                   tipada que vale su posición. Se definen como
+                   Color_ROJO para poderles dar nombre propio en C. */
+                HxTypeDecl *ed = &mod->types.data[t];
+                for (int i = 0; i < ed->fields.len; i++) {
+                    HxConst kc;
+                    memset(&kc, 0, sizeof(kc));
+                    kc.is_export = ed->is_export;
+                    kc.name = hx_intern_cstr(
+                        c.intern, hx_arena_sprintf(c.arena, "%s_%s", hx_sym_str(ed->name),
+                                                  hx_sym_str(ed->fields.data[i].name)));
+                    HxExpr *v = (HxExpr *)hx_arena_calloc(c.arena, sizeof(HxExpr));
+                    v->kind = EX_INT;
+                    v->ival = i;
+                    v->span = ed->fields.data[i].span;
+                    kc.value = v;
+                    HxTy *et = (HxTy *)hx_arena_calloc(c.arena, sizeof(HxTy));
+                    et->kind = TY_NAMED;
+                    et->name = ed->name;
+                    et->decl = ed;
+                    kc.ty = et;
+                    v->ty = et;
+                    kc.span = ed->fields.data[i].span;
+                    HX_VEC_PUSH(mod->consts, kc);
+                }
                 continue;
             }
             for (int i = 0; i < mod->types.data[t].fields.len; i++) {
