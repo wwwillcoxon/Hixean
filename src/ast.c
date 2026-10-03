@@ -45,6 +45,32 @@ HxTy *hx_ty_builtin(HxArena *a, HxTyKind kind) {
     return t;
 }
 
+/* Subtipado estructural: un registro con mas campos sirve donde se pide uno con
+   menos, siempre que los campos comunes sean del mismo tipo. Los campos son
+   invariantes porque se puede escribir a traves de REF. */
+static int hx_field(const HxTypeDecl *d, const char *name) {
+    if (!d) return -1;
+    for (int i = 0; i < d->fields.len; i++)
+        if (!hx_ascii_casecmp(hx_sym_str(d->fields.data[i].name), name)) return i;
+    return -1;
+}
+
+int hx_ty_subtype(const HxTy *from, const HxTy *to) {
+    if (!from || !to) return 0;
+    if (hx_ty_equal(from, to)) return 1;
+    if (from->kind != TY_NAMED || to->kind != TY_NAMED) return 0;
+    if (hx_ty_is_result(from) || hx_ty_is_result(to)) return 0;
+    if (!from->decl || !to->decl) return 0;
+    if (from->decl->is_enum || to->decl->is_enum) return 0;
+    for (int i = 0; i < to->decl->fields.len; i++) {
+        const char *fname = hx_sym_str(to->decl->fields.data[i].name);
+        int j = hx_field(from->decl, fname);
+        if (j < 0) return 0;
+        if (!hx_ty_equal(from->decl->fields.data[j].ty, to->decl->fields.data[i].ty)) return 0;
+    }
+    return 1;
+}
+
 int hx_ty_equal(const HxTy *a, const HxTy *b) {
     if (a == b) return 1;
     if (!a || !b) return 0;

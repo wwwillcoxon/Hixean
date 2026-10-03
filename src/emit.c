@@ -933,7 +933,42 @@ static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
 }
 
 static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
+/* Cuando el verificador acepta un registro con mas campos donde se piden
+   menos, la conversion se materializa copiando los campos comunes. */
+static void hx_emit_conv(HxEmit *e, HxExpr *x, HxBuf *b) {
+    HxTypeDecl *from = x->ty && x->ty->decl ? x->ty->decl : NULL;
+    HxTypeDecl *to = x->conv_ty && x->conv_ty->decl ? x->conv_ty->decl : NULL;
+    if (!from || !to) {
+        hx_expr_str(e, x, 0, b);
+        return;
+    }
+    hx_buf_printf(b, "(%s){", hx_c_ty(e, x->conv_ty));
+    /* los campos se emiten del valor original: hay que quitar la marca para no
+       recursar en la misma conversion */
+    HxTy *marca = x->conv_ty;
+    x->conv_ty = NULL;
+    int primero = 1;
+    for (int i = 0; i < to->fields.len; i++) {
+        const char *fname = hx_sym_str(to->fields.data[i].name);
+        int j = -1;
+        for (int k = 0; k < from->fields.len; k++)
+            if (!hx_ascii_casecmp(hx_sym_str(from->fields.data[k].name), fname)) j = k;
+        if (j < 0) continue;
+        if (!primero) hx_buf_str(b, ", ");
+        primero = 0;
+        hx_buf_printf(b, ".%s = ", fname);
+        hx_expr_str(e, x, 0, b);
+        hx_buf_printf(b, ".%s", fname);
+    }
+    hx_buf_str(b, "}");
+    x->conv_ty = marca;
+}
+
 static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
+    if (x && x->conv_ty) {
+        hx_emit_conv(e, x, b);
+        return;
+    }
     int myprec = hx_prec_of(x);
     int paren = myprec < prec;
     if (paren) hx_buf_put(b, "(", 1);

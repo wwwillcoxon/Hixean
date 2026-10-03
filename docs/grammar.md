@@ -411,7 +411,23 @@ las rutas de `--path`; su `ENTRY` no se construye, pero sus `FEATURE` y
 | `E0807` | el paquete no está en ninguna ruta |
 | `E0808` | un `REQUIRE` sin `FEATURE` que lo satisfaga |
 
-## 19. Lo que este documento *no* cubre todavía
+## 19. Subtipado estructural
 
-`COMPTIME`, subtipado estructural (LSP), consultas `.hxq`, capacidades
-(`std.net`, `audio`, `gpu`).
+Los registros tienen subtipado de anchura: un `TYPE` sirve donde se pide otro
+con menos campos, siempre que los campos comúns tengan exactamente el mismo
+tipo. Los campos son invariantes porque se puede escribir a través de `REF`:
+
+```
+DIM p AS Perro
+DIM a AS Animal = p     ' legal: a Animal le faltan campos
+DIM x AS Incompatible = p   ' E0301: 'nombre' es STRING en uno e INT en otro
+```
+
+Cuando el verificador acepta la conversión, la materializa al emitir como un
+literal compuesto que copia los campos comunes, de modo que el C generado nunca
+mezcla structs distintas. Los `ENUM` nunca participan: dos enums con las mismas
+variantes siguen siendo tipos nominalmente distintos.
+
+## 20. Lo que este documento *no* cubre todavía
+
+`COMPTIME`, consultas `.hxq`, capacidades (`std.net`, `audio`, `gpu`).

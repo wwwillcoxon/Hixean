@@ -26,7 +26,8 @@ Hola mundo
 | M7 | compilación por módulos con caché de objetos y unidad `.hxc` (interfaz + biblioteca) | recompilar 1 de 20 módulos: 240 ms |
 | M8 | `ENUM` con `MATCH` exhaustivo, `DONDE T: Trait`, funciones anónimas `FUNC`, división verificada | `1 / 0` da `E0305`; `n / 0` aborta con 70 |
 | M9 | `PTR` con `&`/`^`, compilación paralela, paquetes `.hxk` con resolución de dependencias | 20 módulos: 4 636 ms → 1 767 ms |
-| M10–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxq` | *pendiente* |
+| M10 | subtipado estructural (LSP) con materialización de la conversión | `Perro` sirve donde se pide `Animal` |
+| M11–M12 | capacidades (`std.net`/`audio`/`gpu`), `.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -163,6 +164,27 @@ END KIT
 módulos. Un paquete que no está, una versión que no encaja (`E0806`), una
 `REQUIRE` sin `FEATURE` (`E0808`) o una instrucción desconocida (`E0804`) se
 rechazan con el archivo y la línea.
+
+M10 añade subtipado estructural para los registros: un `TYPE` con más campos
+sirve donde se pide uno con menos, siempre que los campos comúns sean del mismo
+tipo. Al aceptar la asignación, el compilador materializa la conversión
+copiando campo a campo, de modo que en C no queda ninguna struct incompatible:
+
+```
+TYPE Animal            TYPE Perro             ' Perro tiene un campo más
+  nombre AS STRING       nombre AS STRING
+  patas AS INT           patas AS INT
+END TYPE                 ladridos AS INT
+                        END TYPE
+
+DIM p AS Perro
+DIM a AS Animal = p     ' copia nombre y patas
+Describe(p)            ' un Perro donde se pide un Animal
+```
+
+Los campos son invariantes (no hay subtipado de covarianza) porque se puede
+escribir a través de `REF`, y dos registros con un campo del mismo nombre pero
+de distinto tipo siguen siendo incompatibles.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.

@@ -43,16 +43,15 @@ typedef struct {
 } HxChecker;
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
-static int hx_ty_enum_like(const HxTy *t);
-static int hx_enum_member(HxChecker *c, HxExpr *e, const char *member, HxExpr *recv);
-static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
-static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e);
 static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g);
 static void hx_define_module_scope(HxChecker *c, HxModule *mod);
 static void hx_collect_names(HxChecker *c, HxModule *mod);
 static void hx_resolve_signature(HxChecker *c, struct HxFunc *fn);
 static void hx_check_func(HxChecker *c, struct HxFunc *f);
-
+static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
+static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e);
+static int hx_ty_enum_like(const HxTy *t);
+static int hx_enum_member(HxChecker *c, HxExpr *e, const char *member, HxExpr *recv);
 
 static void hx_scope_push(HxChecker *c) {
     HxScope *s = (HxScope *)hx_arena_calloc(c->arena, sizeof(HxScope));
@@ -178,6 +177,8 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report);
 static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *what) {
     if (!from || !to) return 1;
     if (from->kind == TY_UNKNOWN || to->kind == TY_UNKNOWN) return 1;
+    /* un registro con mas campos sirve donde se pide uno con menos */
+    if (hx_ty_subtype(from, to)) return 1;
     /* el literal 0 es el puntero nulo */
     if (to->kind == TY_PTR) {
         if (from->kind == TY_PTR) return 1;
@@ -252,6 +253,16 @@ static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
 }
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
+
+/* Coerciona una expresion a un tipo y, si hace falta, deja anotado que hay que
+   convertirla de forma estructural al emitir. */
+static void hx_coerce_to(HxChecker *c, HxExpr **slot, HxTy *to, HxSpan sp,
+                         const char *what) {
+    if (!*slot || !to) return;
+    hx_coerce(c, (*slot)->ty, to, sp, what);
+    if ((*slot)->ty && to && !hx_ty_equal((*slot)->ty, to) && hx_ty_subtype((*slot)->ty, to))
+        (*slot)->conv_ty = to;
+}
 
 static int hx_vec_len(HxTy *t) {
     if (!t) return 0;
@@ -612,8 +623,8 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                                           hx_sym_str(tr->name), hx_sym_str(mname), want,
                                           e->call.args.len));
             for (int i = 0; i < e->call.args.len && i < want; i++)
-                hx_coerce(c, e->call.args.data[i].value->ty, m->params.data[i].ty,
-                          e->call.args.data[i].span, hx_sym_str(m->name));
+                hx_coerce_to(c, &e->call.args.data[i].value, m->params.data[i].ty,
+                             e->call.args.data[i].span, hx_sym_str(m->name));
             e->fn = m;
             e->ty = m->ret;
             return e;
@@ -770,7 +781,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                              hx_arena_sprintf(c->arena, "REF %s espera un %s",
                                               hx_sym_str(f->name), hx_ty_name(p->ty->inner)));
             } else {
-                hx_coerce(c, arg->value->ty, p->ty, arg->span, hx_sym_str(f->name));
+                hx_coerce_to(c, &arg->value, p->ty, arg->span, hx_sym_str(f->name));
             }
         }
     }
@@ -936,7 +947,7 @@ static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g) 
                          hx_arena_sprintf(c->arena, "REF %s espera un %s", hx_sym_str(inst->name),
                                           hx_ty_name(p->ty->inner)));
         } else if (p->ty) {
-            hx_coerce(c, arg->value->ty, p->ty, arg->span, hx_sym_str(inst->name));
+            hx_coerce_to(c, &arg->value, p->ty, arg->span, hx_sym_str(inst->name));
         }
     }
     e->fn = inst;
@@ -1624,7 +1635,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_error(c->diags, s->span, "E0309",
                          "'+' no concatena cadenas; usa '++' para STRING");
             if (s->assign.target->ty && s->assign.value->ty)
-                hx_coerce(c, s->assign.value->ty, s->assign.target->ty, s->assign.value->span,
+                hx_coerce_to(c, &s->assign.value, s->assign.target->ty, s->assign.value->span,
                           NULL);
             break;
         }
@@ -1634,8 +1645,9 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 s->dim.init = hx_expr_propagate(c, s->dim.init, s->dim.init->span);
                 if (s->dim.init->ty && s->dim.init->ty->kind == TY_ARRAY && (!t || t->kind == TY_UNKNOWN))
                     t = s->dim.init->ty;
+                if (t && t != s->dim.init->ty)
+                    hx_coerce_to(c, &s->dim.init, t, s->dim.init->span, NULL);
                 if (!t) t = s->dim.init->ty;
-                else hx_coerce(c, s->dim.init->ty, t, s->dim.init->span, NULL);
             }
             if (!t) t = hx_ty_builtin(c->arena, TY_INT);
             s->dim.ty = t;
@@ -1752,7 +1764,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                     s->ret.value->payload_ty = want;
                     s->ret.value->ty = c->ret_ty;
                 } else if (c->ret_ty) {
-                    hx_coerce(c, s->ret.value->ty, c->ret_ty, s->ret.value->span, NULL);
+                    hx_coerce_to(c, &s->ret.value, c->ret_ty, s->ret.value->span, NULL);
                 }
             }
             break;

@@ -1,0 +1,56 @@
+TYPE Animal
+  nombre AS STRING
+  patas AS INT
+END TYPE
+
+TYPE Perro
+  nombre AS STRING
+  patas AS INT
+  ladridos AS INT
+END TYPE
+
+TYPE incompatible
+  nombre AS INT
+END TYPE
+
+TYPE Descuadrado
+  solo AS INT
+END TYPE
+
+FUNCTION Describe(a AS Animal) AS VOID
+  PRINT "{a.nombre} con {a.patas} patas"
+END FUNCTION
+
+DIM p AS Perro
+p.nombre = "Rex"
+p.patas = 4
+p.ladridos = 7
+Describe(p)
+
+DIM d AS Animal = p
+PRINT d.nombre
+PRINT d.patas
+
+"un ENUM nunca es estructuralmente compatible con un registro"
+ENUM Color
+  ROJO
+  VERDE
+END ENUM
+TYPE Pintado
+  color AS Color
+END TYPE
+TYPE SinColor
+  color AS Color
+  extra AS INT
+END TYPE
+FUNCTION Pintar(p AS Pintado) AS VOID
+  PRINT p.color.ordinal
+END FUNCTION
+DIM pin AS Pintado
+pin.color = Color.VERDE
+Pintar(pin)
+TYPE SoloColor
+  color AS Color
+END TYPE
+DIM pc AS SoloColor = pin
+PRINT pc.color.Nombre

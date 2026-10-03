@@ -130,6 +130,7 @@ struct HxExpr {
     HxExpr *recv;
     struct HxFunc *fn;
     struct HxFunc *lit; /* EX_FUNC: la funcion anonima */
+    HxTy *conv_ty;  /* conversion estructural pendiente al emitir */
     union {
         int64_t ival;
         double fval;
@@ -468,6 +469,7 @@ HxTy *hx_ty_new(HxArena *a, HxTyKind kind);
 HxTy *hx_ty_builtin(HxArena *a, HxTyKind kind);
 const char *hx_ty_name(const HxTy *t);
 int hx_ty_equal(const HxTy *a, const HxTy *b);
+int hx_ty_subtype(const HxTy *from, const HxTy *to);
 HxTy *hx_ty_lookup_builtin(HxArena *a, HxSym name);
 int hx_ty_is_numeric(const HxTy *t);
 int hx_ty_is_result(const HxTy *t);
