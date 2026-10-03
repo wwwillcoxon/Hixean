@@ -63,7 +63,8 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   clonado; las consultas `.hxq` lo recorren sin cambiar de formato.
 - **Página pública**: `site/` con `index.html`, `style.css` y `script.js`, sin
   dependencias ni fuentes remotas: tema claro/oscuro, pestañas de ejemplos,
-  copiado de código, contadores, barra de progreso y enlace de salto.
+  copiado de código, contadores, barra de progreso y enlace de salto. Se publica
+  en `github.io/Hixean/` junto con el manual mediante `.github/workflows/pages.yml`.
 - **Documentación**: `docs/grammar.md` (gramática completa con códigos de
   diagnóstico), `docs/manual.html` (manual interactivo con búsqueda, tema
   oscuro y tabla de errores filtrable) y trece ADR en `docs/adr/`.

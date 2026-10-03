@@ -1,0 +1,70 @@
+name: pages
+
+# La pagina publica y el manual se publican en el mismo sitio:
+#
+#   https://wwwillcoxon.github.io/Hixean/                    <- site/index.html
+#   https://wwwillcoxon.github.io/Hixean/docs/manual.html    <- el manual
+#
+# El artefacto lleva site/ en la raiz y docs/ al lado, que es lo que hace que el
+# enlace "../docs/manual.html" de la pagina resuelva en el subruta /Hixean/.
+# Por eso se usa un workflow y no "deploy from a branch": el desplegado por
+# rama solo ofrece la raiz del repositorio o una carpeta llamada docs, y en la
+# raiz no hay un index.html.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: componer el sitio
+        run: |
+          mkdir -p _site/docs
+          cp -r site/. _site/
+          cp docs/manual.html docs/grammar.md _site/docs/
+          cp .nojekyll _site/.nojekyll
+          # 404 util: mismo esqueleto, sinScripts, con un enlace de vuelta
+          cat > _site/404.html <<'HTML'
+          <!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Hixean — no encontrado</title>
+          <style>body{background:#0f0e0c;color:#efeade;font:17px/1.6 system-ui,sans-serif;
+          display:grid;place-items:center;height:100vh;margin:0}a{color:#e08b5e}
+          code{background:#1b1a15;border:1px solid #33302a;border-radius:5px;padding:.1em .35em}</style>
+          </head><body><main style="max-width:38rem;padding:2rem">
+          <h1 style="font-size:1.6rem">404</h1>
+          <p>Esta pagina no existe en <code>/Hixean/</code>.</p>
+          <p><a href="./">Volver a la pagina de Hixean</a></p>
+          </main></body></html>
+          HTML
+          ls -R _site | head -20
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

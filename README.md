@@ -14,8 +14,8 @@ Hola mundo
 `site/` es la página pública: `index.html`, `style.css` y `script.js`, sin
 dependencias ni fuentes remotas. Los ocho ejemplos de Hixean que hay en ella se
 ejecutan con `hxc` y se comparan con su salida real en cada `make test`, igual
-que los del manual (`tools/verificar-ejemplos.py`), porque una página con ejemplos
-que mienten es peor que no tener página.
+que los del manual (`tools/verificar-ejemplos.py`), porque una página con
+ejemplos que mienten es peor que no tener página.
 
 ## Manual
 
@@ -72,6 +72,32 @@ Lo que todavía **no** hay, y conviene decir: firma de paquetes, semver completo
 en las dependencias, resolución automática de conflictos y un índice central.
 El capítulo 22 del manual ([`docs/manual.html`](docs/manual.html)) lo explica con
 los comandos y los códigos de diagnóstico.
+
+## Publicar la página
+
+`site/` y `docs/manual.html` se publican en GitHub Pages con
+`.github/workflows/pages.yml`, que sube el artefacto en cada push a `main` que
+toque `site/` o `docs/`:
+
+```
+https://wwwillcoxon.github.io/Hixean/                  <- la página
+https://wwwillcoxon.github.io/Hixean/docs/manual.html  <- el manual
+```
+
+El workflow pone `site/` en la raíz del artefacto y `docs/` al lado, que es lo
+que hace que el enlace `../docs/manual.html` de la página resuelva dentro del
+subruta `/Hixean/`. Se usa un workflow y no "deploy from a branch" porque el
+despliegado por rama solo ofrece la raíz del repositorio o una carpeta llamada
+`docs`, y en la raíz no hay un `index.html`.
+
+Para verlo en local sin servidor:
+
+```
+python3 -m http.server -d site 8000
+```
+
+Un dominio propio (`hixean.dev`) se añade con un `CNAME` en el artefacto y el
+registro `CNAME` del dominio apuntando a `<usuario>.github.io`.
 
 ## Editores
 
