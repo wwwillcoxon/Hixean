@@ -80,13 +80,16 @@ def main():
     else:
         comprobar(False, "la pagina ya no muestra la cifra de bytes de hola mundo")
 
-    # 2. pruebas del corpus
+    # 2. pruebas del corpus: la cifra se busca por su etiqueta, porque cambia
     pruebas, fallos_pruebas = pruebas_del_corpus()
     comprobar(fallos_pruebas == 0, "el corpus tiene %d fallos" % fallos_pruebas)
-    if 22 in cifras:
-        puesto, etiqueta = cifras[22]
+    de_pruebas = [(v, e) for v, e in cifras.values() if "pruebas" in e]
+    if de_pruebas:
+        puesto = de_pruebas[0][0]
+        esperado = "%d/%d" % (pruebas, pruebas)
         comprobar(
-            re.fullmatch(r"22\s*/\s*22", puesto) is not None and pruebas == 22,
+            re.fullmatch(r"\s*\d+\s*/\s*\d+\s*", puesto) is not None
+            and re.sub(r"\s", "", puesto) == esperado,
             "la pagina dice «%s» y el corpus tiene %d pruebas" % (puesto, pruebas),
         )
     else:

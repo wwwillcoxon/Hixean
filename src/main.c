@@ -175,6 +175,29 @@ static HxModule *hx_load_module(HxSession *s, const char *path, int is_entry) {
 
 static int o_verbose;
 
+/* La cache de objetos se invalida cuando cambia el compilador. Con la sola
+   version no vale: durante el desarrollo de hxc el numero no cambia y un .o
+   viejo se reutiliza, produciendo un binario roto sin avisar. Se hashea el
+   ejecutable una vez por sesion; son ~900 KB y se lee una vez. */
+static const char *g_hxc_build_id;
+
+static void hx_calc_build_id(HxSession *s) {
+    HxHash h;
+    hx_fnv_init(&h);
+    const char *self = "build/hxc";
+    size_t n = 0;
+    char *data = hx_read_file(&s->arena, self, &n);
+    if (!data) {
+        /* se invoca con otra ruta: se usa la version y ya */
+        hx_fnv_str(&h, HX_VERSION);
+    } else {
+        hx_fnv_bytes(&h, data, (size_t)n);
+    }
+    char hex[20];
+    hx_fnv_hex(&h, hex, sizeof(hex));
+    g_hxc_build_id = hx_arena_strdup(&s->arena, hex);
+}
+
 static const char **g_extra_mod_dirs;
 static int g_n_extra_mod_dirs;
 
@@ -472,6 +495,8 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
         HxHash hx;
         hx_fnv_init(&hx);
         hx_fnv_str(&hx, HX_VERSION);
+        if (!g_hxc_build_id) hx_calc_build_id(s);
+        hx_fnv_str(&hx, g_hxc_build_id);
         hx_fnv_u64(&hx, (uint64_t)o->profile);
         hx_fnv_u64(&hx, (uint64_t)o->optimize);
         size_t n = 0;

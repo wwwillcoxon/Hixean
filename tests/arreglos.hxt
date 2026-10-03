@@ -1,0 +1,44 @@
+"ARRAY: tamano constante en el tipo y acceso comprobado con At"
+DIM a AS INT[5]
+FOR i = 0 TO 4
+  a[i] = i * i
+NEXT i
+
+"Len es el tamaño del tipo, no una variable que alguien pueda liar"
+PRINT a.Len()
+
+PRINT a.At(0)
+PRINT a.At(3)
+PRINT a.At(4)
+
+"el indice puede ser una expresion"
+DIM k AS INT = 2
+PRINT a.At(k)
+
+"arreglos de otros tipos"
+DIM s AS STRING[3]
+s[0] = "uno"
+s[1] = "dos"
+s[2] = "tres"
+PRINT s.At(1)
+PRINT s.Len()
+
+DIM f AS FLOAT[2]
+f[0] = 1.5
+f[1] = 2.5
+PRINT f.At(1)
+
+"un arreglo dentro de un registro"
+TYPE Tabla
+  celdas AS INT[4]
+  alto AS INT
+END TYPE
+DIM t AS Tabla
+t.alto = 4
+t.celdas[2] = 42
+PRINT t.celdas.At(2)
+PRINT t.celdas.Len()
+
+"Len y At no necesitan argumentos extra"
+DIM v AS FLOAT[7]
+PRINT v.Len()

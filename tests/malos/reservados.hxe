@@ -1,0 +1,7 @@
+"palabras clave reservadas que todavia no hacen nada"
+TYPE T
+  UNIQUE x AS INT
+END TYPE
+DIM t AS T
+t.x = 1
+PRINT NIL

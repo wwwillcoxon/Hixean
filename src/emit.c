@@ -17,6 +17,7 @@ typedef struct {
     HxBuf out;
     int tmp;
     int uses_string;
+    int uses_index; /* a.At(i), que comprueba el rango */
     int uses_arena;
     int uses_iter;
     int uses_enum;
@@ -442,6 +443,26 @@ static const char *HX_RT_RESULT =
     "  hx_exit(70);\n"
     "}\n";
 
+static const char *HX_RT_INDEX =
+    "static inline void hx_panic_i64(const char *msg, int64_t n, int64_t v) {\n"
+    "  hx_write(2, msg, n);\n"
+    "  hx_write(2, \": \", 2);\n"
+    "  char buf[24];\n"
+    "  int m = 0;\n"
+    "  uint64_t u;\n"
+    "  if (v < 0) { buf[m++] = '-'; u = (uint64_t)(-(v + 1)) + 1u; }\n"
+    "  else u = (uint64_t)v;\n"
+    "  hx_u64_to_dec(u, buf, &m);\n"
+    "  hx_write(2, buf, m);\n"
+    "  hx_write(2, \" no cabe en un arreglo de ese tamano\\n\", 37);\n"
+    "  hx_exit(70);\n"
+    "  __builtin_unreachable();\n"
+    "}\n"
+    "static inline void hx_idx_chk(int64_t i, int64_t n) {\n"
+    "  if (i < 0 || i >= n) hx_panic_i64(\"indice fuera de rango\", 22, i);\n"
+    "}\n"
+    "#define HX_AT(p, i, n) (hx_idx_chk((int64_t)(i), (int64_t)(n)), (p)[(i)])\n";
+
 static const char *HX_RT_CHECKED =
     "static inline int32_t hx_add_i32(int32_t a, int32_t b) {\n"
     "  int32_t r;\n"
@@ -861,6 +882,26 @@ static const char *hx_zero_fn(HxEmit *e, HxTy *t) {
 }
 
 static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b);
+
+/* Len y At de un arreglo de tamano fijo: el tamano vive en el tipo, o sea que
+   Len es una constante y At solo necesita la comparacion con ese tamano. */
+static void hx_emit_array_member(HxEmit *e, HxExpr *x, HxBuf *b) {
+    HxExpr *recv = x->recv ? x->recv : x->member.base;
+    HxTy *bt = recv ? recv->ty : NULL;
+    long largo = bt ? (long)bt->size : 0;
+    if (!strcmp(hx_sym_str(x->method), "Len")) {
+        hx_buf_printf(b, "INT64_C(%ld)", largo);
+        return;
+    }
+    /* un arreglo es un hx_span y sus elementos estan en .data */
+    e->uses_index = 1;
+    hx_buf_printf(b, "HX_AT((%s *)(", hx_c_ty(e, bt ? bt->elem : NULL));
+    hx_expr_str(e, recv, 7, b);
+    hx_buf_str(b, ").data, ");
+    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+    hx_buf_printf(b, ", %ld)", largo);
+}
+
 static void hx_iter_note_elem(HxEmit *e, HxTy *t);
 static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to);
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
@@ -888,6 +929,7 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 e->uses_net = 1;
                 e->uses_arena = 1;
             }
+            if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             hx_scan_expr(e, x->call.callee);
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
             break;
@@ -896,6 +938,10 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
             hx_scan_expr(e, x->bin.rhs);
             break;
         case EX_UN: hx_scan_expr(e, x->un.operand); break;
+        case EX_MEMB:
+            if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
+            hx_scan_expr(e, x->member.base);
+            break;
         case EX_INDEX:
             hx_scan_expr(e, x->index.base);
             hx_scan_expr(e, x->index.start);
@@ -1326,6 +1372,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
         }
         case EX_CALL: {
             HxExpr *callee = x->call.callee;
+            if (x->is_intrin == 7) {
+                hx_emit_array_member(e, x, b);
+                break;
+            }
             if (x->is_ok_ctor || x->is_err_ctor) {
                 e->uses_result = 1;
                 const char *fn = x->is_ok_ctor ? "hx_ok" : "hx_err";
@@ -1551,6 +1601,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
         case EX_MEMB: {
             if (x->is_intrin == 5) {
                 hx_enum_member_str(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 7) {
+                hx_emit_array_member(e, x, b);
                 break;
             }
             if (x->is_intrin == 6) {
@@ -2228,10 +2282,20 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
         hx_buf_printf(b,
                       "static inline hx_T_%s hx_zero_rec_%s(void) {\n"
                       "  hx_T_%s v;\n"
-                      "  __builtin_memset(&v, 0, sizeof(v));\n"
-                      "  return v;\n"
-                      "}\n",
+                      "  __builtin_memset(&v, 0, sizeof(v));\n",
                       hx_sym_str(t->name), hx_sym_str(t->name), hx_sym_str(t->name));
+        /* sin esto, escribir en t.celdas[0] seria escribir en un puntero nulo */
+        for (int j = 0; j < t->fields.len; j++) {
+            HxField *campo = &t->fields.data[j];
+            if (!campo->ty || campo->ty->kind != TY_ARRAY || campo->ty->size <= 0) continue;
+            if (!campo->ty->elem) continue;
+            hx_buf_printf(b,
+                          "  v.%s = hx_span_make(hx_arena_alloc(&hx_static_arena, %lld), %lld);\n",
+                          hx_sym_str(campo->name),
+                          (long long)(campo->ty->size * (int64_t)hx_size_of(e, campo->ty->elem)),
+                          (long long)campo->ty->size);
+        }
+        hx_buf_str(b, "  return v;\n}\n");
     }
 }
 
@@ -2584,6 +2648,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     hx_buf_str(b, HX_RT_ZERO);
     if (e->uses_result) hx_buf_str(b, HX_RT_RESULT);
     hx_buf_str(b, HX_RT_CHECKED);
+    if (e->uses_index) hx_buf_str(b, HX_RT_INDEX);
     if (e->uses_arena) {
         hx_buf_str(b, HX_RT_ARENA);
         hx_buf_str(b, "extern hx_arena hx_static_arena;\n");
@@ -2791,6 +2856,8 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
                 HxTy *ft = m->types.data[t].fields.data[q].ty;
                 if (hx_ty_is_result(ft)) e.uses_result = 1;
                 if (ft && hx_vec_len(ft)) e.uses_vec = 1;
+                /* un campo de arreglo se reserva al construir el registro */
+                if (ft && ft->kind == TY_ARRAY && ft->size > 0) e.uses_arena = 1;
             }
         }
         if (m->is_entry && m->top.len) hx_scan_body(&e, &m->top);

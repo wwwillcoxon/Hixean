@@ -45,6 +45,9 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   `std.net` con sockets por syscall directa (`NET_UDP`, `NET_TCP`, `NET_BIND`,
   `NET_SEND`, `NET_RECV`, `NET_LISTEN`, `NET_ACCEPT`, `NET_CONNECT`,
   `NET_CLOSE`).
+- **Arreglos legibles**: `a.Len()` devuelve el tamaño (una constante del tipo, sin
+  coste en tiempo de ejecución) y `a.At(i)` comprueba el índice y aborta con el
+  número en pantalla. `a[i]` sigue sin comprobar, documentado como tal.
 - **Herramientas**: `hxc run`, `build`, `test`, `check`, `size`, `kit`,
   `query`, `version`; perfiles `freestanding` y `libc`; compilación paralela
   con `--jobs`; `hxc check --json` y `hxc version --json` para el editor, el
@@ -84,6 +87,18 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   runtime y el verificador no miraba la anchura: `E0402` lo dice antes.
 - Dos `DIM` del mismo nombre en el mismo ámbito generaban dos variables en C;
   ahora es `E0315`. Sombrear en un ámbito más hondo sigue permitido.
+- `a[1..3]` se parseaba y se comprobaba, pero el emisor se comía el final del
+  rango y leía un solo elemento: `E0210` lo dice ahora, y los rangos de verdad
+  llegan con los arreglos dinámicos.
+- Un arreglo dentro de un registro era un `hx_span` con el puntero a NULL: escribir
+  en `t.celdas[0]` escribía en el vacío. Ahora el constructor del registro reserva
+  la memoria desde la arena estática.
+- La caché de objetos no se invalidaba al cambiar el compilador (solo miraba la
+  versión, que durante el desarrollo no cambia): un `.o` viejo se reutilizaba y
+  producía un binario roto sin avisar. Ahora la clave incluye un hash del propio
+  ejecutable.
+- `NIL` imprimía un cero y `UNIQUE` se ignoraba en silencio: ahora son `E0211` y
+  `E0212`.
 - Un `CONST` de cadena emitía `hx_lit(...)` como inicializador estático, que
   no es una constante en C; ahora la expresión se dobla en el emisor.
 - El runtime escribía 12 bytes donde el literal tenía 11: cada pánico de

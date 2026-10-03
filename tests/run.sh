@@ -221,3 +221,20 @@ if command -v node >/dev/null 2>&1; then
 else
   echo "ok     prueba de la pagina omitida: no hay node"
 fi
+
+echo "== arreglos: honestidad y acceso comprobado =="
+if ./build/hxc check tests/malos/rangos.hxe >/dev/null 2>&1; then
+  echo "FALLO: un rango en un indice deberia rechazarse"; exit 1
+fi
+./build/hxc check tests/malos/rangos.hxe 2>&1 | grep -q "E0210" \
+  && echo "ok     un rango en un indice da E0210 en vez de leer un elemento"
+./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0211" \
+  && echo "ok     NIL da E0211 en vez de ser un cero silencioso"
+./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0212" \
+  && echo "ok     UNIQUE da E0212 en vez de ignorarse"
+printf 'DIM a AS INT[3]\nDIM k AS INT = 9\nPRINT a.At(k)\n' > build/fuera.hxe
+./build/hxc build build/fuera.hxe -o build/fuera >/dev/null 2>&1
+if ./build/fuera > build/fuera.out 2>&1; then
+  echo "FALLO: At fuera de rango deberia abortar"; exit 1
+fi
+grep -q "fuera de rango" build/fuera.out && echo "ok     At fuera de rango aborta con el indice y sale con 70"

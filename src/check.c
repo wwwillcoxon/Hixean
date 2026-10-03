@@ -336,6 +336,39 @@ static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
     return NULL;
 }
 
+/* Metodos de ARRAY[T]. El tamaño del arreglo vive en el tipo, asi que Len es
+   una constante y At es un indice con la comprobacion puesta: en el perfil
+   freestanding no hay nadie que lo mire mas que el programa. */
+typedef struct {
+    const char *name;
+    int nargs;
+    HxTyKind ret;
+    int elem_ret; /* 1: devuelve el tipo del elemento */
+} HxArrIntrin;
+
+/* First y Last se quedan con los iteradores: `Rango(1,9).First()` ya existe y
+   no tiene sentido que el mismo nombre signifique dos cosas. */
+static const HxArrIntrin hx_array_intrins[] = {
+    {"Len", 0, TY_I64, 0},
+    {"At", 1, TY_UNKNOWN, 1},
+    {NULL, 0, TY_UNKNOWN, 0},
+};
+
+static const HxArrIntrin *hx_find_array_intrin(const char *name) {
+    for (int i = 0; hx_array_intrins[i].name; i++)
+        if (!hx_ascii_casecmp(hx_array_intrins[i].name, name)) return &hx_array_intrins[i];
+    return NULL;
+}
+
+/* El receptor de At/First/Last tiene que ser una variable o un campo: se emite
+   dos veces (puntero y tamaño) y un valor temporal se evaluaria dos veces. */
+static int hx_es_direccionable(HxExpr *x) {
+    if (!x) return 0;
+    if (x->kind == EX_PATH) return 1;
+    if (x->kind == EX_MEMB) return hx_es_direccionable(x->member.base);
+    return 0;
+}
+
 static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
     if (!recv || recv->kind != TY_STRING) return NULL;
     for (int i = 0; hx_string_intrins[i].name; i++)
@@ -364,6 +397,37 @@ static int hx_vec_len(HxTy *t) {
         case TY_QUAT: return 4;
         default: return 0;
     }
+}
+
+/* Len/At/First/Last de un arreglo de tamaño fijo. El tamaño vive en el tipo, de
+   modo que Len es una constante y At solo necesita la comparacion. */
+static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const char *member) {
+    const HxArrIntrin *ai = hx_find_array_intrin(member);
+    if (!ai || !recv) return 0;
+    int dado = e->call.args.len;
+    if (dado != ai->nargs)
+        hx_error(c->diags, e->span, "E0306",
+                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", member,
+                                  ai->nargs, dado));
+    for (int i = 0; i < dado; i++) {
+        e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+        HxTy *at = e->call.args.data[i].value->ty;
+        if (at && at->kind != TY_INT && at->kind != TY_I64)
+            hx_error(c->diags, e->call.args.data[i].span, "E0306",
+                     hx_arena_sprintf(c->arena, "'%s' espera un índice INT o I64", member));
+    }
+    if (!hx_es_direccionable(recv))
+        hx_error(c->diags, e->span, "E0402",
+                 hx_arena_sprintf(c->arena,
+                                  "'%s' necesita una variable o un campo, no un valor temporal",
+                                  member));
+    e->is_intrin = 7;
+    e->method = hx_intern_cstr(c->intern, member);
+    e->recv = recv;
+    e->ty = ai->elem_ret
+                ? (recv->ty && recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN))
+                : hx_ty_builtin(c->arena, ai->ret);
+    return 1;
 }
 
 static int hx_vec_index_of(char c) {
@@ -754,6 +818,25 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             for (int k = 0; k < np - 1; k++) HX_VEC_PUSH(recv->path.parts, pp[k]);
             recv = hx_expr_check(c, recv);
             if (hx_iter_ctor_check(c, e, hx_sym_str(pp[np - 1].name), recv)) return e;
+        }
+    }
+    /* `a.At(3)` y `t.celdas.At(2)`: se comprueba el receptor antes que el camino
+       entero, porque comprobar `a.At` dispara el error de miembro inexistente
+       antes de que nadie llegue a mirar que ARRAY si tiene ese metodo. El
+       prefijo no incluye el nombre del metodo, asi que hx_path_check no falla. */
+    if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len >= 2) {
+        int np = raw_callee->path.parts.len;
+        const char *mn = hx_sym_str(raw_callee->path.parts.data[np - 1].name);
+        if (hx_find_array_intrin(mn)) {
+            HxExpr *recv_e = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
+            recv_e->kind = EX_PATH;
+            recv_e->span = raw_callee->span;
+            for (int k = 0; k < np - 1; k++)
+                HX_VEC_PUSH(recv_e->path.parts, raw_callee->path.parts.data[k]);
+            HxExpr *recv = hx_path_check(c, recv_e);
+            if (recv->ty && recv->ty->kind == TY_ARRAY &&
+                hx_array_method_check(c, e, recv, mn))
+                return e;
         }
     }
     HxExpr *callee = hx_expr_check(c, raw_callee);
@@ -1412,6 +1495,9 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             hx_str_check(c, e);
             break;
         case EX_NIL:
+            hx_error(c->diags, e->span, "E0211",
+                     "NIL está reservado pero no implementado: en Hixean todo valor "
+                     "tiene tipo comprobable");
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             break;
         case EX_FUNC: {
@@ -1477,6 +1563,13 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             e->index.base = hx_expr_check(c, e->index.base);
             if (e->index.start) e->index.start = hx_expr_check(c, e->index.start);
             if (e->index.end) e->index.end = hx_expr_check(c, e->index.end);
+            if (e->index.end) {
+                /* `a[i..j]` se parseaba y se comprobaba, pero el emisor se
+                   comia el final y leia un solo elemento: peor que un error */
+                hx_error(c->diags, e->span, "E0210",
+                         "un rango en un índice (a[i..j]) todavía no se puede usar: "
+                         "aquí solo se leería el primer elemento");
+            }
             e->ty = e->index.base->ty && e->index.base->ty->kind == TY_ARRAY
                         ? e->index.base->ty->elem
                         : hx_ty_builtin(c->arena, TY_UNKNOWN);
@@ -1501,6 +1594,9 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                 break;
             if (bt && bt->decl && bt->decl->is_enum &&
                 hx_enum_member(c, e, member, e->member.base))
+                break;
+            if (bt && bt->kind == TY_ARRAY &&
+                hx_array_method_check(c, e, e->member.base, member))
                 break;
             if (bt && bt->decl) {
                 for (int fi = 0; fi < bt->decl->fields.len; fi++) {

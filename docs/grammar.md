@@ -454,6 +454,31 @@ Un nombre no puede declararse dos veces en el mismo ámbito: `E0315` lo dice el
 verificador, no el compilador de C. En un ámbito más hondo sí se puede
 sombrear, como en cualquier lenguaje con alcance léxico.
 
+`[]` **no comprueba el rango**: `a[9]` en un arreglo de 3 es una lectura fuera
+de la memoria, y el C generado sale idéntico al que escribiría una persona. Para
+el acceso que aborta con un diagnóstico hay dos métodos de `ARRAY[T]`:
+
+| método | qué hace |
+|---|---|
+| `a.Len()` | el tamaño, que es una constante del tipo: no cuesta código |
+| `a.At(i)` | el elemento en `i`, o salida con código 70 y el índice en pantalla |
+
+```
+DIM a AS INT[5]
+a.At(4) = 7          ' así se escribe: [] sigue sin comprobar
+PRINT a.At(4)
+PRINT a.At(9)        ' hx: indice fuera de rango: 9 no cabe en un arreglo de ese tamaño
+```
+
+Un rango en un índice (`a[1..3]`) todavía **no** está implementado: se acepta en
+el parser, pero el emisor solo leería el primer elemento, así que da `E0210` en
+lugar de fingir.
+
+Tres palabras clave están reservadas y **no** hacen nada todavía, y en vez de
+callar lo dicen: `NIL` (`E0211`), `UNIQUE` en un campo (`E0212`) y `OPERATOR`
+en una función (hoy se parsea y la sobrecarga no existe, así que el uso da
+`E0307` como si el operador no estuviera).
+
 Funciones de `net` (perfil `freestanding`: syscalls directas, sin libc):
 
 | llamada | hace |

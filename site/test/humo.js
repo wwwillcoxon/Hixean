@@ -92,9 +92,13 @@ function fallos() {
   };
 }
 
+function cifrasDelHero() {
+  return [...html.matchAll(/<b data-cuenta="(\d+)"(?: data-sufijo="([^"]*)")?>([^<]*)<\/b>/g)];
+}
+
 function comprobarPagina(t) {
   // las cifras del hero llevan su valor real en el HTML, no un 0 de relleno
-  const cifras = [...html.matchAll(/<b data-cuenta="(\d+)"(?: data-sufijo="([^"]*)")?>([^<]*)<\/b>/g)];
+  const cifras = cifrasDelHero();
   t.ok(cifras.length === 4, `se esperaban 4 cifras en el hero, hay ${cifras.length}`);
   cifras.forEach((m) => {
     const puesto = m[3].trim();
@@ -147,7 +151,8 @@ function comprobarScript(t, conObserver) {
   const progreso = new Nodo("div");
   const relleno = new Nodo("div");
   const porId = { tema: botonTema, progreso: progreso, relleno: relleno, anio: new Nodo("span") };
-  const contadores = [...html.matchAll(/<b data-cuenta="(\d+)"(?: data-sufijo="([^"]*)")?>/g)].map((m) => {
+  const cifras = cifrasDelHero();
+  const contadores = cifras.map((m) => {
     const n = new Nodo("b");
     n.setAttribute("data-cuenta", m[1]);
     if (m[2]) n.setAttribute("data-sufijo", m[2]);
@@ -212,12 +217,22 @@ function comprobarScript(t, conObserver) {
   t.ok(raizHtml.clases.has("js"), "el script no añadió la clase .js al <html>");
 
   // el bug que motivaba esto: el contador es el propio elemento observado
-  const bytes = contadores[0].texto.replace(/\s/g, " ");
-  t.ok(bytes === "8.896" || bytes === "8896", `el contador de bytes quedó en "${bytes}"`);
-  const pruebas = contadores[1].texto.replace(/\s/g, " ");
-  t.ok(pruebas === "22/22" || pruebas === "22/22", `el contador de pruebas quedó en "${pruebas}"`);
-  t.ok(contadores[2].texto === "0", `el contador de dependencias quedó en "${contadores[2].texto}"`);
-  t.ok(contadores[3].texto === "76", `el contador de códigos quedó en "${contadores[3].texto}"`);
+  /* el valor esperado sale del propio HTML: si alguien cambia una cifra, el
+     test sigue siendo cierto siempre que la animacion llegue al final */
+  const esperados = cifras.map((m) => {
+    const bruto = m[3].trim();
+    const destino = Number(m[1]) * (m[2] || "") || Number(m[1]);
+    if (!bruto) return destino.toLocaleString("es-ES");
+    return bruto;
+  });
+  const sinSep = (x) => x.replace(/[\s.\u00a0]/g, "");
+  contadores.forEach((c, i) => {
+    t.ok(
+      sinSep(c.texto) === sinSep(esperados[i]),
+      `el contador ${i} quedó en "${c.texto}" y decia "${esperados[i]}"`
+    );
+  });
+  t.ok(/^\d+\/\d+$/.test(esperados[1].replace(/\s/g, "")), "la cifra de pruebas no es n/n");
   if (!conObserver) t.ok(true, "");
 
   revelados.forEach((r, i) => {

@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>22/22</b><span>pruebas del corpus</span></li>
+        <li><b>23/23</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -584,6 +584,38 @@ PRINT v.yx</code></pre>
       <code>vec2</code>, <code>(a,b,c)</code> <code>vec3</code> y
       <code>(a,b,c,d)</code> <code>vec4</code>. No hay tuplas de Hixean: eso es
       exactamente lo que significan esos paréntesis.</p>
+      <h4>Arreglos de tamaño fijo</h4>
+      <p>Un arreglo tiene su tamaño en el tipo, y por eso <code>a.Len()</code> es
+      una constante: no cuesta código. <code>a.At(i)</code> comprueba el índice y
+      aborta con el número si no cabe. <code>a[i]</code> es rápido y
+      <strong>no comprueba nada</strong>, como en casi todos los lenguajes; quien
+      prefiera el diagnóstico usa <code>At</code>.</p>
+      <figure class="ej">
+        <figcaption><span>arreglos.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">DIM a AS INT[5]
+FOR i = 0 TO 4
+  a[i] = i * i
+NEXT i
+
+PRINT a.Len()
+PRINT a.At(3)
+
+TYPE Tabla
+  celdas AS INT[4]
+  alto AS INT
+END TYPE
+
+DIM t AS Tabla
+t.celdas[2] = 42
+PRINT t.celdas.At(2)</code></pre>
+        <div class="salida"><span>salida</span><pre>5
+9
+42</pre></div>
+      </figure>
+      <p>Un arreglo dentro de un registro reserva su memoria al construir el
+      registro, así que <code>t.celdas[0]</code> no es un puntero nulo. Y un
+      rango en un índice (<code>a[1..3]</code>) todavía no está implementado: da
+      <code>E0210</code> en vez de leerse como un elemento solo.</p>
     </section>
 
     <section id="errores" data-t="result ok err ? propagación match error sin excepciones unwinding">
@@ -1404,7 +1436,7 @@ PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
     <footer>
       <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
       <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
-      <code>make test</code> ejecuta los 22 programas del corpus, y
+      <code>make test</code> ejecuta los 23 programas del corpus, y
       <code>make size</code> la puerta de 12 KiB.</p>
       <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
       para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del

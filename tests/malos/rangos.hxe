@@ -1,0 +1,4 @@
+"un rango en un indice no se puede usar todavia, y hay que decirlo"
+DIM a AS INT[5]
+a[1] = 7
+PRINT a[1..3]
