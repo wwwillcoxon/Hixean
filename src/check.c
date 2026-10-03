@@ -948,8 +948,8 @@ static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **tar
        instancia: si falta la implementación, el programa no tiene sentido. */
     for (int ci = 0; ci < g->n_constraints; ci++) {
         int ti = -1;
-        for (int k = 0; k < n; k++)
-            if (g->tparams[k] == g->constrained[ci]) ti = k;
+        for (int tp = 0; tp < n; tp++)
+            if (g->tparams[tp] == g->constrained[ci]) ti = tp;
         if (ti < 0) {
             hx_error(c->diags, sp, "E0716",
                      hx_arena_sprintf(c->arena, "'%s' no es un parametro de tipo de '%s'",
@@ -970,8 +970,8 @@ static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **tar
             snprintf(tn, sizeof(tn), "%s", hx_ty_name(targs[ti]));
         int hay = 0;
         for (int m = 0; m < c->unit->modules.len && !hay; m++)
-            for (int k = 0; k < c->unit->modules.data[m].impls.len && !hay; k++) {
-                HxImplDecl *im = &c->unit->modules.data[m].impls.data[k];
+            for (int im_i = 0; im_i < c->unit->modules.data[m].impls.len && !hay; im_i++) {
+                HxImplDecl *im = &c->unit->modules.data[m].impls.data[im_i];
                 if (hx_ascii_casecmp(hx_sym_str(im->trait_name), hx_sym_str(tr->name))) continue;
                 if (!hx_ascii_casecmp(hx_sym_str(im->type_name), tn)) hay = 1;
             }

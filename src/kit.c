@@ -57,8 +57,11 @@ static void hx_kit_line(char **pp, char *out, int cap) {
 
 int hx_version_cmp(const char *a, const char *b) {
     for (;;) {
-        long x = strtol(a, (char **)&a, 10);
-        long y = strtol(b, (char **)&b, 10);
+        char *fin = NULL;
+        long x = strtol(a, &fin, 10);
+        a = fin;
+        long y = strtol(b, &fin, 10);
+        b = fin;
         if (x != y) return x < y ? -1 : 1;
         while (*a && *a != '.') a++;
         while (*b && *b != '.') b++;
@@ -122,15 +125,12 @@ int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
             if (strcmp(word, "KIT")) {
                 hx_error(diags, (HxSpan){0, 0}, "E0802", "se esperaba END KIT");
                 diags->ctx_file = ctx_prev;
-            diags->ctx_file = ctx_prev;
-        return 0;
+                return 0;
             }
             if (!kit->entry) {
                 hx_error(diags, (HxSpan){0, 0}, "E0803", "falta ENTRY", file);
                 diags->ctx_file = ctx_prev;
-                diags->ctx_file = ctx_prev;
-            diags->ctx_file = ctx_prev;
-        return 0;
+                return 0;
             }
             diags->ctx_file = ctx_prev;
             return 1;
@@ -209,10 +209,10 @@ int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
             hx_kit_line(&p, rest, sizeof(rest));
         } else {
             hx_kit_line(&p, rest, sizeof(rest));
-            hx_error(diags, (HxSpan){0, 0}, "E0804", "línea %d: instrucción desconocida '%s'", line, word);
+            hx_error(diags, (HxSpan){0, 0}, "E0804", "línea %d: instrucción desconocida '%s'",
+                     line, word);
             diags->ctx_file = ctx_prev;
-            diags->ctx_file = ctx_prev;
-        return 0;
+            return 0;
         }
         if (p == antes) break;
     }

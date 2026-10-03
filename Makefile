@@ -1,5 +1,9 @@
 CC      ?= cc
-CFLAGS  ?= -O2 -g -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -Iinclude
+# Los flags que se pueden exigir sin ruido. -Wshadow y -Wcast-qual sacaron
+# llaves escondidas: un const descartado al construir los vectores de argumentos.
+CFLAGS  ?= -O2 -g -std=c11 -Wall -Wextra -Werror -Wpedantic -Wshadow -Wcast-qual \
+           -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wvla \
+           -Wwrite-strings -Wformat=2 -Wno-unused-parameter -Iinclude
 LDFLAGS ?=
 SAN     ?= -fsanitize=address,undefined -fno-sanitize-recover=all
 VERSION := $(shell sed -n 's/^const char \*HX_VERSION = "\(.*\)";/\1/p' src/common.c)

@@ -26,8 +26,13 @@ HxTy *hx_ty_subst(HxArena *a, const HxTy *t, const HxSym *tps, HxTy **subs, int 
         if (i >= 0) return subs[i];
     }
     int has = hx_ty_has_tparam(t, tps, n);
-    if (!has) return (HxTy *)t;
+    /* sin parametro que sustituir se devuelve una copia: el llamante puede
+       mutarla y el tipo original es const */
     HxTy *nt = (HxTy *)hx_arena_calloc(a, sizeof(HxTy));
+    if (!has) {
+        *nt = *t;
+        return nt;
+    }
     nt->kind = t->kind;
     nt->name = t->name;
     nt->elem = hx_ty_subst(a, t->elem, tps, subs, n);

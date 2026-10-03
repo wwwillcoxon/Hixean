@@ -26,6 +26,11 @@
 #define HX_STRCPY_STRDUP(d, s) ((d) = _strdup(s))
 #else
 #include <unistd.h>
+/* execvp y execv piden char *const argv[] y la arena devuelve const char *.
+   Copiar el puntero una vez es mas barato que mentir sobre el const. */
+static char *hx_arg(HxArena *a, const char *s);
+static HxArena g_arena_scratch;
+
 #define HX_EXEC(p, a) execvp(p, a)
 #define HX_STRCPY_STRDUP(d, s) ((d) = strdup(s))
 #endif
@@ -60,15 +65,26 @@ static double hx_now_ms(void) {
 #endif
 }
 
-static int hx_run(char **argv) {
+static void hx_execvp(const char *const argv[]);
+
+/* Los vectores de argumentos son const de principio a fin: execvp es la unica
+   llamada que no los admite, y ahi se copia el vector de punteros una vez. */
+static int hx_run(const char *const argv[]) {
 #ifdef _WIN32
-    intptr_t r = _spawnvp(_P_WAIT, argv[0], argv);
+    char *ejecucion[1024];
+    int n = 0;
+    while (argv[n] && n < 1023) {
+        ejecucion[n] = (char *)argv[n];
+        n++;
+    }
+    ejecucion[n] = NULL;
+    intptr_t r = _spawnvp(_P_WAIT, ejecucion[0], ejecucion);
     return (int)r;
 #else
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        execvp(argv[0], argv);
+        hx_execvp(argv);
         _exit(127);
     }
     int status = 0;
@@ -77,15 +93,34 @@ static int hx_run(char **argv) {
 #endif
 }
 
+/* execvp es la unica llamada del compilador que no admite char *const. Se copia
+   el puntero con memcpy en vez de castear: es lo mismo en ensamblador y no
+   obliga a silenciar -Wcast-qual en todo el fichero. */
+#ifndef _WIN32
+static void hx_execvp(const char *const argv[]) {
+    char *ejecucion[1024];
+    int n = 0;
+    while (argv[n] && n < 1023) {
+        memcpy(&ejecucion[n], &argv[n], sizeof(char *));
+        n++;
+    }
+    ejecucion[n] = NULL;
+    execvp(ejecucion[0], ejecucion);
+}
+#else
+static void hx_execvp(const char *const argv[]) { (void)argv; }
+#endif
+
 /* Lanza cc sin esperar: permite compilar varias unidades a la vez. */
-static pid_t hx_spawn(char **argv) {
+
+static pid_t hx_spawn(const char *const argv[]) {
 #ifdef _WIN32
     return 0;
 #else
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
-        execvp(argv[0], argv);
+        hx_execvp(argv);
         _exit(127);
     }
     return pid;
@@ -167,7 +202,8 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
             HxImport *im = &m->imports.data[i];
             const char *sp = hx_sym_str(im->path);
             const char *dot = strrchr(sp, '.');
-            char *stem = dot ? hx_arena_strndup(&s->arena, sp, (size_t)(dot - sp)) : (char *)sp;
+            char *stem = dot ? hx_arena_strndup(&s->arena, sp, (size_t)(dot - sp))
+                             : hx_arg(&s->arena, sp);
             char *cand = hx_arena_sprintf(&s->arena, "%s/%s.hxs", dir, stem);
             int found = hx_file_exists(cand);
             char *encontrado = found ? cand : NULL;
@@ -248,16 +284,16 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
 typedef struct {
     const char *cfile;
     const char *obj;
-    char **argv; /* vector de argumentos propio cuando se compila en paralelo */
+    const char **argv; /* vector de argumentos propio cuando se compila en paralelo */
     pid_t pid;   /* 0 si no hay proceso en vuelo */
 } HxTu;
 
 static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
                           const char *bin_path) {
-    char *argv[1024];
+    const char *argv[1024];
     int n = 0;
     argv[n++] = "cc";
-    for (int i = 0; i < ntus; i++) argv[n++] = (char *)tus[i].obj;
+    for (int i = 0; i < ntus; i++) argv[n++] = hx_arg(&s->arena, tus[i].obj);
     for (int i = 0; i < s->unit.modules.len; i++) {
         HxModule *m = &s->unit.modules.data[i];
         if (!m->from_hxc) continue;
@@ -271,7 +307,7 @@ static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
         argv[n++] = arc;
     }
     argv[n++] = "-o";
-    argv[n++] = (char *)bin_path;
+    argv[n++] = hx_arg(&s->arena, bin_path);
     argv[n++] = "-Wl,--gc-sections";
     if (o->profile == HX_PROFILE_FREESTANDING) {
         argv[n++] = "-nostdlib";
@@ -290,14 +326,14 @@ static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
     return 0;
 }
 
-static int hx_cc_argv(char **argv, const char *cc_file, const char *obj_file, int optimize,
-                      HxProfile profile) {
+static int hx_cc_argv(HxArena *a, const char **argv, const char *cc_file, const char *obj_file,
+                      int optimize, HxProfile profile) {
     int n = 0;
     argv[n++] = "cc";
     argv[n++] = "-c";
-    argv[n++] = (char *)cc_file;
+    argv[n++] = hx_arg(a, cc_file);
     argv[n++] = "-o";
-    argv[n++] = (char *)obj_file;
+    argv[n++] = hx_arg(a, obj_file);
     argv[n++] = optimize > 1 ? "-O2" : optimize == 1 ? "-O1" : "-O0";
     if (optimize >= 1) argv[n++] = "-fomit-frame-pointer";
     argv[n++] = "-w";
@@ -332,10 +368,10 @@ static int hx_flush_one(HxTu *tus, int ntus, int *inflight) {
     return 0;
 }
 
-static int hx_compile_tu(const char *cc_file, const char *obj_file, int optimize,
+static int hx_compile_tu(HxArena *a, const char *cc_file, const char *obj_file, int optimize,
                          HxProfile profile, int verbose) {
-    char *argv[32];
-    hx_cc_argv(argv, cc_file, obj_file, optimize, profile);
+    const char *argv[32];
+    hx_cc_argv(a, argv, cc_file, obj_file, optimize, profile);
     double t = hx_now_ms();
     if (hx_run(argv) != 0) {
         fprintf(stderr, "hx: fallo cc al compilar %s\n", cc_file);
@@ -464,11 +500,12 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
             if (jobs > 1) {
                 /* cada unidad guarda su argv en memoria propia: hx_cc_argv
                    escribe punteros, no se puede compartir el mismo vector */
-                tu->argv = (char **)hx_arena_calloc(&s->arena, sizeof(char *) * 32);
-                hx_cc_argv(tu->argv, tu->cfile, tu->obj, o->optimize, o->profile);
+                tu->argv = (const char **)hx_arena_calloc(&s->arena, sizeof(char *) * 32);
+                hx_cc_argv(&s->arena, tu->argv, tu->cfile, tu->obj, o->optimize, o->profile);
                 pid_t pid = hx_spawn(tu->argv);
                 if (pid < 0) {
-                    if (hx_compile_tu(tu->cfile, tu->obj, o->optimize, o->profile, o->verbose) != 0)
+                    if (hx_compile_tu(&s->arena, tu->cfile, tu->obj, o->optimize, o->profile,
+                                              o->verbose) != 0)
                         return 1;
                 } else {
                     tu->pid = pid;
@@ -482,7 +519,8 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
                     continue;
                 }
             } else {
-                if (hx_compile_tu(tu->cfile, tu->obj, o->optimize, o->profile, o->verbose) != 0)
+                if (hx_compile_tu(&s->arena, tu->cfile, tu->obj, o->optimize, o->profile,
+                                              o->verbose) != 0)
                     return 1;
             }
             rebuilt++;
@@ -556,15 +594,15 @@ static int hx_exec(const char *bin, const char *out_path) {
     int rc = system(cmd);
     return rc == 0 ? 0 : 1;
 #else
-    char *argv[3];
-    argv[0] = (char *)bin;
+    const char *argv[3];
+    argv[0] = bin;
     argv[1] = NULL;
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
         if (!freopen(out_path, "w", stdout)) _exit(127);
         if (!freopen(out_path, "a", stderr)) _exit(127);
-        execv(bin, argv);
+        hx_execvp(argv);
         _exit(127);
     }
     int status = 0;
@@ -578,7 +616,7 @@ static int g_json = 0;
 
 /* Solo para los valores por defecto de install, que se calculan antes de tener
    arena propia; no sobrevive a main y no se usa para diagnostics. */
-static HxArena g_arena_scratch;
+static char *hx_arg(HxArena *a, const char *s) { return hx_arena_strdup(a, s ? s : ""); }
 
 static void hx_render(HxDiagBag *d, const char *src) {
     if (g_json)
@@ -1030,8 +1068,8 @@ int main(int argc, char **argv) {
     if (emit_only) return 0;
 
     if (run_mode) {
-        char *rargv[3];
-        rargv[0] = (char *)bin_path;
+        const char *rargv[3];
+        rargv[0] = hx_arg(&s->arena, bin_path);
         rargv[1] = NULL;
         int rc = hx_run(rargv);
         return rc < 0 ? 1 : rc;

@@ -182,7 +182,10 @@ static const char *HX_RT_NET_FREESTANDING =
     "  if (puerto) *puerto = (int64_t)de.puerto;\n"
     "  if (ip) *ip = (int64_t)de.addr;\n"
     "  hx_str s; s.p = p; s.n = n; return s;\n"
-    "}\n"
+    "}\n";
+
+/* los stubs van aparte: ISO C99 obliga a soportar literales de 4095 bytes */
+static const char *HX_RT_NET_STUBS =
     "#else\n"
     "static inline int64_t hx_socket(int64_t t) { return -1; }\n"
     "static inline int64_t hx_bind(int64_t f, hx_inet a) { (void)f; (void)a; return -1; }\n"
@@ -1890,7 +1893,6 @@ static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
         HxBuf *db = &e->out;
         hx_buf_put(db, "", 0);
         hx_buf_str(db, "");
-        hx_buf_str(db, "");
         char *dest = hx_arena_sprintf(e->arena, "%s", "");
         if (s->assign.target->kind == EX_INDEX) {
             dest = hx_arena_strdup(e->arena, "");
@@ -2590,8 +2592,12 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     if (e->uses_net) {
         e->uses_arena = 1;
         hx_buf_str(b, HX_NET_PRE);
-        hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_RT_NET_FREESTANDING
-                                                           : HX_RT_NET_LIBC);
+        if (e->profile == HX_PROFILE_FREESTANDING) {
+        hx_buf_str(b, HX_RT_NET_FREESTANDING);
+        hx_buf_str(b, HX_RT_NET_STUBS);
+    } else {
+        hx_buf_str(b, HX_RT_NET_LIBC);
+    }
     }
     if (e->uses_iter) {
         hx_buf_str(b, HX_RT_ITER);
@@ -2789,9 +2795,9 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
         }
         if (m->is_entry && m->top.len) hx_scan_body(&e, &m->top);
         for (int j = 0; j < m->funcs.len; j++) hx_scan_body(&e, &m->funcs.data[j].body);
-        for (int i = 0; i < m->impls.len; i++)
-            for (int j = 0; j < m->impls.data[i].methods.len; j++)
-                hx_scan_body(&e, &m->impls.data[i].methods.data[j].body);
+        for (int im = 0; im < m->impls.len; im++)
+            for (int mt = 0; mt < m->impls.data[im].methods.len; mt++)
+                hx_scan_body(&e, &m->impls.data[im].methods.data[mt].body);
     }
     for (int i = 0; i < unit->n_instances; i++) hx_scan_body(&e, &unit->instances[i]->body);
 
