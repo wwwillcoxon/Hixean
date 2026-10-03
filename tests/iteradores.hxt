@@ -1,0 +1,34 @@
+FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+FUNCTION MayorQueCinco(n AS INT) AS BOOL
+  RETURN n > 5
+END FUNCTION
+FUNCTION Texto(n AS INT) AS STRING
+  RETURN "n{n}"
+END FUNCTION
+
+"lazy: TAKE corta la cadena"
+FOR x IN Rango(1, 1000).Take(3)
+  PRINT x
+NEXT x
+
+"MAP se evalua sólo por elemento consumido"
+FOR y IN Rango(1, 4).Map(Doble)
+  PRINT y
+NEXT y
+
+"MAP puede cambiar el tipo del elemento"
+FOR s IN Rango(1, 3).Map(Texto)
+  PRINT s
+NEXT s
+
+"FILTER sigue hasta que un elemento pasa"
+FOR z IN Rango(1, 20).Filter(MayorQueCinco)
+  PRINT z
+NEXT z
+
+"encadenamiento completo"
+FOR w IN Rango(1, 1000).Map(Doble).Filter(MayorQueCinco).Take(3)
+  PRINT w
+NEXT w

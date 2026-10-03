@@ -253,7 +253,69 @@ lugar de fallar más tarde:
 | `E0602` | truncado, hash del cuerpo incorrecto, nombres ausentes o tipo demasiado anidado |
 | `E0603` | número de formato o ABI que esta versión no entiende |
 
-## 10. Lo que este documento *no* cubre todavía
+## 10. Genéricos
 
-`REF`/`PTR` con unicidad de procedencia, genéricos, traits, `COMPTIME`,
-`.hxk`/`.hxq`.
+```
+funcion    = "FUNCTION" ident , [ "<" ident { "," ident } ">" ] , "(" parametros ")" ...
+tipo       = ... | ident , [ "<" tipo { "," tipo } ">" ] , ...
+```
+
+Los parámetros de tipo de una `FUNCTION` o de un `TYPE` se declaran entre
+corchetes angulares justo después del nombre. Los argumentos se deducen de los
+argumentos de la llamada; si no se pueden deducir todos, `E0702`. Un tipo
+parametrizado se unifica estructuralmente, de modo que `Caja<T>` contra
+`Caja<Int>` liga `T` con `Int` y no con `Caja<Int>`.
+
+Cada combinación de argumentos de tipo que aparece en el programa produce una
+instancia: el cuerpo se comprueba y se emite una sola vez por combinación. Las
+instancias se nombran `<modulo>__<funcion>__<arg1>_<arg2>`, así que
+`main.Max_INT` y `main.Max_STRING` conviven en C.
+
+| código | significa |
+|---|---|
+| `E0701` | número de parámetros de tipo incorrecto |
+| `E0702` | no se pudo deducir un parámetro de tipo |
+| `E0703` | el mismo parámetro se deduce con dos tipos distintos |
+| `E0704` | la instancia falla al comprobarse (nota con el nombre de la instancia) |
+| `E0705` | un `TYPE` genérico usado sin sus argumentos o con otros |
+
+## 11. Traits
+
+```
+trait      = [ "EXPORT" ] "TRAIT" ident , { "METODO" ident "(" parametros ")" [ "AS" tipo ] } ,
+              "END" "TRAIT" ;
+impl       = "IMPLEMENTAR" ident "PARA" ident , { metodo } , "END" "IMPLEMENTAR" ;
+metodo     = "METODO" ident "(" parametros ")" [ "AS" tipo ] , bloque , [ "END" "METODO" ] ;
+```
+
+`SELF` significa «el tipo que implementa el trait» y sólo tiene sentido dentro
+de una implementación (`E0706`). El despacho es estático: `Compara.Mayor(a, b)`
+mira el tipo de `a`, busca la implementación de ese tipo para ese trait y llama
+directamente a esa función; si no la hay, `E0707`. Una implementación debe
+incluir todos los métodos del trait (`E0707`), y una función genérica no puede
+servir todavía como valor (`E0714`).
+
+## 12. Iteradores perezosos
+
+```
+para_in    = "FOR" ident "IN" expresion , bloque , ( "END" ) "NEXT" [ ident ] ;
+```
+
+Un iterador es `ITER<T>`. El compilador reconoce los constructores `Rango` y
+`RangoF` y los adaptadores `MAP`, `FILTER`, `TAKE` y `FIRST`, y los representa
+con un protocolo de dos campos (`estado` y una función de paso). El estado de
+cada adaptador se reserva en una arena que crea la sentencia `FOR`, de modo que
+encadenar `Rango(1, 1000000).MAP(f).TAKE(3)` no reserva memoria proporcional a
+la secuencia y consume sólo tres elementos.
+
+| código | significa |
+|---|---|
+| `E0712` | `FOR ... IN` sobre algo que no es un iterador |
+| `E0713` | adaptador aplicado a algo que no es `ITER<T>` |
+| `E0714` | `MAP`/`FILTER` sin una función de primer orden |
+| `E0715` | la función no tiene la firma que exige el adaptador |
+
+## 13. Lo que este documento *no* cubre todavía
+
+`COMPTIME`, restricciones `DONDE T: Trait` sobre funciones genéricas, funciones
+anónimas, `.hxk`/`.hxq`, capacidades (`std.net`, `audio`, `gpu`).

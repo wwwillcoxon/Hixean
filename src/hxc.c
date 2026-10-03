@@ -193,7 +193,7 @@ int hx_hxc_write(HxArena *arena, HxUnit *unit, HxModule *m, const char *path) {
         if (m->funcs.data[i].is_export) nfuncs++;
     w_u32(&w, (uint32_t)nfuncs);
     for (int i = 0; i < m->funcs.len; i++) {
-        HxFunc *f = &m->funcs.data[i];
+        struct HxFunc *f = &m->funcs.data[i];
         if (!f->is_export) continue;
         w_sym(&w, f->name);
         w_u32(&w, (uint32_t)f->params.len);
@@ -462,7 +462,7 @@ HxModule *hx_hxc_read(HxArena *arena, HxIntern *intern, HxDiagBag *diags, const 
 
     uint32_t nfuncs = r_u32(&r);
     for (uint32_t i = 0; i < nfuncs && r.p < r.end; i++) {
-        HxFunc f;
+        struct HxFunc f;
         memset(&f, 0, sizeof(f));
         f.is_export = 1;
         f.name = r_sym(&r, intern);

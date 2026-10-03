@@ -21,7 +21,8 @@ typedef enum {
     TY_VEC3,
     TY_VEC4,
     TY_MAT4,
-    TY_QUAT
+    TY_QUAT,
+    TY_ITER /* ITER<T>: elem es el tipo del elemento */
 } HxTyKind;
 
 typedef struct HxTypeDecl HxTypeDecl;
@@ -32,6 +33,7 @@ typedef struct HxTy {
     struct HxTy *elem;
     struct HxTy *inner;
     int64_t size;
+    int n_targs;
     HxTypeDecl *decl;
 } HxTy;
 
@@ -79,6 +81,11 @@ typedef enum {
 typedef enum { UOP_NEG, UOP_NOT } HxUnOp;
 
 typedef struct HxExpr HxExpr;
+
+typedef struct HxFunc HxFunc;
+
+#define HX_MAX_TPARAMS 8
+
 typedef struct HxStmt HxStmt;
 
 typedef struct {
@@ -99,6 +106,7 @@ typedef struct {
     HxSpan span;
 } HxPathPart;
 
+
 struct HxExpr {
     HxExprKind kind;
     HxSpan span;
@@ -118,6 +126,7 @@ struct HxExpr {
     HxSym method;
     int is_intrin;
     HxExpr *recv;
+    struct HxFunc *fn;
     union {
         int64_t ival;
         double fval;
@@ -181,6 +190,12 @@ struct HxTypeDecl {
     HxSym name;
     HX_VEC_ANON(HxField) fields;
     HxSpan span;
+    HxSym tparams[HX_MAX_TPARAMS];
+    int n_tparams;
+    int module;
+    int is_generic;
+    int is_instance;
+    int is_placeholder;
     int is_export;
     int index;
 };
@@ -192,18 +207,25 @@ typedef struct {
     int cap;
 } HxStmtVec;
 
-typedef struct {
+struct HxFunc {
     HxSym name;
+    HxSym orig_name; /* nombre tal y como se escribio, antes de manglear */
     HX_VEC_ANON(HxParam) params;
     HxTy *ret;
     HxStmtVec body;
     HxSpan span;
     HxSpan name_span;
+    HxSym tparams[HX_MAX_TPARAMS];
+    int n_tparams;
+    int module;
+    int is_generic;
+    int is_instance;
+    int is_placeholder;
+    int is_comptime_only;
     int is_export;
     int index;
-    int is_comptime_only;
     int is_tail_loop;
-} HxFunc;
+};
 
 typedef struct {
     HxSym path;
@@ -212,6 +234,25 @@ typedef struct {
     HxSpan path_span;
     const char *resolved_file;
 } HxImport;
+
+/* TRAIT T: METHOD f(a AS T, ...) AS R ; ... END TRAIT
+   IMPLEMENTAR <tipo> PARA <trait> : METHOD ... END METHOD  */
+typedef struct {
+    HxSym name;
+    HX_VEC_ANON(HxSym) methods;
+    HxSpan span;
+    int module;
+    int is_export;
+} HxTraitDecl;
+
+typedef struct {
+    HxSym type_name;
+    HxSym trait_name;
+    HX_VEC_ANON(HxFunc) methods;
+    HxSpan span;
+    int module;
+    int export_type;
+} HxImplDecl;
 
 typedef struct {
     HxSym name;
@@ -238,7 +279,8 @@ typedef enum {
     ST_DEFER,
     ST_CONST,
     ST_NOP,
-    ST_MATCH
+    ST_MATCH,
+    ST_FORIN
 } HxStmtKind;
 
 typedef enum { PS_EXPR, PS_SEP_SEMI, PS_SEP_COMMA } HxPrintSep;
@@ -338,6 +380,15 @@ struct HxStmt {
             HxStmtVec body;
             HxSpan var_span;
         } for_;
+        /* FOR x IN expr: la variable, la cadena y el cuerpo */
+        struct {
+            HxSym var;
+            HxSpan var_span;
+            HxExpr *iter;
+            HxStmtVec body;
+            int is_arena;
+            int depth;
+        } forin_;
         struct {
             HxExpr *value;
         } ret;
@@ -347,6 +398,10 @@ struct HxStmt {
         struct {
             HxStmtVec stmts;
         } block;
+        struct {
+            HxExpr *iter;
+            HxExpr *init; /* inicializacion perezosa de la cadena, o NULL */
+        } forin;
         struct {
             HxSym name;
             HxStmtVec body;
@@ -370,6 +425,8 @@ typedef struct HxModule {
     const char *file;
     const char *src;
     HX_VEC_ANON(HxImport) imports;
+    HX_VEC_ANON(HxTraitDecl) traits;
+    HX_VEC_ANON(HxImplDecl) impls;
     HX_VEC_ANON(HxFunc) funcs;
     HX_VEC_ANON(HxTypeDecl) types;
     HX_VEC_ANON(HxConst) consts;
@@ -384,6 +441,15 @@ typedef struct {
     HxIntern *intern;
     HxDiagBag *diags;
     HX_VEC_ANON(HxModule) modules;
+    /* instancias monomorfizadas de funciones genericas, una por combinacion
+       de argumentos de tipo que aparece en el programa. Son punteros porque
+       el vector crece y los puntos de llamada guardan la referencia. */
+    HxFunc **instances;
+    int n_instances;
+    int cap_instances;
+    HxTypeDecl **type_instances;
+    int n_type_instances;
+    int cap_type_instances;
 } HxUnit;
 
 HxTy *hx_ty_new(HxArena *a, HxTyKind kind);

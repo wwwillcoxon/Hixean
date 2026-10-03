@@ -1,0 +1,30 @@
+"genericos: monomorfizacion por punto de llamada"
+FUNCTION Max<T>(a AS T, b AS T) AS T
+  IF a > b THEN RETURN a
+  RETURN b
+END FUNCTION
+
+FUNCTION Repetir<T>(v AS T, n AS INT) AS STRING
+  DIM acc AS STRING = ""
+  FOR i = 1 TO n
+    acc = acc ++ "{v}"
+  NEXT i
+  RETURN acc
+END FUNCTION
+
+FUNCTION Primero<T>(a AS T, b AS T) AS T
+  RETURN a
+END FUNCTION
+
+PRINT Max(3, 9)
+PRINT Max(11, 4)
+PRINT Max(1.5, 0.5)
+PRINT Repetir(7, 3)
+PRINT Repetir("x", 2)
+PRINT Primero(42, 7)
+
+"misma combinacion de tipos: una sola instancia"
+PRINT Max(5, 6)
+
+"el orden de instantiation no cambia el resultado"
+PRINT Max(2, 8)

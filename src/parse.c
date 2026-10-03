@@ -267,6 +267,25 @@ static HxTy *hx_ty_mk(HxArena *a, HxTyKind kind) {
 
 /* ---------------- types ---------------- */
 
+static const char *hx_builtin_type_names[] = {"BOOL", "INT", "I64", "FLOAT", "STRING", "DURATION"};
+static const int hx_builtin_type_kinds[] = {TY_BOOL, TY_INT, TY_I64, TY_FLOAT, TY_STRING,
+                                          TY_DURATION};
+
+static HxTy *hx_resolve_builtin_ty(HxArena *a, HxIntern *in, HxTy *t) {
+    if (!t) return NULL;
+    switch (t->kind) {
+        case TY_NAMED: {
+            for (int k = 0; k < (int)(sizeof(hx_builtin_type_names) / sizeof(char *)); k++) {
+                if (!hx_ascii_casecmp(hx_builtin_type_names[k], hx_sym_str(t->name)))
+                    return hx_ty_builtin(a, hx_builtin_type_kinds[k]);
+            }
+            return NULL;
+        }
+        case TY_ARRAY: return NULL;
+        default: return t;
+    }
+}
+
 static HxTy *hx_type(HxParser *p) {
     HxSpan sp = hx_cur(p)->span;
     HxTy *base = NULL;
@@ -287,21 +306,38 @@ static HxTy *hx_type(HxParser *p) {
         return t;
     }
 
-    if (hx_is_kw(p, TK_IDENT)) {
+    if (hx_is_kw(p, TK_IDENT) || hx_is_kw(p, TK_KW_SELF)) {
         HxSym name = hx_cur(p)->sym;
         HxSpan nsp = hx_cur(p)->span;
         hx_bump(p);
         base = hx_ty_mk(p->arena, TY_NAMED);
         base->name = name;
-        if (!hx_ascii_casecmp(hx_sym_str(name), "Result") && hx_is_punct(p, "<")) {
+        if (hx_is_punct(p, "<")) {
+            /* tipo parametrizado: Result<T,E> o un TYPE generico del programa.
+               Los argumentos van en elem/inner y n_targs los cuenta. */
+            int is_result = !hx_ascii_casecmp(hx_sym_str(name), "Result");
+            int is_iter = !hx_ascii_casecmp(hx_sym_str(name), "ITER");
             hx_bump(p);
-            base = hx_ty_mk(p->arena, TY_NAMED);
-            base->name = hx_intern_cstr(p->intern, "Result");
+            base = hx_ty_mk(p->arena, is_iter ? TY_ITER : TY_NAMED);
+            base->name = is_result ? hx_intern_cstr(p->intern, "Result") : name;
             if (!hx_is_punct(p, ">")) {
                 base->elem = hx_type(p);
-                if (hx_eat_punct(p, ",")) base->inner = hx_type(p);
+                base->n_targs = 1;
+                if (hx_eat_punct(p, ",")) {
+                    base->inner = hx_type(p);
+                    base->n_targs = 2;
+                }
             }
             if (!hx_eat_punct(p, ">")) hx_expect_punct(p, ">");
+            if (is_iter) {
+                base->elem = base->elem ? hx_resolve_builtin_ty(p->arena, p->intern, base->elem)
+                                        : NULL;
+                if (!base->elem) {
+                    hx_error(p->diags, sp, "E0203", "ITER necesita un tipo de elemento");
+                    base->elem = hx_ty_mk(p->arena, TY_UNKNOWN);
+                }
+                return base;
+            }
             return base;
         }
         while (hx_is_punct(p, ".")) {
@@ -625,7 +661,8 @@ static int hx_at_block_end(HxParser *p) {
     if (!text) return 0;
     return !hx_ascii_casecmp(text, "if") || !hx_ascii_casecmp(text, "while") ||
            !hx_ascii_casecmp(text, "for") || !hx_ascii_casecmp(text, "arena") ||
-           !hx_ascii_casecmp(text, "function") || !hx_ascii_casecmp(text, "match");
+           !hx_ascii_casecmp(text, "function") || !hx_ascii_casecmp(text, "match") ||
+           !hx_ascii_casecmp(text, "metodo") || !hx_ascii_casecmp(text, "method");
 }
 
 static void hx_block_body(HxParser *p, HxStmtVec *out) {
@@ -768,6 +805,22 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
             s->for_.var = hx_cur(p)->sym;
             hx_bump(p);
             if (hx_eat_type_marker(p)) hx_type(p);
+            if (hx_is_kw(p, TK_KW_IN)) {
+                /* FOR x IN expr: recorrido perezoso de un ITER<T> */
+                hx_bump(p);
+                HxStmt *it = hx_stmt_new(p, ST_FORIN, sp);
+                it->forin_.var = s->for_.var;
+                it->forin_.var_span = s->for_.var_span;
+                hx_skip_nl(p);
+                it->forin_.iter = hx_expr(p);
+                hx_skip_nl(p);
+                hx_block_body(p, &it->forin_.body);
+                if (hx_eat_kw(p, TK_KW_END)) hx_expect_kw(p, TK_KW_NEXT, "NEXT");
+                else hx_expect_kw(p, TK_KW_NEXT, "NEXT");
+                if (hx_is_kw(p, TK_IDENT)) hx_bump(p);
+                HX_VEC_PUSH(*out, *it);
+                return;
+            }
             if (hx_eat_punct(p, "=")) {
                 hx_skip_nl(p);
                 s->for_.start = hx_expr(p);
@@ -964,18 +1017,37 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
 
 /* ---------------- declarations ---------------- */
 
-static void hx_skip_generic(HxParser *p) {
+/* `<T, U>` tras el nombre de una FUNCTION o de un TYPE: son parametros de
+   tipo, no la parte de una expresion, porque van justo antes de `(` o de un
+   fin de linea. */
+static void hx_parse_generic(HxParser *p, HxSym *out, int *n, int max) {
+    *n = 0;
     if (!hx_is_punct(p, "<")) return;
-    int depth = 0;
-    do {
-        HxToken *t = hx_cur(p);
-        if (t->kind == TK_PUNCT && !strcmp(t->str_raw, "<")) depth++;
-        if (t->kind == TK_PUNCT && !strcmp(t->str_raw, ">")) depth--;
+    int save = p->pos;
+    hx_bump(p);
+    while (!hx_is_kw(p, TK_EOF)) {
+        if (!hx_is_kw(p, TK_IDENT)) {
+            *n = 0;
+            p->pos = save;
+            return;
+        }
+        HxSym tname = hx_cur(p)->sym;
         hx_bump(p);
-    } while (depth > 0 && !hx_is_kw(p, TK_EOF));
+        if (*n < max) out[(*n)++] = tname;
+        if (hx_eat_punct(p, ",")) continue;
+        if (hx_is_punct(p, ">")) {
+            hx_bump(p);
+            return;
+        }
+        *n = 0;
+        p->pos = save;
+        return;
+    }
+    *n = 0;
+    p->pos = save;
 }
 
-static void hx_parse_func(HxParser *p, HxFunc *f, int is_export) {
+static void hx_parse_func(HxParser *p, struct HxFunc *f, int is_export) {
     f->is_export = is_export;
     f->span = hx_cur(p)->span;
     hx_bump(p);
@@ -995,7 +1067,7 @@ static void hx_parse_func(HxParser *p, HxFunc *f, int is_export) {
         f->name = hx_cur(p)->sym;
         hx_bump(p);
     }
-    hx_skip_generic(p);
+    hx_parse_generic(p, f->tparams, &f->n_tparams, HX_MAX_TPARAMS);
     hx_expect_punct(p, "(");
     if (!hx_is_punct(p, ")")) {
         for (;;) {
@@ -1036,7 +1108,7 @@ static void hx_parse_type(HxParser *p, HxTypeDecl *t, int is_export) {
     hx_bump(p);
     t->name = hx_cur(p)->sym;
     hx_bump(p);
-    hx_skip_generic(p);
+    hx_parse_generic(p, t->tparams, &t->n_tparams, HX_MAX_TPARAMS);
     hx_skip_nl(p);
     while (!hx_is_kw(p, TK_KW_END) && !hx_is_kw(p, TK_EOF)) {
         if (p->panicking) {
@@ -1137,8 +1209,156 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             hx_skip_rest_of_line(&p);
             continue;
         }
+        if (hx_is_kw(&p, TK_KW_TRAIT)) {
+            HxTraitDecl td;
+            memset(&td, 0, sizeof(td));
+            td.is_export = is_export;
+            td.module = m->index;
+            td.span = hx_cur(&p)->span;
+            hx_bump(&p);
+            if (!hx_is_kw(&p, TK_IDENT)) {
+                hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                         "se esperaba el nombre del TRAIT");
+                p.panicking = 1;
+                hx_sync_stmt(&p);
+                continue;
+            }
+            td.name = hx_cur(&p)->sym;
+            hx_bump(&p);
+            hx_skip_nl(&p);
+            while (!hx_is_kw(&p, TK_KW_END) && hx_cur(&p)->kind != TK_EOF) {
+                if (p.panicking) {
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                if (!hx_is_kw(&p, TK_KW_METODO)) {
+                    hx_error(p.diags, hx_cur(&p)->span, "E0201",
+                             "en un TRAIT sólo se admiten METODO");
+                    p.panicking = 1;
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                hx_bump(&p);
+                if (!hx_is_kw(&p, TK_IDENT)) {
+                    hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                             "se esperaba el nombre del METODO");
+                    p.panicking = 1;
+                    break;
+                }
+                HX_VEC_PUSH(td.methods, hx_cur(&p)->sym);
+                hx_bump(&p);
+                hx_expect_punct(&p, "(");
+                while (!hx_is_punct(&p, ")") && hx_cur(&p)->kind != TK_EOF) {
+                    if (!hx_is_kw(&p, TK_IDENT)) {
+                        hx_error(p.diags, hx_cur(&p)->span, "E0209",
+                                 "se esperaba el nombre de un parámetro");
+                        p.panicking = 1;
+                        break;
+                    }
+                    hx_bump(&p);
+                    hx_eat_type_marker(&p);
+                    hx_type(&p);
+                    if (!hx_eat_punct(&p, ",")) break;
+                }
+                hx_expect_punct(&p, ")");
+                hx_eat_kw(&p, TK_KW_AS);
+                hx_type(&p);
+                hx_skip_rest_of_line(&p);
+            }
+            hx_expect_kw(&p, TK_KW_END, "END");
+            hx_expect_kw(&p, TK_KW_TRAIT, "TRAIT");
+            HX_VEC_PUSH(m->traits, td);
+            continue;
+        }
+        if (hx_is_kw(&p, TK_KW_IMPLEMENTAR)) {
+            HxImplDecl im;
+            memset(&im, 0, sizeof(im));
+            im.module = m->index;
+            im.span = hx_cur(&p)->span;
+            hx_bump(&p);
+            if (!hx_is_kw(&p, TK_IDENT)) {
+                hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                         "se esperaba el tipo que implementa el TRAIT");
+                p.panicking = 1;
+                hx_sync_stmt(&p);
+                continue;
+            }
+            im.type_name = hx_cur(&p)->sym;
+            hx_bump(&p);
+            hx_expect_kw(&p, TK_KW_PARA, "PARA");
+            if (!hx_is_kw(&p, TK_IDENT)) {
+                hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                         "se esperaba el nombre del TRAIT");
+                p.panicking = 1;
+                hx_sync_stmt(&p);
+                continue;
+            }
+            im.trait_name = hx_cur(&p)->sym;
+            hx_bump(&p);
+            hx_skip_nl(&p);
+            while (!hx_is_kw(&p, TK_KW_END) && hx_cur(&p)->kind != TK_EOF) {
+                if (p.panicking) {
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                if (!hx_is_kw(&p, TK_KW_METODO)) {
+                    hx_error(p.diags, hx_cur(&p)->span, "E0201",
+                             "en una implementación sólo se admiten METODO");
+                    p.panicking = 1;
+                    hx_sync_stmt(&p);
+                    continue;
+                }
+                hx_bump(&p);
+                if (!hx_is_kw(&p, TK_IDENT)) {
+                    hx_error(p.diags, hx_cur(&p)->span, "E0208",
+                             "se esperaba el nombre del METODO");
+                    p.panicking = 1;
+                    break;
+                }
+                HxFunc f;
+                memset(&f, 0, sizeof(f));
+                f.module = m->index;
+                f.index = im.methods.len;
+                f.name = hx_cur(&p)->sym;
+                f.orig_name = f.name;
+                f.name_span = hx_cur(&p)->span;
+                f.span = f.name_span;
+                hx_bump(&p);
+                hx_expect_punct(&p, "(");
+                if (!hx_is_punct(&p, ")")) {
+                    for (;;) {
+                        HxParam prm;
+                        memset(&prm, 0, sizeof(prm));
+                        if (!hx_is_kw(&p, TK_IDENT)) {
+                            hx_error(p.diags, hx_cur(&p)->span, "E0209",
+                                     "se esperaba el nombre de un parámetro");
+                            p.panicking = 1;
+                            break;
+                        }
+                        prm.name = hx_cur(&p)->sym;
+                        prm.span = hx_cur(&p)->span;
+                        hx_bump(&p);
+                        if (hx_eat_type_marker(&p)) prm.ty = hx_type(&p);
+                        HX_VEC_PUSH(f.params, prm);
+                        if (!hx_eat_punct(&p, ",")) break;
+                    }
+                }
+                hx_expect_punct(&p, ")");
+                f.ret = hx_eat_kw(&p, TK_KW_AS) ? hx_type(&p) : hx_ty_mk(p.arena, TY_VOID);
+                hx_skip_nl(&p);
+                hx_block_body(&p, &f.body);
+                hx_expect_kw(&p, TK_KW_END, "END");
+                if (!hx_eat_kw(&p, TK_KW_METHOD)) hx_eat_kw(&p, TK_KW_METODO);
+                HX_VEC_PUSH(im.methods, f);
+                hx_skip_nl(&p);
+            }
+            hx_expect_kw(&p, TK_KW_END, "END");
+            hx_expect_kw(&p, TK_KW_IMPLEMENTAR, "IMPLEMENTAR");
+            HX_VEC_PUSH(m->impls, im);
+            continue;
+        }
         if (hx_is_kw(&p, TK_KW_FUNCTION)) {
-            HxFunc f;
+            struct HxFunc f;
             memset(&f, 0, sizeof(f));
             hx_parse_func(&p, &f, is_export);
             if (f.name) {
@@ -1152,6 +1372,7 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             memset(&t, 0, sizeof(t));
             hx_parse_type(&p, &t, is_export);
             t.index = m->types.len;
+            t.module = m->index;
             HX_VEC_PUSH(m->types, t);
             continue;
         }

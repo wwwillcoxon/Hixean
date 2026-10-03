@@ -1,7 +1,13 @@
 #include "hx/emit.h"
+#include "hx/mono.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct {
+    HxTy *from;
+    HxTy *to;
+} HxIterMap;
 
 typedef struct {
     HxArena *arena;
@@ -12,6 +18,13 @@ typedef struct {
     int tmp;
     int uses_string;
     int uses_arena;
+    int uses_iter;
+    int iter_depth;
+    int iter_n; /* contador global de variables de iterador por funcion */
+    /* tipos de elemento usados por iteradores, para generar sus ayudantes */
+    HX_VEC_ANON(HxTy) iter_elems;
+    /* pares (origen, resultado) de los MAP que cambian el tipo */
+    HX_VEC_ANON(HxIterMap) iter_maps;
     int uses_exit;
     int uses_result;
     int uses_vec;
@@ -53,6 +66,35 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
         default: return "int32_t";
     }
 }
+
+static const char *HX_RT_ITER =
+    "typedef struct { void *estado; int32_t (*paso)(void *estado, void *out); } hx_iter;\n"
+    "typedef struct { int32_t i, fin; } hx_iter_st_rango_i;\n"
+    "static inline int32_t hx_iter_paso_rango_i(void *st, void *out) {\n"
+    "  hx_iter_st_rango_i *s = (hx_iter_st_rango_i *)st;\n"
+    "  if (s->i >= s->fin) return 0;\n"
+    "  *(int32_t *)out = s->i;\n"
+    "  s->i++;\n"
+    "  return 1;\n"
+    "}\n"
+    "static inline hx_iter hx_iter_rango_i(hx_arena *a, int32_t desde, int32_t hasta) {\n"
+    "  hx_iter_st_rango_i *s = (hx_iter_st_rango_i *)hx_arena_alloc(a, sizeof(*s));\n"
+    "  s->i = desde; s->fin = hasta;\n"
+    "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_rango_i; return it;\n"
+    "}\n"
+    "typedef struct { double i, fin, paso_; } hx_iter_st_rango_f;\n"
+    "static inline int32_t hx_iter_paso_rango_f(void *st, void *out) {\n"
+    "  hx_iter_st_rango_f *s = (hx_iter_st_rango_f *)st;\n"
+    "  if (s->i >= s->fin) return 0;\n"
+    "  *(double *)out = s->i;\n"
+    "  s->i += s->paso_;\n"
+    "  return 1;\n"
+    "}\n"
+    "static inline hx_iter hx_iter_rango_f(hx_arena *a, double desde, double hasta, double paso) {\n"
+    "  hx_iter_st_rango_f *s = (hx_iter_st_rango_f *)hx_arena_alloc(a, sizeof(*s));\n"
+    "  s->i = desde; s->fin = hasta; s->paso_ = paso;\n"
+    "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_rango_f; return it;\n"
+    "}\n";
 
 static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, unsigned long);\n"
     "void *memset(void *, int, unsigned long);\n";
@@ -611,6 +653,13 @@ static const char *hx_zero_fn(HxEmit *e, HxTy *t) {
 }
 
 static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b);
+static void hx_iter_note_elem(HxEmit *e, HxTy *t);
+static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to);
+static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
+static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b);
+static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name);
+static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int cap, int ind);
+
 static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind);
 static void hx_body(HxEmit *e, HxStmtVec *body, int ind);
 static void hx_scan_stmt(HxEmit *e, HxStmt *s);
@@ -681,6 +730,16 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
         case ST_WHILE:
             hx_scan_expr(e, s->while_.cond);
             hx_scan_body(e, &s->while_.body);
+            break;
+        case ST_FORIN:
+            /* el estado de un iterador vive en una arena creada por la sentencia */
+            e->uses_iter = 1;
+            e->uses_arena = 1;
+            if (s->forin_.iter->ty && s->forin_.iter->ty->kind == TY_ITER)
+                hx_iter_note_elem(e, s->forin_.iter->ty->elem);
+            hx_iter_note_chain(e, s->forin_.iter);
+            hx_scan_expr(e, s->forin_.iter);
+            hx_scan_body(e, &s->forin_.body);
             break;
         case ST_FOR:
             hx_scan_expr(e, s->for_.start);
@@ -913,12 +972,15 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             if (x->is_ok_ctor || x->is_err_ctor) {
                 e->uses_result = 1;
                 const char *fn = x->is_ok_ctor ? "hx_ok" : "hx_err";
+                /* en M4 el error de un Result es siempre STRING */
                 const char *sfx = "s";
-                if (x->payload_ty && x->payload_ty->kind == TY_FLOAT) sfx = "f";
-                else if (x->payload_ty &&
-                         (x->payload_ty->kind == TY_STRING || x->payload_ty->kind == TY_NAMED))
-                    sfx = "s";
-                else sfx = "i";
+                if (x->is_ok_ctor) {
+                    if (x->payload_ty && x->payload_ty->kind == TY_FLOAT) sfx = "f";
+                    else if (x->payload_ty &&
+                             (x->payload_ty->kind == TY_STRING || x->payload_ty->kind == TY_NAMED))
+                        sfx = "s";
+                    else sfx = "i";
+                }
                 hx_buf_printf(b, "%s_%s(", fn, sfx);
                 if (x->call.args.len) hx_expr_str(e, x->call.args.data[0].value, 0, b);
                 hx_buf_str(b, ")");
@@ -964,7 +1026,9 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, ")");
                 break;
             }
-            if (callee->kind == EX_PATH)
+            if (x->fn)
+                hx_buf_printf(b, "hx_call_%s(", hx_sym_str(x->fn->name));
+            else if (callee->kind == EX_PATH)
                 hx_buf_printf(b, "hx_call_%s(",
                               hx_sym_str(callee->path.parts.data[callee->path.parts.len - 1].name));
             else {
@@ -1161,6 +1225,7 @@ static int hx_count_defers(HxStmtVec *body) {
                 break;
             case ST_WHILE: n += hx_count_defers(&st->while_.body); break;
             case ST_FOR: n += hx_count_defers(&st->for_.body); break;
+            case ST_FORIN: n += hx_count_defers(&st->forin_.body); break;
             case ST_ARENA: n += hx_count_defers(&st->arena.body); break;
             case ST_BLOCK: n += hx_count_defers(&st->block.stmts); break;
             case ST_MATCH:
@@ -1524,6 +1589,46 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_indent(b, ind);
             hx_buf_str(b, "}\n");
             break;
+        case ST_FORIN: {
+            HxTy *elem = s->forin_.iter->ty && s->forin_.iter->ty->kind == TY_ITER
+                             ? s->forin_.iter->ty->elem
+                             : hx_ty_builtin(e->arena, TY_INT);
+            e->uses_iter = 1;
+            e->uses_arena = 1;
+            hx_iter_note_elem(e, elem);
+            int aname_idx = e->tmp++;
+            char *aname = hx_arena_sprintf(e->arena, "hx_a%d", aname_idx);
+            if (e->arena_depth < 16) e->arena_stack[e->arena_depth++] = aname;
+            char it[64];
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena %s;\n", aname);
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena_init(&%s);\n", aname);
+            const char *arena = aname;
+            HxBuf *saved = &e->out;
+            e->out = *b;
+            hx_iter_ctor(e, s->forin_.iter, arena, it, sizeof(it), ind);
+            b->data = e->out.data;
+            b->len = e->out.len;
+            b->cap = e->out.cap;
+            e->out = *saved;
+            hx_indent(b, ind);
+            hx_buf_printf(b, "%s hx_itv%d;\n", hx_c_ty(e, elem), aname_idx);
+            hx_indent(b, ind);
+            hx_buf_printf(b, "while (%s.paso(%s.estado, &hx_itv%d)) {\n", it, it, aname_idx);
+            hx_indent(b, ind + 1);
+            hx_buf_printf(b, "%s hx_v_%s = hx_itv%d;\n", hx_c_ty(e, elem),
+                          hx_sym_str(s->forin_.var), aname_idx);
+            int lab = hx_body_has_defer(&s->forin_.body) ? hx_push_epilogue(e) : -1;
+            hx_block(e, &s->forin_.body, ind + 1);
+            if (lab >= 0) hx_epilogue_end(e, lab, &s->forin_.body, ind + 1);
+            hx_indent(b, ind);
+            hx_buf_str(b, "}\n");
+            hx_indent(b, ind);
+            hx_buf_printf(b, "hx_arena_free(&%s);\n", aname);
+            if (e->arena_depth) e->arena_depth--;
+            break;
+        }
         case ST_FOR: {
             HxTy *vt = s->for_.start && s->for_.start->ty ? s->for_.start->ty
                                                           : hx_ty_builtin(e->arena, TY_INT);
@@ -1681,11 +1786,11 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
     }
 }
 
-static void hx_emit_param_list(HxEmit *e, HxFunc *f, HxBuf *b);
+static void hx_emit_param_list(HxEmit *e, struct HxFunc *f, HxBuf *b);
 
-static void hx_emit_func(HxEmit *e, HxFunc *f) {
+static void hx_emit_func(HxEmit *e, struct HxFunc *f) {
     HxBuf *b = &e->out;
-    hx_buf_printf(b, "%s%s hx_call_%s(", f->is_export ? "" : "static ",
+    hx_buf_printf(b, "%s%s hx_call_%s(", (f->is_export || f->is_instance) ? "" : "static ",
 
                   hx_c_ty(e, f->ret), hx_sym_str(f->name));
     hx_emit_param_list(e, f, b);
@@ -1748,6 +1853,227 @@ static void hx_emit_func(HxEmit *e, HxFunc *f) {
     hx_buf_str(b, "}\n\n");
 }
 
+/* Los ayudantes de MAP dependen del par (origen, resultado); los de FILTER y
+   TAKE sólo del tipo del elemento. */
+static void hx_iter_map_helpers(HxBuf *b, const char *ct, const char *tag, const char *ct2,
+                                const char *tag2) {
+    hx_buf_printf(b, "typedef struct { hx_iter src; void *f; } hx_iter_st_map_%s_to_%s;\n", tag,
+                  tag2);
+    hx_buf_printf(b, "static inline int32_t hx_iter_paso_map_%s_to_%s(void *st, void *out) {\n",
+                  tag, tag2);
+    hx_buf_printf(b, "  hx_iter_st_map_%s_to_%s *s = (hx_iter_st_map_%s_to_%s *)st;\n", tag,
+                  tag2, tag, tag2);
+    hx_buf_printf(b, "  %s v;\n", ct);
+    hx_buf_str(b, "  if (!s->src.paso(s->src.estado, &v)) return 0;\n");
+    hx_buf_printf(b, "  *(%s *)out = ((%s (*)(%s))s->f)(v);\n", ct2, ct2, ct);
+    hx_buf_str(b, "  return 1;\n}\n");
+    hx_buf_printf(b,
+                  "static inline hx_iter hx_iter_map_%s_to_%s(hx_arena *a, hx_iter src, "
+                  "void *f) {\n",
+                  tag, tag2);
+    hx_buf_printf(b,
+                  "  hx_iter_st_map_%s_to_%s *s = (hx_iter_st_map_%s_to_%s *)"
+                  "hx_arena_alloc(a, sizeof(*s));\n",
+                  tag, tag2, tag, tag2);
+    hx_buf_str(b, "  s->src = src; s->f = f;\n");
+    hx_buf_printf(b,
+                  "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_map_%s_to_%s; "
+                  "return it;\n}\n",
+                  tag, tag2);
+}
+
+static void hx_iter_filter_helpers(HxBuf *b, const char *ct, const char *tag) {
+    hx_buf_printf(b, "typedef struct { hx_iter src; void *f; } hx_iter_st_filt_%s;\n", tag);
+    hx_buf_printf(b, "static inline int32_t hx_iter_paso_filt_%s(void *st, void *out) {\n", tag);
+    hx_buf_printf(b, "  hx_iter_st_filt_%s *s = (hx_iter_st_filt_%s *)st;\n", tag, tag);
+    hx_buf_printf(b, "  %s v;\n", ct);
+    hx_buf_str(b, "  while (s->src.paso(s->src.estado, &v)) {\n");
+    hx_buf_printf(b, "    if (((int32_t (*)(%s))s->f)(v)) { *(%s *)out = v; return 1; }\n", ct,
+                  ct);
+    hx_buf_str(b, "  }\n  return 0;\n}\n");
+    hx_buf_printf(b,
+                  "static inline hx_iter hx_iter_filter_%s(hx_arena *a, hx_iter src, "
+                  "void *f) {\n",
+                  tag);
+    hx_buf_printf(b,
+                  "  hx_iter_st_filt_%s *s = (hx_iter_st_filt_%s *)hx_arena_alloc(a, "
+                  "sizeof(*s));\n",
+                  tag, tag);
+    hx_buf_str(b, "  s->src = src; s->f = f;\n");
+    hx_buf_printf(b,
+                  "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_filt_%s; return it;\n}\n",
+                  tag);
+}
+
+static void hx_iter_take_helpers(HxBuf *b, const char *tag) {
+    hx_buf_printf(b, "typedef struct { hx_iter src; int64_t n, vistos; } hx_iter_st_take_%s;\n",
+                  tag);
+    hx_buf_printf(b, "static inline int32_t hx_iter_paso_take_%s(void *st, void *out) {\n", tag);
+    hx_buf_printf(b, "  hx_iter_st_take_%s *s = (hx_iter_st_take_%s *)st;\n", tag, tag);
+    hx_buf_str(b, "  if (s->vistos >= s->n) return 0;\n");
+    hx_buf_str(b, "  if (!s->src.paso(s->src.estado, out)) return 0;\n");
+    hx_buf_str(b, "  s->vistos++;\n  return 1;\n}\n");
+    hx_buf_printf(b,
+                  "static inline hx_iter hx_iter_take_%s(hx_arena *a, hx_iter src, "
+                  "int64_t n) {\n",
+                  tag);
+    hx_buf_printf(b,
+                  "  hx_iter_st_take_%s *s = (hx_iter_st_take_%s *)hx_arena_alloc(a, "
+                  "sizeof(*s));\n",
+                  tag, tag);
+    hx_buf_str(b, "  s->src = src; s->n = n; s->vistos = 0;\n");
+    hx_buf_printf(b,
+                  "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_take_%s; return it;\n}\n",
+                  tag);
+}
+
+
+/* registra el tipo de elemento para generar sus ayudantes una sola vez */
+static void hx_iter_note_elem(HxEmit *e, HxTy *t) {
+    for (int i = 0; i < e->iter_elems.len; i++)
+        if (hx_ty_equal(&e->iter_elems.data[i], t)) return;
+    if (e->iter_elems.len >= 32) return;
+    HxTy *copy = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
+    *copy = *t;
+    HX_VEC_PUSH(e->iter_elems, *copy);
+}
+
+static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to) {
+    for (int i = 0; i < e->iter_maps.len; i++)
+        if (hx_ty_equal(e->iter_maps.data[i].from, from) &&
+            hx_ty_equal(e->iter_maps.data[i].to, to))
+            return;
+    if (e->iter_maps.len >= 32) return;
+    HxIterMap m;
+    m.from = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
+    m.to = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
+    *m.from = *from;
+    *m.to = *to;
+    HX_VEC_PUSH(e->iter_maps, m);
+}
+
+/* Registra los tipos de una cadena de iteradores antes de escribir el
+   runtime: la cabecera se emite antes que los modulos. */
+static void hx_iter_note_chain(HxEmit *e, HxExpr *x) {
+    while (x && x->kind == EX_CALL && x->is_intrin == 4) {
+        const char *nm = hx_sym_str(x->method);
+        HxTy *elem = x->ty && x->ty->kind == TY_ITER ? x->ty->elem : NULL;
+        if (!hx_ascii_casecmp(nm, "Take") || !hx_ascii_casecmp(nm, "First")) {
+            if (elem) hx_iter_note_elem(e, elem);
+            hx_iter_note_chain(e, x->recv);
+            return;
+        }
+        HxTy *from =
+            x->recv && x->recv->ty && x->recv->ty->kind == TY_ITER ? x->recv->ty->elem : NULL;
+        if (!hx_ascii_casecmp(nm, "Map")) {
+            if (from) hx_iter_note_elem(e, from);
+            if (elem) hx_iter_note_elem(e, elem);
+            if (from && elem) hx_iter_note_map(e, from, elem);
+        } else if (from) {
+            hx_iter_note_elem(e, from);
+        }
+        hx_iter_note_chain(e, x->recv);
+        return;
+    }
+}
+
+static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b) {
+    char tag[96];
+    hx_ty_mangle(t ? t : hx_ty_builtin(e->arena, TY_UNKNOWN), tag, sizeof(tag));
+    hx_buf_str(b, tag);
+}
+
+static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name) {
+    for (int m = 0; m < e->unit->modules.len; m++)
+        for (int i = 0; i < e->unit->modules.data[m].funcs.len; i++)
+            if (!hx_ascii_casecmp(hx_sym_str(e->unit->modules.data[m].funcs.data[i].name), name))
+                return &e->unit->modules.data[m].funcs.data[i];
+    return NULL;
+}
+
+/* Emite una cadena de iteradores dentro de la arena `arena` y devuelve el
+   nombre de la variable C que la contiene. El recorrido es perezoso: sólo se
+   construye el estado, nunca la secuencia. */
+static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int cap, int ind) {
+    const char *nm = hx_sym_str(x->method);
+    e->uses_iter = 1;
+    e->uses_arena = 1;
+    if (!hx_ascii_casecmp(nm, "Rango") || !hx_ascii_casecmp(nm, "RangoF")) {
+        int is_f = x->ty && x->ty->kind == TY_ITER && x->ty->elem && x->ty->elem->kind == TY_FLOAT;
+        snprintf(out, (size_t)cap, "hx_it%d", e->iter_n++);
+        hx_indent(&e->out, ind);
+        hx_buf_printf(&e->out, "hx_iter %s = hx_iter_rango_%s(&%s, ", out, is_f ? "f" : "i",
+                      arena);
+        hx_expr_str(e, x->call.args.data[0].value, 0, &e->out);
+        hx_buf_str(&e->out, ", ");
+        hx_expr_str(e, x->call.args.data[1].value, 0, &e->out);
+        if (is_f) hx_buf_str(&e->out, ", 1.0");
+        hx_buf_str(&e->out, ");\n");
+        return;
+    }
+    char inner[64];
+    if (x->recv && x->recv->kind == EX_CALL) {
+        hx_iter_ctor(e, x->recv, arena, inner, sizeof(inner), ind);
+    } else {
+        snprintf(inner, sizeof(inner), "hx_it%d", e->iter_n++);
+        hx_indent(&e->out, ind);
+        hx_buf_printf(&e->out, "hx_iter %s;\n", inner);
+    }
+    HxTy *t = x->recv && x->recv->ty && x->recv->ty->kind == TY_ITER ? x->recv->ty->elem : NULL;
+    HxTy *out_t = x->ty && x->ty->kind == TY_ITER ? x->ty->elem : t;
+    if (t) hx_iter_note_elem(e, t);
+    if (out_t) hx_iter_note_elem(e, out_t);
+    snprintf(out, (size_t)cap, "hx_it%d", e->iter_n++);
+    hx_indent(&e->out, ind);
+    if (!hx_ascii_casecmp(nm, "Take")) {
+        hx_buf_printf(&e->out, "hx_iter %s = hx_iter_take_", out);
+        hx_iter_suffix(e, t, &e->out);
+        hx_buf_printf(&e->out, "(&%s, %s, ", arena, inner);
+        hx_expr_str(e, x->call.args.data[0].value, 0, &e->out);
+        hx_buf_str(&e->out, ");\n");
+        return;
+    }
+    HxExpr *farg = x->call.args.data[0].value;
+    const char *fname =
+        farg->kind == EX_PATH
+            ? hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name)
+            : hx_sym_str(farg->method);
+    struct HxFunc *fn = farg->fn ? farg->fn : hx_find_func_named(e, fname);
+    hx_buf_printf(&e->out, "hx_iter %s = hx_iter_%s_", out,
+                  !hx_ascii_casecmp(nm, "Map") ? "map" : "filter");
+    hx_iter_suffix(e, t, &e->out);
+    if (!hx_ascii_casecmp(nm, "Map")) {
+        hx_buf_str(&e->out, "_to_");
+        hx_iter_suffix(e, out_t, &e->out);
+    }
+    hx_buf_printf(&e->out, "(&%s, %s, (void *)&hx_call_%s);\n", arena, inner,
+                  hx_sym_str(fn ? fn->name : fname));
+}
+
+static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
+    HxBuf *saved = &e->out;
+    e->out = *b;
+    for (int i = 0; i < e->iter_maps.len; i++) {
+        HxIterMap *m = &e->iter_maps.data[i];
+        char c1[96], c2[96];
+        hx_ty_mangle(m->from, c1, sizeof(c1));
+        hx_ty_mangle(m->to, c2, sizeof(c2));
+        hx_iter_map_helpers(&e->out, hx_c_ty(e, m->from), c1, hx_c_ty(e, m->to), c2);
+        if (m->from->kind == TY_FLOAT) continue; /* MAP de FLOAT usa el mismo ayudante */
+    }
+    for (int i = 0; i < e->iter_elems.len; i++) {
+        HxTy *t = &e->iter_elems.data[i];
+        char tag[96];
+        hx_ty_mangle(t, tag, sizeof(tag));
+        hx_iter_filter_helpers(&e->out, hx_c_ty(e, t), tag);
+        hx_iter_take_helpers(&e->out, tag);
+    }
+    b->data = e->out.data;
+    b->len = e->out.len;
+    b->cap = e->out.cap;
+    e->out = *saved;
+}
+
 static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     hx_buf_printf(b, "/* runtime hxc %s */\n", HX_VERSION);
     hx_buf_str(b, "#ifndef HX_RUNTIME_H\n#define HX_RUNTIME_H\n");
@@ -1773,6 +2099,10 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, "extern hx_arena hx_static_arena;\n");
         hx_buf_str(b, "void hx_static_init(void);\n");
     }
+    if (e->uses_iter) {
+        hx_buf_str(b, HX_RT_ITER);
+        hx_emit_iter_helpers(e, b);
+    }
     if (e->uses_string) {
         hx_buf_str(b, HX_RT_STRFUNS);
         hx_buf_str(b, HX_RT_STRMORE);
@@ -1781,7 +2111,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     hx_buf_str(b, "#endif\n");
 }
 
-static void hx_emit_param_list(HxEmit *e, HxFunc *f, HxBuf *b) {
+static void hx_emit_param_list(HxEmit *e, struct HxFunc *f, HxBuf *b) {
     if (!f->params.len) {
         hx_buf_str(b, "void");
         return;
@@ -1794,7 +2124,46 @@ static void hx_emit_param_list(HxEmit *e, HxFunc *f, HxBuf *b) {
 }
 
 
-static void hx_emit_module_header(HxEmit *e, HxModule *m, HxBuf *b) {
+/* las instancias se declaran en la cabecera del modulo que las define para que
+   cualquier unidad de traduccion que lo importe pueda llamarlas */
+/* las instancias de un TYPE generico se definen en la cabecera del modulo que
+   las origina, junto a las del resto de sus tipos */
+static void hx_emit_type_instances(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b) {
+    for (int i = 0; i < unit->n_type_instances; i++) {
+        HxTypeDecl *td = unit->type_instances[i];
+        if (td->module != m->index) continue;
+        hx_buf_printf(b, "typedef struct hx_T_%s hx_T_%s;\n", hx_sym_str(td->name),
+                      hx_sym_str(td->name));
+    }
+    for (int i = 0; i < unit->n_type_instances; i++) {
+        HxTypeDecl *td = unit->type_instances[i];
+        if (td->module != m->index) continue;
+        hx_buf_printf(b, "struct hx_T_%s {\n", hx_sym_str(td->name));
+        for (int j = 0; j < td->fields.len; j++)
+            hx_buf_printf(b, "  %s %s;\n", hx_c_ty(e, td->fields.data[j].ty),
+                          hx_sym_str(td->fields.data[j].name));
+        hx_buf_str(b, "};\n");
+        hx_buf_printf(b,
+                      "static inline hx_T_%s hx_zero_rec_%s(void) {\n"
+                      "  hx_T_%s v;\n"
+                      "  __builtin_memset(&v, 0, sizeof(v));\n"
+                      "  return v;\n"
+                      "}\n",
+                      hx_sym_str(td->name), hx_sym_str(td->name), hx_sym_str(td->name));
+    }
+}
+
+static void hx_emit_instance_decls(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b) {
+    for (int i = 0; i < unit->n_instances; i++) {
+        struct HxFunc *inst = unit->instances[i];
+        if (inst->module != m->index) continue;
+        hx_buf_printf(b, "extern %s hx_call_%s(", hx_c_ty(e, inst->ret), hx_sym_str(inst->name));
+        hx_emit_param_list(e, inst, b);
+        hx_buf_str(b, ");\n");
+    }
+}
+
+static void hx_emit_module_header(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b) {
     char *guard = hx_arena_sprintf(e->arena, "HX_MOD_%s_H", hx_sym_str(m->name));
     for (char *p = guard; *p; p++) *p = hx_ascii_upper(*p);
     hx_buf_printf(b, "/* modulo %s */\n", hx_sym_str(m->name));
@@ -1808,8 +2177,8 @@ static void hx_emit_module_header(HxEmit *e, HxModule *m, HxBuf *b) {
                       hx_sym_str(kc->name));
     }
     for (int i = 0; i < m->funcs.len; i++) {
-        HxFunc *f = &m->funcs.data[i];
-        if (!f->is_export) continue;
+        struct HxFunc *f = &m->funcs.data[i];
+        if (!f->is_export || f->is_generic) continue;
         hx_buf_printf(b, "extern %s hx_call_%s(", hx_c_ty(e, f->ret),
                       hx_sym_str(f->name));
         if (!f->params.len) hx_buf_str(b, "void");
@@ -1820,6 +2189,15 @@ static void hx_emit_module_header(HxEmit *e, HxModule *m, HxBuf *b) {
         }
         hx_buf_str(b, ");\n");
     }
+    for (int i = 0; i < m->impls.len; i++)
+        for (int j = 0; j < m->impls.data[i].methods.len; j++) {
+            struct HxFunc *f = &m->impls.data[i].methods.data[j];
+            hx_buf_printf(b, "extern %s hx_call_%s(", hx_c_ty(e, f->ret), hx_sym_str(f->name));
+            hx_emit_param_list(e, f, b);
+            hx_buf_str(b, ");\n");
+        }
+    hx_emit_type_instances(e, unit, m, b);
+    hx_emit_instance_decls(e, unit, m, b);
     hx_buf_printf(b, "#endif /* %s */\n", guard);
 }
 
@@ -1848,15 +2226,24 @@ static void hx_emit_module_source(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b
         hx_expr_str(e, kc->value, 0, b);
         hx_buf_str(b, ";\n");
     }
+    for (int i = 0; i < unit->n_instances; i++) {
+        struct HxFunc *inst = unit->instances[i];
+        if (inst->module != m->index) continue;
+        hx_emit_func(e, inst);
+    }
     if (!emit_funcs) return;
     for (int j = 0; j < m->funcs.len; j++) {
-        HxFunc *f = &m->funcs.data[j];
-        if (f->is_export) continue;
+        struct HxFunc *f = &m->funcs.data[j];
+        if (f->is_export || f->is_generic) continue;
         hx_buf_printf(b, "static %s hx_call_%s(", hx_c_ty(e, f->ret), hx_sym_str(f->name));
         hx_emit_param_list(e, f, b);
         hx_buf_str(b, ");\n");
     }
-    for (int j = 0; j < m->funcs.len; j++) hx_emit_func(e, &m->funcs.data[j]);
+    for (int i = 0; i < m->impls.len; i++)
+        for (int j = 0; j < m->impls.data[i].methods.len; j++)
+            hx_emit_func(e, &m->impls.data[i].methods.data[j]);
+    for (int j = 0; j < m->funcs.len; j++)
+        if (!m->funcs.data[j].is_generic) hx_emit_func(e, &m->funcs.data[j]);
 }
 
 int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
@@ -1885,7 +2272,12 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
             }
         }
         if (m->is_entry && m->top.len) hx_scan_body(&e, &m->top);
+        for (int j = 0; j < m->funcs.len; j++) hx_scan_body(&e, &m->funcs.data[j].body);
+        for (int i = 0; i < m->impls.len; i++)
+            for (int j = 0; j < m->impls.data[i].methods.len; j++)
+                hx_scan_body(&e, &m->impls.data[i].methods.data[j].body);
     }
+    for (int i = 0; i < unit->n_instances; i++) hx_scan_body(&e, &unit->instances[i]->body);
 
     HxBuf rt = {arena, NULL, 0, 0};
     {
@@ -1919,7 +2311,7 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
         HxBuf hb = {arena, NULL, 0, 0};
         HxBuf saved_h = e.out;
         e.out = hb;
-        hx_emit_module_header(&e, m, &e.out);
+        hx_emit_module_header(&e, unit, m, &e.out);
         hb = e.out;
         e.out = saved_h;
         char *hp = hx_arena_sprintf(arena, "%s/%s.h", opt->dir_gen, hx_sym_str(m->name));
@@ -1955,8 +2347,8 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
         HxBuf saved_f = e.out;
         e.out = main_b;
         for (int j = 0; j < entry->funcs.len; j++) {
-            HxFunc *f = &entry->funcs.data[j];
-            if (f->is_export) continue;
+            struct HxFunc *f = &entry->funcs.data[j];
+            if (f->is_export || f->is_generic) continue;
             hx_buf_printf(&e.out, "static %s hx_call_%s(", hx_c_ty(&e, f->ret),
                           hx_sym_str(f->name));
             hx_emit_param_list(&e, f, &e.out);
@@ -1981,7 +2373,11 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     if (entry) {
         HxBuf saved = e.out;
         e.out = main_b;
-        for (int j = 0; j < entry->funcs.len; j++) hx_emit_func(&e, &entry->funcs.data[j]);
+        for (int i = 0; i < entry->impls.len; i++)
+            for (int j = 0; j < entry->impls.data[i].methods.len; j++)
+                hx_emit_func(&e, &entry->impls.data[i].methods.data[j]);
+        for (int j = 0; j < entry->funcs.len; j++)
+            if (!entry->funcs.data[j].is_generic) hx_emit_func(&e, &entry->funcs.data[j]);
         main_b = e.out;
         main_b = e.out;
         e.out = saved;

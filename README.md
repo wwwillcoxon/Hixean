@@ -22,8 +22,8 @@ Hola mundo
 | M5a | `ARENA` con reservas reales (mmap en freestanding, malloc en libc) | escape de arena rechazado por el verificador |
 | M5c | `REF` con unicidad por sentencia | prestamo anidado del mismo origen rechazado |
 | M6 | vectores: literales, componentes, swizzle, `DOT`/`CROSS`/`NORMALIZED` | `v.zyx` y `f(a,b).y` en el corpus |
+| M5 | genéricos monomorfizados, `TRAIT`/`IMPLEMENTAR PARA` con despacho estático, iteradores lazy (`ITER<T>`, `FOR x IN`, `MAP`/`FILTER`/`TAKE`) | `TAKE` sobre 1 000 sin materializar |
 | M7 | compilación por módulos con caché de objetos y unidad `.hxc` (interfaz + biblioteca) | recompilar 1 de 20 módulos: 240 ms |
-| M5 | genéricos monomorfizados, traits, iteradores lazy | *pendiente* |
 | M8–M12 | capacidades (`std.net`/`audio`/`gpu`), LSP, `.hxk`/`.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
@@ -54,6 +54,28 @@ implementación. Quien use la biblioteca no necesita sus fuentes:
 ```
 hxc build mate.hxs --emit-hxc unidades/     ' publica unidades/mate.hxc + libmate.a
 hxc build usa.hxe --use-hxc unidades/       ' compila usando sólo la interfaz
+```
+
+M5 monomorfiza en el punto de llamada: `FUNCTION Max<T>(a AS T, b AS T) AS T`
+comprobado con `Max(3, 9)` y con `Max("alfa", "beta")` genera dos funciones C
+distintas, y lo mismo ocurre con `TYPE Caja<T>` usada como `Caja<Int>` y
+`Caja<STRING>`. Los `TRAIT` declaran métodos y `IMPLEMENTAR <tipo> PARA <trait>`
+los implementa; la llamada `Compara.Mayor(a, b)` se resuelve estáticamente por
+el tipo del primer argumento, sin tabla virtual.
+
+Los iteradores son perezosos de verdad: `FOR x IN Rango(1, 1000).Take(3)` sólo
+construye el estado en una arena y el elemento se produce al pedirlo. `MAP`
+puede cambiar el tipo del elemento (`Rango(1,3).MAP(F)` con `F: INT -> STRING`)
+y `FILTER` sigue pidiendo elementos hasta que uno pasa.
+
+```
+FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+
+FOR x IN Rango(1, 1000000).Map(Doble).Take(3)
+  PRINT x            ' 2, 4, 6: la cadena no se materializa
+NEXT x
 ```
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).

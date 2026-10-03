@@ -1,0 +1,56 @@
+"traits: despacho estatico por tipo del receptor"
+TRAIT Compara
+  METODO Mayor(a AS SELF, b AS SELF) AS SELF
+  METODO Nombre(quien AS SELF) AS STRING
+END TRAIT
+
+IMPLEMENTAR INT PARA Compara
+  METODO Mayor(a AS INT, b AS INT) AS INT
+    IF a > b THEN RETURN a
+    RETURN b
+  END METHOD
+  METODO Nombre(quien AS SELF) AS STRING
+    RETURN "int"
+  END METHOD
+END IMPLEMENTAR
+
+IMPLEMENTAR STRING PARA Compara
+  METODO Mayor(a AS STRING, b AS STRING) AS STRING
+    RETURN a
+  END METHOD
+  METODO Nombre(quien AS SELF) AS STRING
+    RETURN "string"
+  END METHOD
+END IMPLEMENTAR
+
+PRINT Compara.Mayor(3, 9)
+PRINT Compara.Mayor(9, 3)
+PRINT Compara.Mayor("alfa", "beta")
+PRINT Compara.Nombre(7)
+PRINT Compara.Nombre("x")
+
+TYPE Punto
+  x AS INT
+  y AS INT
+END TYPE
+
+IMPLEMENTAR Punto PARA Compara
+  METODO Mayor(a AS Punto, b AS Punto) AS Punto
+    IF a.x + a.y > b.x + b.y THEN RETURN a
+    RETURN b
+  END METHOD
+  METODO Nombre(quien AS SELF) AS STRING
+    RETURN "punto"
+  END METHOD
+END IMPLEMENTAR
+
+DIM p AS Punto
+p.x = 1
+p.y = 2
+DIM q AS Punto
+q.x = 4
+q.y = 0
+DIM r AS Punto = Compara.Mayor(p, q)
+PRINT r.x
+PRINT r.y
+PRINT Compara.Nombre(p)

@@ -1,4 +1,5 @@
 #include "hx/check.h"
+#include "hx/mono.h"
 #include "hx/parse.h"
 
 #include <string.h>
@@ -12,7 +13,7 @@ typedef struct {
     int borrowed;
 } HxSymEntry;
 
-enum { SK_VAR, SK_FUNC, SK_TYPE, SK_CONST, SK_MODULE };
+enum { SK_VAR, SK_FUNC, SK_TYPE, SK_CONST, SK_MODULE, SK_TRAIT };
 
 typedef struct HxScope {
     HX_VEC_ANON(HxSymEntry) syms;
@@ -26,14 +27,28 @@ typedef struct {
     HxArena *arena;
     HxIntern *intern;
     HxDiagBag *diags;
-    HxFunc *cur_func;
+    struct HxFunc *cur_func;
     HxTy *ret_ty;
     int loop_depth;
+    /* parametros de tipo de la funcion generica que se esta comprobando: un
+       tipo como Caja<T> se deja sin resolver hasta la instancia */
+    HxSym cur_tparams[HX_MAX_TPARAMS];
+    int n_cur_tparams;
+    HxTy *cur_self; /* tipo que implementa el TRAIT que se esta comprobando */
     int defer_depth;
     int loop_defer_depth;
     int arena_depth;
     int match_defer;
 } HxChecker;
+
+static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
+static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
+static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g);
+static void hx_define_module_scope(HxChecker *c, HxModule *mod);
+static void hx_collect_names(HxChecker *c, HxModule *mod);
+static void hx_resolve_signature(HxChecker *c, struct HxFunc *fn);
+static void hx_check_func(HxChecker *c, struct HxFunc *f);
+
 
 static void hx_scope_push(HxChecker *c) {
     HxScope *s = (HxScope *)hx_arena_calloc(c->arena, sizeof(HxScope));
@@ -88,6 +103,9 @@ static HxSymEntry *hx_lookup(HxChecker *c, HxSym name) {
 }
 
 static HxTypeDecl *hx_find_type(HxChecker *c, HxSym name) {
+    for (int i = 0; i < c->unit->n_type_instances; i++)
+        if (!hx_ascii_casecmp(hx_sym_str(c->unit->type_instances[i]->name), hx_sym_str(name)))
+            return c->unit->type_instances[i];
     for (int m = 0; m < c->unit->modules.len; m++) {
         HxModule *mod = &c->unit->modules.data[m];
         for (int i = 0; i < mod->types.len; i++)
@@ -107,7 +125,41 @@ static HxConst *hx_find_const(HxChecker *c, HxSym name) {
     return NULL;
 }
 
-static HxFunc *hx_find_func(HxChecker *c, HxSym name) {
+static HxTraitDecl *hx_find_trait(HxChecker *c, HxSym name) {
+    for (int m = 0; m < c->unit->modules.len; m++)
+        for (int i = 0; i < c->unit->modules.data[m].traits.len; i++)
+            if (!hx_ascii_casecmp(hx_sym_str(c->unit->modules.data[m].traits.data[i].name),
+                                  hx_sym_str(name)))
+                return &c->unit->modules.data[m].traits.data[i];
+    return NULL;
+}
+
+/* Busca METODO para el tipo concreto `ty` en una implementacion del trait. */
+static struct HxFunc *hx_find_impl_method(HxChecker *c, HxTraitDecl *tr, HxTy *ty,
+                                          HxSym method) {
+    if (!ty) return NULL;
+    char tname[128];
+    if (ty->kind == TY_NAMED) snprintf(tname, sizeof(tname), "%s", hx_sym_str(ty->name));
+    else snprintf(tname, sizeof(tname), "%s", hx_ty_name(ty));
+    for (int m = 0; m < c->unit->modules.len; m++) {
+        HxModule *mod = &c->unit->modules.data[m];
+        for (int i = 0; i < mod->impls.len; i++) {
+            HxImplDecl *im = &mod->impls.data[i];
+            if (hx_ascii_casecmp(hx_sym_str(im->trait_name), hx_sym_str(tr->name))) continue;
+            if (hx_ascii_casecmp(hx_sym_str(im->type_name), tname)) continue;
+            for (int j = 0; j < im->methods.len; j++) {
+                HxSym on = im->methods.data[j].orig_name
+                               ? im->methods.data[j].orig_name
+                               : im->methods.data[j].name;
+                if (!hx_ascii_casecmp(hx_sym_str(on), hx_sym_str(method)))
+                    return &im->methods.data[j];
+            }
+        }
+    }
+    return NULL;
+}
+
+static struct HxFunc *hx_find_func(HxChecker *c, HxSym name) {
     for (int m = 0; m < c->unit->modules.len; m++) {
         HxModule *mod = &c->unit->modules.data[m];
         for (int i = 0; i < mod->funcs.len; i++)
@@ -304,7 +356,7 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                 for (int i = split; i < n; i++) {
                     const char *mn = hx_sym_str(parts[i].name);
                     HxSym member = hx_intern_fold_ascii(c->intern, mn, strlen(mn));
-                    HxFunc *f = hx_find_func(c, member);
+                    struct HxFunc *f = hx_find_func(c, member);
                     if (!f) {
                         HxConst *kc = hx_find_const(c, member);
                         if (kc) {
@@ -388,6 +440,16 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
 
 static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     HxExpr *raw_callee = e->call.callee;
+    /* `Rango(1,3).MAP(F)` llega como EX_MEMB con la llamada anterior en base */
+    if (raw_callee->kind == EX_MEMB) {
+        const char *mn = hx_sym_str(raw_callee->member.name);
+        int es_iter = !hx_ascii_casecmp(mn, "Map") || !hx_ascii_casecmp(mn, "Filter") ||
+                      !hx_ascii_casecmp(mn, "Take") || !hx_ascii_casecmp(mn, "First");
+        if (es_iter) {
+            HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
+            if (hx_iter_ctor_check(c, e, mn, irecv)) return e;
+        }
+    }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1 &&
         !hx_lookup(c, raw_callee->path.parts.data[0].name)) {
         const char *fname = hx_sym_str(raw_callee->path.parts.data[0].name);
@@ -426,18 +488,83 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             if (arg) arg = hx_expr_check(c, arg);
             e->is_ok_ctor = is_ok;
             e->is_err_ctor = is_err;
+            if (is_err && arg && arg->ty && arg->ty->kind != TY_STRING)
+                hx_error(c->diags, e->span, "E0309",
+                         "el error de un Result debe ser STRING en esta versión");
             e->payload_ty = arg ? arg->ty : NULL;
             e->ty = (HxTy *)hx_arena_calloc(c->arena, sizeof(HxTy));
             e->ty->kind = TY_NAMED;
             e->ty->name = hx_intern_cstr(c->intern, "Result");
             e->ty->elem = arg ? arg->ty : NULL;
             e->ty->inner = hx_ty_builtin(c->arena, TY_STRING);
+            e->ty->n_targs = 2;
             if (raw_callee->prefix_len) raw_callee->prefix_len = 0;
             return e;
         }
     }
+    /* Suma.Mas(a, b): el primer nombre es un TRAIT y el despacho es estatico,
+       segun el tipo del primer argumento */
+    if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 2) {
+        HxTraitDecl *tr = hx_find_trait(c, raw_callee->path.parts.data[0].name);
+        if (tr) {
+            HxSym mname = raw_callee->path.parts.data[1].name;
+            for (int i = 0; i < e->call.args.len; i++)
+                e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+            if (!e->call.args.len) {
+                hx_error(c->diags, e->span, "E0710",
+                         hx_arena_sprintf(c->arena, "el metodo %s del TRAIT %s espera un receptor",
+                                          hx_sym_str(mname), hx_sym_str(tr->name)));
+                e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+                return e;
+            }
+            HxTy *recv = e->call.args.data[0].value->ty;
+            struct HxFunc *m = hx_find_impl_method(c, tr, recv, mname);
+            if (!m) {
+                hx_error(c->diags, raw_callee->path.parts.data[1].span, "E0707",
+                         hx_arena_sprintf(c->arena, "%s no implementa %s.%s", hx_ty_name(recv),
+                                          hx_sym_str(tr->name), hx_sym_str(mname)));
+                e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+                return e;
+            }
+            int want = m->params.len;
+            if (e->call.args.len != want)
+                hx_error(c->diags, e->span, "E0306",
+                         hx_arena_sprintf(c->arena, "%s.%s espera %d argumento(s), recibio %d",
+                                          hx_sym_str(tr->name), hx_sym_str(mname), want,
+                                          e->call.args.len));
+            for (int i = 0; i < e->call.args.len && i < want; i++)
+                hx_coerce(c, e->call.args.data[i].value->ty, m->params.data[i].ty,
+                          e->call.args.data[i].span, hx_sym_str(m->name));
+            e->fn = m;
+            e->ty = m->ret;
+            return e;
+        }
+    }
+    /* Rango(...) y los adaptadores MAP/FILTER/TAKE/FIRST */
+    if (raw_callee->kind == EX_MEMB) {
+        const char *mn = hx_sym_str(raw_callee->member.name);
+        int es_iter = !hx_ascii_casecmp(mn, "Map") || !hx_ascii_casecmp(mn, "Filter") ||
+                      !hx_ascii_casecmp(mn, "Take") || !hx_ascii_casecmp(mn, "First");
+        if (es_iter) {
+            HxExpr *recv = hx_expr_check(c, raw_callee->member.base);
+            if (hx_iter_ctor_check(c, e, mn, recv)) return e;
+        }
+    }
+    if (raw_callee->kind == EX_PATH) {
+        HxPathPart *pp = raw_callee->path.parts.data;
+        int np = raw_callee->path.parts.len;
+        if (np == 1 && hx_iter_ctor_check(c, e, hx_sym_str(pp[0].name), NULL)) return e;
+        if (np >= 2) {
+            HxExpr *recv = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
+            recv->kind = EX_PATH;
+            recv->span = e->span;
+            for (int k = 0; k < np - 1; k++) HX_VEC_PUSH(recv->path.parts, pp[k]);
+            recv = hx_expr_check(c, recv);
+            if (hx_iter_ctor_check(c, e, hx_sym_str(pp[np - 1].name), recv)) return e;
+        }
+    }
     HxExpr *callee = hx_expr_check(c, raw_callee);
-    HxFunc *f = NULL;
+    struct HxFunc *f = NULL;
     if (callee->kind == EX_PATH) {
         HxPathPart *parts = callee->path.parts.data;
         int n = callee->path.parts.len;
@@ -531,6 +658,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
         return e;
     }
+    if (f->is_generic) return hx_generic_call_check(c, e, f);
     int required = 0;
     for (int i = 0; i < f->params.len; i++)
         if (!f->params.data[i].default_value) required++;
@@ -569,6 +697,134 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     return e;
 }
 
+/* --- funciones genericas -------------------------------------------------
+   Una llamada a `FUNCTION F<T>(...)` se monomorfiza: se unifican los tipos
+   de los argumentos con los parametros, se busca una instancia con esa misma
+   combinacion y, si no existe, se crea una copia del cuerpo con T sustituido
+   por el tipo concreto. El punto de llamada apunta a la instancia. */
+
+static int hx_unify(HxChecker *c, HxTy *param, HxTy *arg, HxSym *tps, HxTy **subs, int n) {
+    if (!param) return 1;
+    if (param->kind == TY_NAMED) {
+        for (int i = 0; i < n; i++)
+            if (tps[i] == param->name) {
+                if (!subs[i]) {
+                    subs[i] = arg;
+                } else if (arg && !hx_ty_equal(subs[i], arg)) {
+                    hx_error(c->diags, (HxSpan){0, 0}, "E0703",
+                             "'%s' deduce %s y %s en la misma llamada",
+                             hx_sym_str(tps[i]), hx_ty_name(subs[i]), hx_ty_name(arg));
+                }
+                return 1;
+            }
+    }
+    /* un tipo parametrizado se unifica estructuralmente: Caja<T> contra
+       Caja<Int> liga T con Int, no con el tipo entero */
+    if (param->n_targs && arg && arg->kind == TY_NAMED &&
+        param->n_targs == arg->n_targs && param->name == arg->name) {
+        if (!hx_unify(c, param->elem, arg->elem, tps, subs, n)) return 0;
+        if (param->n_targs > 1 && !hx_unify(c, param->inner, arg->inner, tps, subs, n)) return 0;
+        return 1;
+    }
+    if (param->elem && !hx_unify(c, param->elem, arg, tps, subs, n)) return 0;
+    if (param->inner && !hx_unify(c, param->inner, arg, tps, subs, n)) return 0;
+    return 1;
+}
+
+static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **targs, int n, HxSpan sp,
+                               HxModule *mod) {
+    char key[512];
+    const char *mname = g->module >= 0 && g->module < c->unit->modules.len
+                            ? hx_sym_str(c->unit->modules.data[g->module].name)
+                            : "m";
+    int k = snprintf(key, sizeof(key), "%s__%s__", mname, hx_sym_str(g->name));
+    for (int i = 0; i < n && k > 0 && k < (int)sizeof(key); i++) {
+        char one[128];
+        hx_ty_mangle(targs[i], one, sizeof(one));
+        k += snprintf(key + k, sizeof(key) - (size_t)k, "%s_", one);
+    }
+    for (int i = 0; i < c->unit->n_instances; i++) {
+        struct HxFunc *inst = c->unit->instances[i];
+        if (inst->name && !strcmp(hx_sym_str(inst->name), key)) return inst;
+    }
+    struct HxFunc *inst = hx_func_instantiate(c->arena, c->intern, g, targs, n, g->module,
+                                       hx_sym_str(c->unit->modules.data[g->module].name), sp,
+                                       c->diags);
+    if (!inst) return NULL;
+    if (c->unit->n_instances == c->unit->cap_instances) {
+        c->unit->cap_instances = c->unit->cap_instances ? c->unit->cap_instances * 2 : 8;
+        c->unit->instances = (struct HxFunc **)hx_arena_realloc_tmp(
+            c->unit->instances, sizeof(struct HxFunc *) * (size_t)c->unit->cap_instances);
+    }
+    c->unit->instances[c->unit->n_instances++] = inst;
+    inst->name = hx_intern_cstr(c->intern, key);
+
+    HxModule *saved_mod = c->mod;
+    c->mod = &c->unit->modules.data[inst->module];
+    hx_scope_push(c);
+    hx_define_module_scope(c, c->mod);
+    hx_collect_names(c, c->mod);
+    hx_resolve_signature(c, inst);
+    int errs_before = c->diags->errors;
+    hx_check_func(c, inst);
+    if (c->diags->errors > errs_before)
+        hx_diag_note(c->diags, sp, "E0704",
+                     hx_arena_sprintf(c->arena, "al instanciar %s para %s",
+                                      hx_sym_str(g->name), key),
+                     "una funcion generica se comprueba una vez por cada combinacion de "
+                     "argumentos de tipo que aparece en el programa",
+                     NULL);
+    hx_scope_pop(c);
+    c->mod = saved_mod;
+    (void)mod;
+    return inst;
+}
+
+static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g) {
+    HxTy *subs[HX_MAX_TPARAMS];
+    memset(subs, 0, sizeof(subs));
+    int n = g->n_tparams;
+    if (e->call.args.len != g->params.len) {
+        hx_error(c->diags, e->span, "E0306",
+                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                                  hx_sym_str(g->name), g->params.len, e->call.args.len));
+        for (int i = 0; i < e->call.args.len; i++)
+            e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return e;
+    }
+    for (int i = 0; i < e->call.args.len; i++) {
+        HxArg *arg = &e->call.args.data[i];
+        arg->value = hx_expr_check(c, arg->value);
+        hx_unify(c, g->params.data[i].ty, arg->value->ty, g->tparams, subs, n);
+    }
+    struct HxFunc *inst = hx_instance_for(c, g, subs, n, e->span, c->mod);
+    if (!inst) {
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return e;
+    }
+    int *refs = (int *)hx_arena_calloc(c->arena, sizeof(int) * (e->call.args.len + 1));
+    for (int i = 0; i < e->call.args.len; i++) {
+        HxArg *arg = &e->call.args.data[i];
+        HxParam *p = &inst->params.data[i];
+        if (p->ty && p->ty->kind == TY_REF) {
+            refs[i] = 1;
+            hx_mark_borrow(c, arg->value, arg->span);
+            if (arg->value->ty && !hx_ty_equal(arg->value->ty, p->ty->inner))
+                hx_error(c->diags, arg->span, "E0301",
+                         hx_arena_sprintf(c->arena, "REF %s espera un %s", hx_sym_str(inst->name),
+                                          hx_ty_name(p->ty->inner)));
+        } else if (p->ty) {
+            hx_coerce(c, arg->value->ty, p->ty, arg->span, hx_sym_str(inst->name));
+        }
+    }
+    e->fn = inst;
+    e->ty = inst->ret;
+    e->ret_arg_refs = refs;
+    e->n_arg_refs = e->call.args.len;
+    return e;
+}
+
 static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
     e->bin.lhs = hx_expr_check(c, e->bin.lhs);
     e->bin.rhs = hx_expr_check(c, e->bin.rhs);
@@ -594,6 +850,21 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
     }
     if (is_cmp) {
         if (l && r && hx_ty_rank(l) && hx_ty_rank(r)) hx_coerce(c, r, l, e->span, NULL);
+        int eq_only = op == OP_EQ || op == OP_NE;
+        int ok = 1;
+        if (l && r) {
+            int comparable = hx_ty_is_numeric(l) && hx_ty_is_numeric(r);
+            /* igualdad entre cadenas y entre booleanos si tiene sentido */
+            int same = hx_ty_equal(l, r);
+            if (!comparable && !(eq_only && same)) ok = 0;
+        }
+        if (!ok) {
+            hx_error(c->diags, e->span, "E0307",
+                     hx_arena_sprintf(c->arena, "'%s' no está definido entre %s y %s",
+                                      hx_binop_symbol(op), hx_ty_name(l), hx_ty_name(r)));
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
         e->ty = hx_ty_builtin(c->arena, TY_BOOL);
         return e;
     }
@@ -672,6 +943,136 @@ static HxExpr *hx_expr_propagate(HxChecker *c, HxExpr *e, HxSpan site) {
                  "'?' sólo puede aparecer como valor completo de una asignación, "
                  "DIM o RETURN");
     return r;
+}
+
+/* --- iteradores perezosos ------------------------------------------------
+   Un iterador es ITER<T>. El compilador reconoce los constructores Rango y
+   RangoF y los adaptadores MAP, FILTER, TAKE y FIRST; todos se resuelven a
+   tiempo de compilacion y no dejan tabla virtual. */
+static HxTy *hx_iter_ty(HxChecker *c, HxTy *elem) {
+    HxTy *t = (HxTy *)hx_arena_calloc(c->arena, sizeof(HxTy));
+    t->kind = TY_ITER;
+    t->elem = elem;
+    t->n_targs = 1;
+    return t;
+}
+
+static struct HxFunc *hx_find_func_named(HxChecker *c, HxSym name) {
+    for (int m = 0; m < c->unit->modules.len; m++)
+        for (int i = 0; i < c->unit->modules.data[m].funcs.len; i++)
+            if (!hx_ascii_casecmp(hx_sym_str(c->unit->modules.data[m].funcs.data[i].name),
+                                  hx_sym_str(name)))
+                return &c->unit->modules.data[m].funcs.data[i];
+    return NULL;
+}
+
+/* Devuelve 1 si el nombre es un constructor o adaptador de iteradores. */
+static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv) {
+    /* un nombre declarado por el programa tiene prioridad sobre el constructor */
+    HxSymEntry *declarado = NULL;
+    {
+        char folded[64];
+        size_t k = 0;
+        for (const char *p = name; *p && k + 1 < sizeof(folded); p++)
+            folded[k++] = (char)((*p >= 'A' && *p <= 'Z') ? *p + 32 : *p);
+        folded[k] = 0;
+        declarado = hx_lookup(c, hx_intern_cstr(c->intern, folded));
+    }
+    if (declarado && declarado->kind != SK_MODULE) return 0;
+    int is_rango = !hx_ascii_casecmp(name, "Rango");
+    int is_rangof = !hx_ascii_casecmp(name, "RangoF");
+    int is_map = !hx_ascii_casecmp(name, "Map");
+    int is_filter = !hx_ascii_casecmp(name, "Filter");
+    int is_take = !hx_ascii_casecmp(name, "Take");
+    int is_first = !hx_ascii_casecmp(name, "First");
+    if (!is_rango && !is_rangof && !is_map && !is_filter && !is_take && !is_first) return 0;
+    e->is_intrin = 4;
+    e->method = hx_intern_cstr(c->intern, name);
+
+    if (is_rango || is_rangof) {
+        if (e->call.args.len != 2) {
+            hx_error(c->diags, e->span, "E0306",
+                     hx_arena_sprintf(c->arena, "%s espera 2 argumento(s)", name));
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return 1;
+        }
+        for (int i = 0; i < 2; i++) {
+            e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+            hx_coerce(c, e->call.args.data[i].value->ty,
+                      hx_ty_builtin(c->arena, is_rangof ? TY_FLOAT : TY_I64),
+                      e->call.args.data[i].span, name);
+        }
+        e->ty = hx_iter_ty(c, hx_ty_builtin(c->arena, is_rangof ? TY_FLOAT : TY_INT));
+        return 1;
+    }
+    if (!recv || !recv->ty || recv->ty->kind != TY_ITER) {
+        hx_error(c->diags, e->span, "E0713",
+                 hx_arena_sprintf(c->arena, "%s sólo se puede aplicar a un iterador", name));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    if (is_first) {
+        e->recv = recv;
+        e->ty = recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    if (is_take) {
+        if (e->call.args.len != 1) {
+            hx_error(c->diags, e->span, "E0306", "TAKE espera 1 argumento");
+            e->ty = recv->ty;
+            return 1;
+        }
+        e->call.args.data[0].value = hx_expr_check(c, e->call.args.data[0].value);
+        hx_coerce(c, e->call.args.data[0].value->ty, hx_ty_builtin(c->arena, TY_I64),
+                  e->call.args.data[0].span, "TAKE");
+        e->recv = recv;
+        e->ty = recv->ty;
+        return 1;
+    }
+    /* MAP y FILTER reciben una funcion de primer orden */
+    if (e->call.args.len != 1) {
+        hx_error(c->diags, e->span, "E0306", "%s espera 1 argumento", name);
+        e->ty = recv->ty;
+        return 1;
+    }
+    HxExpr *arg = e->call.args.data[0].value;
+    struct HxFunc *f = NULL;
+    if (arg->kind == EX_PATH && arg->path.parts.len) {
+        HxSym fname = arg->path.parts.data[arg->path.parts.len - 1].name;
+        f = hx_find_func_named(c, fname);
+        if (f && f->is_generic)
+            f = NULL; /* una funcion generica no cabe como valor todavia */
+    }
+    if (!f) {
+        hx_error(c->diags, arg->span, "E0714",
+                 hx_arena_sprintf(c->arena, "%s espera el nombre de una funcion", name));
+        e->recv = recv;
+        e->ty = recv->ty;
+        return 1;
+    }
+    e->call.args.data[0].value = arg;
+    e->recv = recv;
+    if (is_filter) {
+        if (f->params.len != 1 || (f->ret && f->ret->kind != TY_BOOL))
+            hx_error(c->diags, arg->span, "E0715",
+                     hx_arena_sprintf(c->arena,
+                                      "FILTER espera una funcion de %s a BOOL",
+                                      hx_ty_name(recv->ty->elem)));
+        e->ty = recv->ty;
+        return 1;
+    }
+    if (f->params.len != 1)
+        hx_error(c->diags, arg->span, "E0715",
+                 hx_arena_sprintf(c->arena, "MAP espera una funcion de un argumento"));
+    HxTy *out = f->ret ? f->ret : (recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN));
+    if (recv->ty->elem && f->params.len == 1 && f->params.data[0].ty &&
+        !hx_ty_equal(f->params.data[0].ty, recv->ty->elem))
+        hx_error(c->diags, arg->span, "E0715",
+                 hx_arena_sprintf(c->arena, "MAP espera una funcion de %s, %s toma %s",
+                                  hx_ty_name(recv->ty->elem), hx_sym_str(f->name),
+                                  hx_ty_name(f->params.data[0].ty)));
+    e->ty = hx_iter_ty(c, out);
+    return 1;
 }
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
@@ -792,6 +1193,17 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
     if (!t) return NULL;
     switch (t->kind) {
         case TY_NAMED: {
+            if (t->decl) return t; /* ya resuelto (puede ser una instancia) */
+            if (t->name && !hx_ascii_casecmp(hx_sym_str(t->name), "SELF")) {
+                if (!c->cur_self) {
+                    if (report)
+                        hx_error(c->diags, sp, "E0706",
+                                 "SELF sólo se puede usar dentro de una implementación de TRAIT");
+                    t->kind = TY_UNKNOWN;
+                    return t;
+                }
+                return c->cur_self;
+            }
             if (!hx_ascii_casecmp(hx_sym_str(t->name), "Result")) {
                 t->elem = hx_resolve_type(c, t->elem, sp, report);
                 t->inner = hx_resolve_type(c, t->inner, sp, report);
@@ -803,6 +1215,37 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
                 return t;
             }
             HxTypeDecl *d = hx_find_type(c, t->name);
+            if (d && d->n_tparams) {
+                int deferred = 0;
+                for (int i = 0; i < d->n_tparams && !deferred; i++) {
+                    HxTy *ta = i == 0 ? t->elem : t->inner;
+                    if (ta && ta->kind == TY_NAMED && ta->name)
+                        for (int k = 0; k < c->n_cur_tparams; k++)
+                            if (c->cur_tparams[k] == ta->name) deferred = 1;
+                }
+                if (deferred) return t; /* se resolvera en cada instancia */
+                if (t->n_targs != d->n_tparams) {
+                    if (report)
+                        hx_error(c->diags, sp, "E0705",
+                                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s) de tipo",
+                                                  hx_sym_str(d->name), d->n_tparams));
+                    t->kind = TY_UNKNOWN;
+                    return t;
+                }
+                HxTy *targs[HX_MAX_TPARAMS];
+                for (int i = 0; i < d->n_tparams; i++)
+                    targs[i] = hx_resolve_type(c, i == 0 ? t->elem : t->inner, sp, report);
+                HxTypeDecl *inst = hx_type_instantiate(c->arena, c->intern, c->unit, d, targs,
+                                                      d->n_tparams, c->diags, sp);
+                for (int i = 0; i < inst->fields.len; i++)
+                    inst->fields.data[i].ty =
+                        hx_resolve_type(c, inst->fields.data[i].ty, sp, 0);
+                /* el nodo conserva el nombre escrito por quien programa: la
+                   instancia vive en decl, y asi una firma generica clonada
+                   vuelve a instanciar igual que la original */
+                t->decl = inst;
+                return t;
+            }
             if (d) {
                 t->decl = d;
                 return t;
@@ -1030,9 +1473,43 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
         case ST_RETURN:
             if (s->ret.value) {
                 s->ret.value = hx_expr_propagate(c, s->ret.value, s->ret.value->span);
-                if (c->ret_ty) hx_coerce(c, s->ret.value->ty, c->ret_ty, s->ret.value->span, NULL);
+                /* Err(e) toma el tipo del valor de exito de la firma: el
+                   Ok concreto lo decide el tipo de retorno de la funcion */
+                if (c->ret_ty && hx_ty_is_result(c->ret_ty) && s->ret.value->is_err_ctor &&
+                    hx_ty_is_result(s->ret.value->ty)) {
+                    HxTy *want = c->ret_ty->elem;
+                    hx_coerce(c, s->ret.value->ty->inner, c->ret_ty->inner,
+                              s->ret.value->span, NULL);
+                    s->ret.value->payload_ty = want;
+                    s->ret.value->ty = c->ret_ty;
+                } else if (c->ret_ty) {
+                    hx_coerce(c, s->ret.value->ty, c->ret_ty, s->ret.value->span, NULL);
+                }
             }
             break;
+        case ST_FORIN: {
+            s->forin_.iter = hx_expr_check(c, s->forin_.iter);
+            HxTy *elem = NULL;
+            if (s->forin_.iter->ty && s->forin_.iter->ty->kind == TY_ITER)
+                elem = s->forin_.iter->ty->elem;
+            else
+                hx_error(c->diags, s->span, "E0712",
+                         "FOR ... IN espera un iterador construido con Rango");
+            if (!elem) elem = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            hx_define(c, hx_intern_fold_ascii(c->intern, hx_sym_str(s->forin_.var),
+                                              strlen(hx_sym_str(s->forin_.var))),
+                      elem, SK_VAR, s->forin_.var_span);
+            int saved_loop = c->loop_depth;
+            int saved_defer = c->defer_depth;
+            int saved_loop_defer = c->loop_defer_depth;
+            c->loop_depth++;
+            c->loop_defer_depth = c->defer_depth;
+            hx_check_body(c, &s->forin_.body);
+            c->loop_depth = saved_loop;
+            c->defer_depth = saved_defer;
+            c->loop_defer_depth = saved_loop_defer;
+            break;
+        }
         case ST_BREAK:
         case ST_CONTINUE:
             if (!c->loop_depth)
@@ -1132,7 +1609,7 @@ static void hx_check_body(HxChecker *c, HxStmtVec *body) {
     }
 }
 
-static void hx_analyze_tail(HxFunc *f) {
+static void hx_analyze_tail(struct HxFunc *f) {
     f->is_tail_loop = 0;
     if (f->body.len < 1) return;
     for (int i = 0; i < f->params.len; i++)
@@ -1150,11 +1627,16 @@ static void hx_analyze_tail(HxFunc *f) {
     f->is_tail_loop = 1;
 }
 
-static void hx_check_func(HxChecker *c, HxFunc *f) {
+static void hx_check_func(HxChecker *c, struct HxFunc *f) {
     hx_scope_push(c);
-    HxFunc *prev = c->cur_func;
+    struct HxFunc *prev = c->cur_func;
     HxTy *prev_ret = c->ret_ty;
     int prev_loop = c->loop_depth;
+    HxSym prev_tps[HX_MAX_TPARAMS];
+    memcpy(prev_tps, c->cur_tparams, sizeof(prev_tps));
+    int prev_ntps = c->n_cur_tparams;
+    memcpy(c->cur_tparams, f->tparams, sizeof(c->cur_tparams));
+    c->n_cur_tparams = f->n_tparams;
     c->cur_func = f;
     c->loop_depth = 0;
     for (int i = 0; i < f->params.len; i++) {
@@ -1176,6 +1658,8 @@ static void hx_check_func(HxChecker *c, HxFunc *f) {
     c->cur_func = prev;
     c->ret_ty = prev_ret;
     c->loop_depth = prev_loop;
+    memcpy(c->cur_tparams, prev_tps, sizeof(prev_tps));
+    c->n_cur_tparams = prev_ntps;
     hx_scope_pop(c);
 }
 
@@ -1211,7 +1695,7 @@ static void hx_collect_names(HxChecker *c, HxModule *mod) {
     (void)a;
 }
 
-static void hx_resolve_signature(HxChecker *c, HxFunc *fn) {
+static void hx_resolve_signature(HxChecker *c, struct HxFunc *fn) {
     for (int i = 0; i < fn->params.len; i++) {
         HxParam *prm = &fn->params.data[i];
         prm->ty = hx_resolve_type(c, prm->ty, prm->span, 1);
@@ -1242,9 +1726,54 @@ int hx_check_unit(HxUnit *unit) {
         hx_define_module_scope(&c, mod);
         hx_collect_names(&c, mod);
         for (int t = 0; t < mod->types.len; t++) {
+            if (mod->types.data[t].n_tparams) {
+                mod->types.data[t].is_generic = 1;
+                continue;
+            }
             for (int i = 0; i < mod->types.data[t].fields.len; i++) {
                 HxField *fld = &mod->types.data[t].fields.data[i];
                 fld->ty = hx_resolve_type(&c, fld->ty, fld->span, 1);
+            }
+        }
+        for (int i = 0; i < mod->impls.len; i++) {
+            HxImplDecl *im = &mod->impls.data[i];
+            HxTraitDecl *tr = hx_find_trait(&c, im->trait_name);
+            if (!tr) {
+                hx_error(unit->diags, im->span, "E0711",
+                         hx_arena_sprintf(c.arena, "no existe el TRAIT '%s'",
+                                          hx_sym_str(im->trait_name)));
+                continue;
+            }
+            for (int j = 0; j < tr->methods.len; j++) {
+                HxSym want = tr->methods.data[j];
+                int found = 0;
+                for (int k = 0; k < im->methods.len; k++)
+                    if (!hx_ascii_casecmp(hx_sym_str(im->methods.data[k].name), hx_sym_str(want)))
+                        found = 1;
+                if (!found)
+                    hx_error(unit->diags, im->span, "E0707",
+                             hx_arena_sprintf(c.arena,
+                                              "%s no implementa el METODO %s.%s",
+                                              hx_sym_str(im->type_name), hx_sym_str(tr->name),
+                                              hx_sym_str(want)));
+            }
+            HxTy *self_ty = hx_ty_builtin(c.arena, TY_UNKNOWN);
+            {
+                HxTy *probe = (HxTy *)hx_arena_calloc(c.arena, sizeof(HxTy));
+                probe->kind = TY_NAMED;
+                probe->name = im->type_name;
+                self_ty = hx_resolve_type(&c, probe, im->span, 1);
+            }
+            for (int j = 0; j < im->methods.len; j++) {
+                struct HxFunc *f = &im->methods.data[j];
+                c.cur_self = self_ty;
+                hx_resolve_signature(&c, f);
+                c.cur_self = NULL;
+                f->is_export = 1; /* las implementaciones se emiten con nombre propio */
+                char *mangled = hx_arena_sprintf(
+                    c.arena, "%s__%s__%s__%s", hx_sym_str(mod->name), hx_sym_str(im->type_name),
+                    hx_sym_str(im->trait_name), hx_sym_str(f->name));
+                f->name = hx_intern_cstr(c.intern, mangled);
             }
         }
         for (int i = 0; i < mod->consts.len; i++) {
@@ -1255,7 +1784,15 @@ int hx_check_unit(HxUnit *unit) {
                 if (!kc->ty) kc->ty = kc->value->ty;
             }
         }
-        for (int f = 0; f < mod->funcs.len; f++) hx_resolve_signature(&c, &mod->funcs.data[f]);
+        for (int f = 0; f < mod->funcs.len; f++) {
+            struct HxFunc *fn = &mod->funcs.data[f];
+            if (fn->n_tparams) {
+                fn->is_generic = 1;
+                fn->module = m;
+                continue; /* la firma se resuelve por instancia */
+            }
+            hx_resolve_signature(&c, fn);
+        }
         hx_scope_pop(&c);
     }
 
@@ -1267,7 +1804,20 @@ int hx_check_unit(HxUnit *unit) {
         hx_scope_push(&c);
         hx_define_module_scope(&c, mod);
         hx_collect_names(&c, mod);
-        for (int f = 0; f < mod->funcs.len; f++) hx_check_func(&c, &mod->funcs.data[f]);
+        for (int f = 0; f < mod->funcs.len; f++)
+            if (!mod->funcs.data[f].n_tparams) hx_check_func(&c, &mod->funcs.data[f]);
+        for (int i = 0; i < mod->impls.len; i++) {
+            HxImplDecl *im = &mod->impls.data[i];
+            HxTy *self_ty = (HxTy *)hx_arena_calloc(c.arena, sizeof(HxTy));
+            self_ty->kind = TY_NAMED;
+            self_ty->name = im->type_name;
+            self_ty = hx_resolve_type(&c, self_ty, im->span, 0);
+            for (int j = 0; j < im->methods.len; j++) {
+                c.cur_self = self_ty;
+                hx_check_func(&c, &im->methods.data[j]);
+                c.cur_self = NULL;
+            }
+        }
         hx_scope_push(&c);
         hx_decl_locals(&c, &mod->top);
         hx_check_body(&c, &mod->top);

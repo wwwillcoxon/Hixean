@@ -11,6 +11,7 @@ static const struct {
     {"DURATION", TY_DURATION}, {"VEC2", TY_VEC2},     {"VEC3", TY_VEC3},
     {"VEC4", TY_VEC4},       {"MAT4", TY_MAT4},       {"QUAT", TY_QUAT},
     {"UNKNOWN", TY_UNKNOWN},
+    {"ITER", TY_ITER},
     {NULL, TY_UNKNOWN},
 };
 
@@ -32,6 +33,7 @@ const char *hx_ty_name(const HxTy *t) {
         case TY_VEC4: return "vec4";
         case TY_MAT4: return "mat4";
         case TY_QUAT: return "quat";
+        case TY_ITER: return "ITER";
         case TY_NAMED: return t->name ? hx_sym_str(t->name) : "?";
         default: return "?";
     }
@@ -48,9 +50,22 @@ int hx_ty_equal(const HxTy *a, const HxTy *b) {
     if (!a || !b) return 0;
     if (a->kind != b->kind) return 0;
     switch (a->kind) {
-        case TY_NAMED: return a->name == b->name || (a->name && b->name &&
-                                                     !strcmp(hx_sym_str(a->name),
-                                                             hx_sym_str(b->name)));
+        case TY_NAMED: {
+            int same = a->name == b->name || (a->name && b->name &&
+                                               !strcmp(hx_sym_str(a->name), hx_sym_str(b->name)));
+            if (!same) return 0;
+            int ra = a->name && !hx_ascii_casecmp(hx_sym_str(a->name), "Result");
+            int rb = b->name && !hx_ascii_casecmp(hx_sym_str(b->name), "Result");
+            if (ra || rb) {
+                if (!hx_ty_equal(a->elem, b->elem)) return 0;
+                return hx_ty_equal(a->inner, b->inner);
+            }
+            if (!a->n_targs && !b->n_targs) return 1;
+            if (a->n_targs != b->n_targs) return 0;
+            if (!hx_ty_equal(a->elem, b->elem)) return 0;
+            if (a->n_targs > 1 && !hx_ty_equal(a->inner, b->inner)) return 0;
+            return 1;
+        }
         case TY_ARRAY: return a->size == b->size && hx_ty_equal(a->elem, b->elem);
         case TY_VEC2:
         case TY_VEC3:
