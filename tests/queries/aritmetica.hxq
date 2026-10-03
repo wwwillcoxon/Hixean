@@ -1,0 +1,4 @@
+QUERY matematicas por encima de la base 0.2
+  DEP base >= 0.2
+  PROVIDES aritmetica
+END QUERY

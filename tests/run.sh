@@ -57,6 +57,22 @@ for k in roto sin_permiso nuevo_dep churro; do
 done
 echo "ok     4 manifiestos rotos rechazados con diagnostico"
 
+echo "== consultas .hxq =="
+for q in base net aritmetica nada; do
+  ./build/hxc query tests/queries/$q.hxq --path tests/kits > build/q_$q.out
+  diff -u tests/queries/$q.out build/q_$q.out && echo "ok     consulta $q"
+done
+printf 'QUERY mala\n  HACE base\nEND QUERY\n' > build/mala.hxq
+for q in "QUERY sin cerrar\n  PROVIDES base\n" "QUERY vacia\nEND QUERY\n" \
+         "QUERY compara\n  PROVIDES base >= 1\nEND QUERY\n"; do
+  printf "$q" > build/rota.hxq
+  if ./build/hxc query build/rota.hxq --path tests/kits >/dev/null 2>&1; then
+    echo "FALLO: una consulta invalida deberia fallar"; exit 1
+  fi
+done
+./build/hxc query build/mala.hxq --path tests/kits 2>&1 | grep -q "E0814" \
+  && echo "ok     4 consultas invalidas rechazadas con diagnostico"
+
 echo "== cache de objetos =="
 rm -rf build/inc build/obj
 cp -r bench/multi build/inc

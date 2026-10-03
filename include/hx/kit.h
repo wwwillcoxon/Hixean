@@ -46,6 +46,26 @@ struct HxKit {
     int cap_kits;
 };
 
+/* Una consulta `.hxq` busca paquetes en las rutas por sus PROVIDES, FEATURE,
+   CAPABILITY, DEP o VERSION. Cada predicado es una linea `CLAVE valor` y, si el
+   valor lleva restriccion de version, `CLAVE valor op version`. */
+
+typedef struct {
+    const char *key;   /* PROVIDES, FEATURE, CAPABILITY, DEP, VERSION */
+    const char *value; /* nombre, o version si key es VERSION */
+    const char *op;    /* =, >, >=, <, <= */
+    const char *version; /* segunda palabra, solo con operador */
+} HxQueryPred;
+
+typedef struct {
+    HxArena *arena;
+    HX_VEC_ANON(HxQueryPred) preds;
+} HxQuery;
+
+int hx_query_parse(HxArena *arena, const char *file, HxDiagBag *diags, HxQuery *out);
+/* Devuelve el numero de paquetes que cumplen la consulta. */
+int hx_query_run(HxQuery *q, HxPathList *paths, HxDiagBag *diags);
+
 int hx_version_cmp(const char *a, const char *b);
 int hx_kit_resolve(HxArena *arena, const char *file, HxPathList *paths, HxDiagBag *diags,
                    HxKit *out);

@@ -60,50 +60,6 @@ static int hx_net_check(HxChecker *c, HxExpr *e, const char *name);
    un mensaje que dice cómo activarla. Las primitivas viven en el runtime y el
    módulo de la biblioteca estándar se genera en build/gen. */
 
-static const char *HX_STD_NET_UNUSED =
-    "ENABLE net\n"
-    "\n"
-    "ENUM Protocolo\n"
-    "  UDP\n"
-    "  TCP\n"
-    "END ENUM\n"
-    "\n"
-    "TYPE Direccion\n"
-    "  puerto AS INT\n"
-    "  a AS INT\n"
-    "  b AS INT\n"
-    "  c AS INT\n"
-    "  d AS INT\n"
-    "END TYPE\n"
-    "\n"
-    "CONST TIPO_UDP AS INT = 2\n"
-    "CONST TIPO_TCP AS INT = 1\n"
-    "\n"
-    "ENUM ErrorNet\n"
-    "  SIN_ERROR\n"
-    "  SIN_MEMORIA\n"
-    "  SIN_SOCKET\n"
-    "  DIRECCION_OCUPADA\n"
-    "  SIN_DESTINO\n"
-    "  CORTADO\n"
-    "END ENUM\n"
-    "\n"
-    "FUNCTION De(puerto AS INT, a AS INT, b AS INT, c AS INT, d AS INT) AS Direccion\n"
-    "  DIM dir AS Direccion\n"
-    "  dir.puerto = puerto\n"
-    "  dir.a = a\n"
-    "  dir.b = b\n"
-    "  dir.c = c\n"
-    "  dir.d = d\n"
-    "  RETURN dir\n"
-    "END FUNCTION\n"
-    "\n"
-    "FUNCTION LOCALHOST(puerto AS INT) AS Direccion\n"
-    "  RETURN De(puerto, 127, 0, 0, 1)\n"
-    "END FUNCTION\n"
-    "\n"
-    "ENABLE net\n";
-
 /* --- std.net -------------------------------------------------------------
    Funciones de la capacidad `net`. Todas hablan con 127.0.0.1 salvo donde se
    pasa la direccion. Devuelven ENTERO: 0 o mas si todo va bien, o un codigo de

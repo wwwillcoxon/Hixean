@@ -115,7 +115,7 @@ Precedencia de menor a mayor:
 | 4 | `+` `-` `++` `+%` `-%` `+|` `-|` |
 | 5 | `*` `/` `MOD` `*%` `*|` |
 | 6 | unario `-` `+` `NOT` |
-| 7 | llamada `f(…)`, índice `a[…]`,、方法 `a.b`, propagación `?`, `(…)` |
+| 7 | llamada `f(…)`, índice `a[…]`,método `a.b`, propagación `?`, `(…)` |
 
 ```
 expr        = or_expr ;
@@ -463,6 +463,54 @@ El texto recibido se copia en una arena, así que vive hasta que termina el
 bloque. En plataformas que no son Linux x86_64, las llamadas devuelven `-1` en
 lugar de romper el binario.
 
-## 21. Lo que este documento *no* cubre todavía
+## 21. Consultas `.hxq`
 
-`COMPTIME`, consultas `.hxq`, capacidades `audio` y `gpu`.
+Una consulta busca paquetes en las rutas por lo que ofrecen, sin compilar nada.
+No es código Hixean: es un archivo aparte, como el manifiesto, para que un
+gestor de dependencias pueda elegir sin ejecutar el compilador sobre el mundo.
+
+```
+consulta   = "QUERY" texto { predicado } , "END" "QUERY" ;
+predicado  = "PROVIDES" ident
+           | "FEATURE" ident
+           | "CAPABILITY" ident
+           | "DEP" ident [ op version ]
+           | "VERSION" op version ;
+op         = ">=" | "<=" | ">" | "<" | "=" ;
+```
+
+El texto que sigue a `QUERY` en la misma línea es una descripción libre: existe
+para quien lea el archivo. Los predicados se combinan con Y, así que
+`PROVIDES`+`VERSION` acota qué y `CAPABILITY`+`DEP` filtra quién depende de qué.
+
+```
+QUERY matematicas por encima de la base 0.2
+  DEP base >= 0.2
+  PROVIDES aritmetica
+END QUERY
+```
+
+```
+$ hxc query tests/queries/aritmetica.hxq --path tests/kits
+aritmetica 1.0.0  tests/kits/aritmetica.hxk
+```
+
+La búsqueda recorre cada ruta de `--path` en orden alfabético y acepta tres
+formas de manifiesto: `<ruta>/<nombre>.hxk`, `<ruta>/<nombre>/<nombre>.hxk` y
+cualquier `<ruta>/*.hxk` suelto. La salida es `nombre version  ruta`, estable
+entre máquinas, y `sin resultados` cuando nada encaja. Un manifiesto roto se
+ignora en silencio: una consulta no es el sitio donde se oyen los errores de un
+paquete ajeno.
+
+| código | significa |
+|---|---|
+| `E0811` | el archivo de consulta no existe |
+| `E0812` | falta `QUERY` inicial o `END QUERY` final |
+| `E0813` | la consulta no pide nada |
+| `E0814` | predicado desconocido, sin valor, o con una comparación que no admite |
+
+## 22. Lo que este documento *no* cubre todavía
+
+`COMPTIME` y las capacidades `audio` y `gpu`, que siguen sin existir: necesitan
+un dispositivo o un compilador por objetivo, y no hay forma honesta de probarlos
+aquí.

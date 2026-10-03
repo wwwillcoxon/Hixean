@@ -581,7 +581,8 @@ static void hx_usage(void) {
             "  hxc build <archivo.hxe> --emit-hxc DIR   (escribe una unidad .hxc por modulo)\n"
             "  hxc build <archivo.hxe> --use-hxc DIR     (compila contra interfaces .hxc)\n"
             "  hxc build --kit <archivo.hxk>   (construye el paquete)\n"
-            "  hxc kit   <archivo.hxk> [--path DIR]   (resuelve dependencias)\n"
+            "  hxc kit    <archivo.hxk> [--path DIR]  (resuelve dependencias)\n"
+            "  hxc query  <archivo.hxq> [--path DIR]  (busca paquetes por sus PROVIDES)\n"
             "  hxc check <archivo.hxe>\n"
             "  hxc size <binario>\n"
             "  hxc version\n", HX_VERSION);
@@ -612,6 +613,36 @@ int main(int argc, char **argv) {
             return 1;
         }
         printf("%s %d bytes (%.2f KiB)\n", argv[2], sz, (double)sz / 1024.0);
+        return 0;
+    }
+    if (!strcmp(cmd, "query")) {
+        const char *file = NULL;
+        HxPathList paths;
+        memset(&paths, 0, sizeof(paths));
+        paths.data[paths.len++] = ".";
+        for (int i = 2; i < argc; i++) {
+            if (!strcmp(argv[i], "--path") && i + 1 < argc)
+                paths.data[paths.len++] = argv[++i];
+            else if (!argv[i][0] || argv[i][0] == '-')
+                continue;
+            else if (!file)
+                file = argv[i];
+        }
+        if (!file) {
+            hx_usage();
+            return 2;
+        }
+        HxArena arena;
+        hx_arena_init(&arena);
+        HxDiagBag diags;
+        hx_diag_init(&diags, &arena);
+        HxQuery q;
+        q.arena = &arena;
+        if (!hx_query_parse(&arena, file, &diags, &q)) {
+            hx_diag_render(&diags, NULL, stderr);
+            return 1;
+        }
+        if (hx_query_run(&q, &paths, &diags) < 0) return 1;
         return 0;
     }
     if (!strcmp(cmd, "kit")) {

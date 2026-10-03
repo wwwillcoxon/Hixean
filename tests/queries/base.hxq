@@ -1,0 +1,5 @@
+QUERY la biblioteca base con vectores y version reciente
+  PROVIDES base
+  FEATURE vectores
+  VERSION >= 0.2
+END QUERY

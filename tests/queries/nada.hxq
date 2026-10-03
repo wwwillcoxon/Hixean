@@ -1,0 +1,5 @@
+QUERY ninguna combinacion imposible
+  PROVIDES base
+  CAPABILITY net
+  VERSION >= 9.0
+END QUERY

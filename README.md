@@ -28,7 +28,7 @@ Hola mundo
 | M9 | `PTR` con `&`/`^`, compilación paralela, paquetes `.hxk` con resolución de dependencias | 20 módulos: 4 636 ms → 1 767 ms |
 | M10 | subtipado estructural (LSP) con materialización de la conversión | `Perro` sirve donde se pide `Animal` |
 | M11 | capacidades: `ENABLE net` con sockets por syscall directa y puerta `CAPABILITY` del manifiesto | ida y vuelta UDP por loopback |
-| M12 | `audio`/`gpu`, `.hxq` | *pendiente* |
+| M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen | consulta por `PROVIDES`+`VERSION` acierta y filtra |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -212,8 +212,29 @@ hx: paquete.hxk usa la capacidad 'net' pero el manifiesto no la declara con
     CAPABILITY net
 ```
 
-`audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador
-por objetivo, y no hay forma honesta de probarlos aquí.
+M12 cierra las consultas: un archivo `.hxq` pregunta qué paquetes hay en las
+rutas sin compilar nada, con la misma forma de predicados que usa el manifiesto.
+
+```
+QUERY matematicas por encima de la base 0.2
+  DEP base >= 0.2
+  PROVIDES aritmetica
+END QUERY
+```
+
+```
+$ hxc query consultas/aritmetica.hxq --path tests/kits
+aritmetica 1.0.0  tests/kits/aritmetica.hxk
+```
+
+Los predicados (`PROVIDES`, `FEATURE`, `CAPABILITY`, `DEP`, `VERSION`) se
+combinan con Y y la salida va en orden alfabético, así que sirve tanto para
+leerla como para compararla en un script. La descripción tras `QUERY` es texto
+libre para quien abra el archivo.
+
+`audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador por
+objetivo, y no hay forma honesta de probarlos aquí. M12 se cierra sin ellos antes
+que inventar una capacidad que no abre nada.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.
@@ -228,6 +249,8 @@ hxc build <archivo.hxe> --use-hxc DIR      compila contra interfaces .hxc
 hxc test  <archivo.hxt>...
 hxc check <archivo.hxe>
 hxc size  <binario>
+hxc kit    <archivo.hxk> [--path DIR]   resuelve dependencias y muestra el plan
+hxc query  <archivo.hxq> [--path DIR]   busca paquetes por lo que ofrecen
 ```
 
 ## Perfiles de binario

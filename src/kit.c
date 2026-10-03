@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <dirent.h>
+#endif
 
 /* Un `.hxk` describe un paquete:
      KIT nombre 1.2.3
@@ -303,4 +311,256 @@ int hx_kit_resolve(HxArena *arena, const char *file, HxPathList *paths, HxDiagBa
 char *hx_kit_entry_path(HxArena *arena, HxKit *kit, const char *manifest) {
     char *dir = hx_kit_dir_of(arena, manifest);
     return hx_arena_sprintf(arena, "%s/%s", dir, kit->entry);
+}
+static int hx_kit_has(HxKit *k, const char *key, const char *value) {
+    if (!strcmp(key, "PROVIDES"))
+        for (int i = 0; i < k->n_provides; i++)
+            if (!strcmp(k->provides[i], value)) return 1;
+    if (!strcmp(key, "FEATURE"))
+        for (int i = 0; i < k->n_features; i++)
+            if (!strcmp(k->features[i], value)) return 1;
+    if (!strcmp(key, "CAPABILITY"))
+        for (int i = 0; i < k->n_caps; i++)
+            if (!strcmp(k->caps[i], value)) return 1;
+    if (!strcmp(key, "DEP"))
+        for (int i = 0; i < k->deps.len; i++)
+            if (!k->deps.data[i].is_require && !strcmp(k->deps.data[i].name, value)) return 1;
+    return 0;
+}
+
+/* --- consultas ----------------------------------------------------------- */
+
+/* Listado de un directorio: mismo comportamiento en POSIX y Windows. */
+static int hx_dir_entries(HxArena *arena, const char *dir, HxPathList *out) {
+    out->len = 0;
+#ifdef _WIN32
+    char patron[MAX_PATH];
+    snprintf(patron, sizeof(patron), "%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(patron, &fd);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (fd.cFileName[0] == '.') continue;
+        if (out->len < (int)(sizeof(out->data) / sizeof(out->data[0])))
+            out->data[out->len++] = hx_arena_strdup(arena, fd.cFileName);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.') continue;
+        if (out->len < (int)(sizeof(out->data) / sizeof(out->data[0])))
+            out->data[out->len++] = hx_arena_strdup(arena, ent->d_name);
+    }
+    closedir(d);
+#endif
+    for (int i = 1; i < out->len; i++) {
+        const char *clave = out->data[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(out->data[j], clave) > 0) {
+            out->data[j + 1] = out->data[j];
+            j--;
+        }
+        out->data[j + 1] = clave;
+    }
+    return 1;
+}
+
+static int hx_es_operador(const char *w) {
+    return !strcmp(w, ">") || !strcmp(w, "<") || !strcmp(w, ">=") || !strcmp(w, "<=") ||
+           !strcmp(w, "=");
+}
+
+static int hx_ver_cumple(const char *a, const char *b, const char *op) {
+    int c = hx_version_cmp(a ? a : "0", b);
+    if (!strcmp(op, ">=")) return c >= 0;
+    if (!strcmp(op, "<=")) return c <= 0;
+    if (!strcmp(op, ">")) return c > 0;
+    if (!strcmp(op, "<")) return c < 0;
+    return c == 0;
+}
+
+static int hx_query_ok(HxQueryPred *pr, HxKit *k) {
+    if (!strcmp(pr->key, "VERSION")) return hx_ver_cumple(k->version, pr->value, pr->op);
+    if (!strcmp(pr->key, "DEP")) {
+        for (int i = 0; i < k->deps.len; i++) {
+            HxKitDep *d = &k->deps.data[i];
+            if (d->is_require || strcmp(d->name, pr->value)) continue;
+            if (!pr->version) return 1;
+            return hx_ver_cumple(d->version ? d->version : "0", pr->version, pr->op);
+        }
+        return 0;
+    }
+    return hx_kit_has(k, pr->key, pr->value);
+}
+
+int hx_query_parse(HxArena *arena, const char *file, HxDiagBag *diags, HxQuery *out) {
+    memset(out, 0, sizeof(*out));
+    out->arena = arena;
+    char *src = hx_read_file(arena, file, NULL);
+    if (!src) {
+        hx_error(diags, (HxSpan){0, 0}, "E0811", "no se encontró la consulta %s", file);
+        return 0;
+    }
+    const char *ctx_prev = diags->ctx_file;
+    diags->ctx_file = file;
+    char *p = src;
+    char word[256];
+    int line = 1;
+    hx_kit_word(&p, word, sizeof(word));
+    if (strcmp(word, "QUERY")) {
+        hx_error(diags, (HxSpan){0, 0}, "E0812", "una consulta empieza con QUERY");
+        diags->ctx_file = ctx_prev;
+        return 0;
+    }
+    /* lo que sigue a QUERY en la misma linea es texto libre */
+    char descripcion[256];
+    hx_kit_line(&p, descripcion, sizeof(descripcion));
+    while (*p) {
+        hx_kit_word(&p, word, sizeof(word));
+        if (!word[0]) {
+            hx_kit_line(&p, descripcion, sizeof(descripcion));
+            line++;
+            continue;
+        }
+        line++;
+        if (!strcmp(word, "END")) {
+            hx_kit_word(&p, word, sizeof(word));
+            if (strcmp(word, "QUERY")) {
+                hx_error(diags, (HxSpan){0, 0}, "E0812", "se esperaba END QUERY");
+                diags->ctx_file = ctx_prev;
+                return 0;
+            }
+            if (!out->preds.len) {
+                hx_error(diags, (HxSpan){0, 0}, "E0813", "la consulta no pide nada");
+                diags->ctx_file = ctx_prev;
+                return 0;
+            }
+            diags->ctx_file = ctx_prev;
+            return 1;
+        }
+        static const char *claves[] = {"PROVIDES", "FEATURE", "CAPABILITY", "DEP",
+                                       "VERSION", NULL};
+        int ok = 0;
+        for (int i = 0; claves[i]; i++)
+            if (!strcmp(word, claves[i])) ok = 1;
+        if (!ok) {
+            hx_error(diags, (HxSpan){0, 0}, "E0814",
+                     "línea %d: predicado desconocido '%s' (usa PROVIDES, FEATURE, "
+                     "CAPABILITY, DEP o VERSION)",
+                     line, word);
+            diags->ctx_file = ctx_prev;
+            return 0;
+        }
+        char clave[64];
+        snprintf(clave, sizeof(clave), "%.63s", word);
+        HxQueryPred pred;
+        memset(&pred, 0, sizeof(pred));
+        pred.key = hx_arena_strdup(arena, clave);
+        pred.op = "=";
+        char op[4] = "=";
+        char version[64];
+        version[0] = 0;
+        hx_kit_word(&p, word, sizeof(word));
+        if (!word[0]) {
+            hx_error(diags, (HxSpan){0, 0}, "E0814", "línea %d: falta el valor de %s", line,
+                     clave);
+            diags->ctx_file = ctx_prev;
+            return 0;
+        }
+        if (hx_es_operador(word)) {
+            /* VERSION >= 1.0 */
+            snprintf(op, sizeof(op), "%.3s", word);
+            pred.value = hx_arena_strdup(arena, "");
+            hx_kit_word(&p, word, sizeof(word));
+            if (!word[0]) {
+                hx_error(diags, (HxSpan){0, 0}, "E0814", "línea %d: falta la version", line);
+                diags->ctx_file = ctx_prev;
+                return 0;
+            }
+            snprintf(version, sizeof(version), "%.63s", word);
+        } else {
+            /* CLAVE valor [op version] */
+            pred.value = hx_arena_strdup(arena, word);
+            char mas[256];
+            char *guarda = p;
+            hx_kit_word(&p, mas, sizeof(mas));
+            if (hx_es_operador(mas)) {
+                snprintf(op, sizeof(op), "%.3s", mas);
+                hx_kit_word(&p, word, sizeof(word));
+                if (!word[0]) {
+                    hx_error(diags, (HxSpan){0, 0}, "E0814",
+                             "línea %d: falta la version tras '%s'", line, op);
+                    diags->ctx_file = ctx_prev;
+                    return 0;
+                }
+                snprintf(version, sizeof(version), "%.63s", word);
+            } else {
+                p = guarda;
+            }
+        }
+        if (!strcmp(clave, "VERSION")) {
+            if (!pred.value[0]) pred.value = hx_arena_strdup(arena, version);
+        } else if (version[0] && strcmp(clave, "DEP")) {
+            hx_error(diags, (HxSpan){0, 0}, "E0814",
+                     "línea %d: %s solo admite comparacion con VERSION o DEP", line, clave);
+            diags->ctx_file = ctx_prev;
+            return 0;
+        }
+        pred.op = hx_arena_strdup(arena, op);
+        pred.version = version[0] ? hx_arena_strdup(arena, version) : NULL;
+        HX_VEC_PUSH(out->preds, pred);
+    }
+    hx_error(diags, (HxSpan){0, 0}, "E0812", "falta END QUERY");
+    diags->ctx_file = ctx_prev;
+    return 0;
+}
+
+/* Recorre <ruta>/<nombre>/<nombre>.hxk y <ruta>/<nombre>.hxk una vez. */
+static int hx_query_visit(HxQuery *q, const char *dir, int *cuenta) {
+    HxPathList entradas;
+    if (!hx_dir_entries(q->arena, dir, &entradas)) return 0;
+    for (int i = 0; i < entradas.len; i++) {
+        const char *name = entradas.data[i];
+        size_t ln = strlen(name);
+        char *plano = hx_arena_sprintf(q->arena, "%s/%s.hxk", dir, name);
+        char *anidado = hx_arena_sprintf(q->arena, "%s/%s/%s.hxk", dir, name, name);
+        const char *usado = NULL;
+        if (ln > 4 && !strcmp(name + ln - 4, ".hxk")) {
+            char *directo = hx_arena_sprintf(q->arena, "%s/%s", dir, name);
+            if (hx_file_exists(directo)) usado = directo;
+        }
+        if (!usado && hx_file_exists(plano)) usado = plano;
+        if (!usado && hx_file_exists(anidado)) usado = anidado;
+        if (!usado) continue;
+        HxKit k;
+        memset(&k, 0, sizeof(k));
+        k.arena = q->arena;
+        HxDiagBag silencioso;
+        hx_diag_init(&silencioso, q->arena);
+        silencioso.max_errors = 0;
+        if (!hx_kit_parse(&k, usado, &silencioso)) continue;
+        int cumple = 1;
+        for (int j = 0; j < q->preds.len && cumple; j++)
+            if (!hx_query_ok(&q->preds.data[j], &k)) cumple = 0;
+        if (!cumple) continue;
+        (*cuenta)++;
+        printf("%s %s  %s\n", k.name, k.version, usado);
+    }
+    return 1;
+}
+
+int hx_query_run(HxQuery *q, HxPathList *paths, HxDiagBag *diags) {
+    (void)diags;
+    int cuenta = 0;
+    for (int i = 0; i < paths->len; i++)
+        if (!hx_query_visit(q, paths->data[i], &cuenta)) {
+            fprintf(stderr, "hx: no se pudo leer la ruta %s\n", paths->data[i]);
+            return -1;
+        }
+    if (!cuenta) printf("sin resultados\n");
+    return cuenta;
 }
