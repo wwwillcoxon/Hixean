@@ -228,10 +228,15 @@ if ./build/hxc check tests/malos/rangos.hxe >/dev/null 2>&1; then
 fi
 ./build/hxc check tests/malos/rangos.hxe 2>&1 | grep -q "E0210" \
   && echo "ok     un rango en un indice da E0210 en vez de leer un elemento"
-./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0211" \
-  && echo "ok     NIL da E0211 en vez de ser un cero silencioso"
 ./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0212" \
-  && echo "ok     UNIQUE da E0212 en vez de ignorarse"
+  && echo "ok     UNIQUE da E0212 en vez de ignorarse" \
+  || { echo "FALLO: UNIQUE"; exit 1; }
+# MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0301" \
+  && ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0211" \
+  && ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0405" \
+  && echo "ok     MAYBE no se desempaqueta solo, NIL fuera de sitio da E0211 y el MATCH se completa" \
+  || { echo "FALLO: las reglas de MAYBE"; exit 1; }
 printf 'DIM a AS INT[3]\nDIM k AS INT = 9\nPRINT a.At(k)\n' > build/fuera.hxe
 ./build/hxc build build/fuera.hxe -o build/fuera >/dev/null 2>&1
 if ./build/fuera > build/fuera.out 2>&1; then

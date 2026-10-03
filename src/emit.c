@@ -17,7 +17,8 @@ typedef struct {
     HxBuf out;
     int tmp;
     int uses_string;
-    int uses_index; /* a.At(i), que comprueba el rango */
+    int uses_index;  /* a.At(i), que comprueba el rango */
+    int uses_maybe;  /* MAYBE<T> */
     int uses_arena;
     int uses_iter;
     int uses_enum;
@@ -26,6 +27,10 @@ typedef struct {
     int iter_n; /* contador global de variables de iterador por funcion */
     /* tipos de elemento usados por iteradores, para generar sus ayudantes */
     HX_VEC_ANON(HxTy) iter_elems;
+    /* tipos interiores de los MAYBE usados, para generar un typedef por tipo */
+    HX_VEC_ANON(const char *) maybe_inners;
+    /* pares (valor, MAYBE resultante) de cada m.Map(f), para el ayudante */
+    HX_VEC_ANON(HxIterMap) maybe_maps;
     /* pares (origen, resultado) de los MAP que cambian el tipo */
     HX_VEC_ANON(HxIterMap) iter_maps;
     int uses_exit;
@@ -62,6 +67,19 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
         case TY_VEC4: return "hx_vec4";
         case TY_MAT4: return "hx_mat4";
         case TY_QUAT: return "hx_quat";
+        case TY_MAYBE: {
+            /* un struct distinto por tipo: si no, dos MAYBE de INNER distintos
+               se confundirian en C */
+            const char *inner = hx_c_ty(e, t->elem);
+            int ya = 0;
+            for (int i = 0; i < e->maybe_inners.len; i++)
+                if (!strcmp(e->maybe_inners.data[i], inner)) ya = 1;
+            if (!ya && e->maybe_inners.len < 32) {
+                e->uses_maybe = 1;
+                HX_VEC_PUSH(e->maybe_inners, inner);
+            }
+            return hx_arena_sprintf(e->arena, "hx_maybe_%s", inner);
+        }
         case TY_NAMED:
             if (hx_ty_is_result(t)) return "hx_result";
             /* un ENUM es un INT con nombre: en C basta con int32_t */
@@ -914,6 +932,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind);
 static void hx_body(HxEmit *e, HxStmtVec *body, int ind);
 static void hx_scan_stmt(HxEmit *e, HxStmt *s);
 static void hx_scan_body(HxEmit *e, HxStmtVec *body);
+static void hx_maybe_note_map(HxEmit *e, HxTy *from, HxTy *to);
 
 static void hx_scan_expr(HxEmit *e, HxExpr *x) {
     if (!x) return;
@@ -929,6 +948,7 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 e->uses_net = 1;
                 e->uses_arena = 1;
             }
+            if (x->is_intrin == 10) { hx_maybe_note_map(e, x->recv->ty, x->ty); }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             hx_scan_expr(e, x->call.callee);
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
@@ -939,6 +959,7 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
             break;
         case EX_UN: hx_scan_expr(e, x->un.operand); break;
         case EX_MEMB:
+            if (x->is_intrin == 10) { hx_maybe_note_map(e, x->recv->ty, x->ty); }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             hx_scan_expr(e, x->member.base);
             break;
@@ -963,6 +984,17 @@ static void hx_scan_body(HxEmit *e, HxStmtVec *body) {
 static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
     HxStmtVec *body = NULL;
     switch (s->kind) {
+        case ST_MATCH: {
+            /* los patrones literales usan los mismos ayudantes que Result */
+            e->uses_result = 1;
+            hx_scan_expr(e, s->match.subject);
+            for (int k = 0; k < s->match.cases.len; k++) {
+                hx_scan_expr(e, s->match.cases.data[k].guard);
+                hx_scan_body(e, &s->match.cases.data[k].body);
+            }
+            hx_scan_body(e, &s->match.else_body);
+            break;
+        }
         case ST_EXPR: hx_scan_expr(e, s->expr); break;
         case ST_ASSIGN:
             hx_scan_expr(e, s->assign.target);
@@ -972,6 +1004,8 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
             hx_scan_expr(e, s->dim.init);
             if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && s->dim.ty->size > 0)
                 e->uses_arena = 1;
+            /* un MAYBE necesita su typedef antes de que se emita el codigo */
+            if (s->dim.ty && s->dim.ty->kind == TY_MAYBE) hx_c_ty(e, s->dim.ty);
             break;
         case ST_CONST: hx_scan_expr(e, s->konst.value); break;
         case ST_PRINT:
@@ -1265,6 +1299,18 @@ static void hx_emit_net(HxEmit *e, HxExpr *x, HxBuf *b) {
 /* Cuando el verificador acepta un registro con mas campos donde se piden
    menos, la conversion se materializa copiando los campos comunes. */
 static void hx_emit_conv(HxEmit *e, HxExpr *x, HxBuf *b) {
+    /* T -> MAYBE<T>: el ayudante pone la bandera y guarda el valor */
+    if (x->conv_ty && x->conv_ty->kind == TY_MAYBE) {
+        const char *inner = hx_c_ty(e, x->conv_ty->elem);
+        hx_c_ty(e, x->conv_ty);
+        HxTy *marca = x->conv_ty;
+        x->conv_ty = NULL;
+        hx_buf_printf(b, "hx_maybe_some_%s(", inner);
+        hx_expr_str(e, x, 0, b);
+        hx_buf_str(b, ")");
+        x->conv_ty = marca;
+        return;
+    }
     HxTypeDecl *from = x->ty && x->ty->decl ? x->ty->decl : NULL;
     HxTypeDecl *to = x->conv_ty && x->conv_ty->decl ? x->conv_ty->decl : NULL;
     if (!from || !to) {
@@ -1316,7 +1362,9 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             break;
         case EX_BOOL:
         case EX_NIL:
-            hx_buf_str(b, x->ival ? "1" : "0");
+            /* el verificador ya le dio un tipo MAYBE: el cero del struct */
+            if (x->is_nil && x->ty) hx_buf_printf(b, "((%s){ 0 })", hx_c_ty(e, x->ty));
+            else hx_buf_str(b, x->ival ? "1" : "0");
             break;
         case EX_STR: {
             e->uses_string = 1;
@@ -1374,6 +1422,28 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             HxExpr *callee = x->call.callee;
             if (x->is_intrin == 7) {
                 hx_emit_array_member(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 9) { /* m.Or(x) */
+                hx_buf_printf(b, "hx_maybe_or_%s(", hx_c_ty(e, x->recv->ty->elem));
+                hx_expr_str(e, x->recv, 0, b);
+                hx_buf_str(b, ", ");
+                hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                hx_buf_str(b, ")");
+                break;
+            }
+            if (x->is_intrin == 10) { /* m.Map(f): f es una FUNC elevada */
+                HxExpr *farg = x->call.args.data[0].value;
+                struct HxFunc *fnn = NULL;
+                if (farg->kind == EX_FUNC && farg->lit) fnn = farg->lit;
+                else if (farg->kind == EX_PATH && farg->path.parts.len)
+                    fnn = hx_find_func_named(e, hx_sym_str(
+                             farg->path.parts.data[farg->path.parts.len - 1].name));
+                hx_maybe_note_map(e, x->recv->ty, x->ty);
+                hx_buf_printf(b, "hx_maybe_map_%s_%s(",
+                              hx_c_ty(e, x->recv->ty->elem), hx_c_ty(e, x->ty->elem));
+                hx_expr_str(e, x->recv, 0, b);
+                hx_buf_printf(b, ", &hx_call_%s)", hx_sym_str(fnn ? fnn->name : "?"));
                 break;
             }
             if (x->is_ok_ctor || x->is_err_ctor) {
@@ -1607,6 +1677,12 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_emit_array_member(e, x, b);
                 break;
             }
+            if (x->is_intrin == 8) { /* m.IsNil */
+                hx_buf_str(b, "((");
+                hx_expr_str(e, x->member.base, 0, b);
+                hx_buf_str(b, ").hay == 0)");
+                break;
+            }
             if (x->is_intrin == 6) {
                 hx_emit_net(e, x, b);
                 break;
@@ -1747,6 +1823,12 @@ static void hx_block(HxEmit *e, HxStmtVec *body, int ind) {
     }
 }
 
+/* El temporal con el valor de dentro de un MAYBE, declarado justo antes de la
+   cadena de if del MATCH. */
+static const char *hx_maybe_valor(HxEmit *e, const char *subj) {
+    return hx_arena_sprintf(e->arena, "(%s).valor", subj);
+}
+
 static const char *hx_payload_field(HxTy *t) {
     if (!t) return "i";
     if (t->kind == TY_FLOAT) return "f";
@@ -1756,13 +1838,21 @@ static const char *hx_payload_field(HxTy *t) {
 
 static void hx_emit_pattern_test(HxEmit *e, HxPattern *pat, const char *subj, HxTy *subj_ty) {
     HxBuf *b = &e->out;
+    /* En un MATCH sobre MAYBE, el binding y los literales ven el valor de
+       dentro, asi que se les pasa el temporal ya desempaquetado. */
+    const char *val = subj_ty && subj_ty->kind == TY_MAYBE ? hx_maybe_valor(e, subj)
+                                                            : subj;
     switch (pat->kind) {
-        case PAT_WILDCARD:
+        case PAT_WILDCARD: hx_buf_str(b, "1"); return;
+        case PAT_NIL: hx_buf_printf(b, "(%s.hay == 0)", subj); return;
         case PAT_BIND: hx_buf_str(b, "1"); return;
         case PAT_LITERAL: {
-            hx_buf_printf(b, "hx_pat_eq_%s(%s, ", hx_payload_field(subj_ty), subj);
+            HxTy *cmp = subj_ty && subj_ty->kind == TY_MAYBE ? subj_ty->elem : subj_ty;
+            if (subj_ty && subj_ty->kind == TY_MAYBE) hx_buf_printf(b, "(%s.hay && ", subj);
+            hx_buf_printf(b, "hx_pat_eq_%s(%s, ", hx_payload_field(cmp), val);
             hx_expr_str(e, pat->lit, 0, b);
             hx_buf_str(b, ")");
+            if (subj_ty && subj_ty->kind == TY_MAYBE) hx_buf_str(b, ")");
             return;
         }
         case PAT_RANGE:
@@ -1813,11 +1903,14 @@ static void hx_emit_pattern_bind(HxEmit *e, HxPattern *pat, const char *subj, Hx
                                  int ind) {
     HxBuf *b = &e->out;
     switch (pat->kind) {
-        case PAT_BIND:
+        case PAT_BIND: {
+            HxTy *bt = subj_ty && subj_ty->kind == TY_MAYBE ? subj_ty->elem : subj_ty;
+            const char *val = subj_ty && subj_ty->kind == TY_MAYBE ? hx_maybe_valor(e, subj)
+                                                                  : subj;
             hx_indent(b, ind);
-            hx_buf_printf(b, "%s hx_v_%s = %s;\n", hx_c_ty(e, subj_ty), hx_sym_str(pat->name),
-                          subj);
+            hx_buf_printf(b, "%s hx_v_%s = %s;\n", hx_c_ty(e, bt), hx_sym_str(pat->name), val);
             return;
+        }
         case PAT_CONSTRUCTOR: {
             const char *cn = hx_sym_str(pat->ctor);
             if (!hx_ascii_casecmp(cn, "__or__")) {
@@ -2442,6 +2535,25 @@ static void hx_iter_take_helpers(HxBuf *b, const char *tag) {
 
 
 /* registra el tipo de elemento para generar sus ayudantes una sola vez */
+/* Un MAP de MAYBE necesita un ayudante por par de tipos: la firma en C depende
+   de los dos, y escribir el ternario a mano se enreda con los literales
+   compuestos. */
+static void hx_maybe_note_map(HxEmit *e, HxTy *from, HxTy *to) {
+    for (int i = 0; i < e->maybe_maps.len; i++)
+        if (hx_ty_equal(e->maybe_maps.data[i].from, from) &&
+            hx_ty_equal(e->maybe_maps.data[i].to, to))
+            return;
+    if (e->maybe_maps.len >= 16) return;
+    HxTy *a = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
+    HxTy *b = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
+    *a = *from;
+    *b = *to;
+    HxIterMap *m = (HxIterMap *)hx_arena_calloc(e->arena, sizeof(HxIterMap));
+    m->from = a;
+    m->to = b;
+    HX_VEC_PUSH(e->maybe_maps, *m);
+}
+
 static void hx_iter_note_elem(HxEmit *e, HxTy *t) {
     for (int i = 0; i < e->iter_elems.len; i++)
         if (hx_ty_equal(&e->iter_elems.data[i], t)) return;
@@ -2729,6 +2841,29 @@ static void hx_emit_instance_decls(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *
     }
 }
 
+/* Un MAYBE<T> es un struct con una bandera y el valor, y sus ayudantes. */
+static void hx_emit_maybe_types(HxEmit *e, HxBuf *b) {
+    for (int i = 0; i < e->maybe_inners.len; i++) {
+        const char *t = e->maybe_inners.data[i];
+        hx_buf_printf(b, "typedef struct { uint8_t hay; %s valor; } hx_maybe_%s;\n", t, t);
+        hx_buf_printf(b, "static inline hx_maybe_%s hx_maybe_some_%s(%s v) {\n", t, t, t);
+        hx_buf_printf(b, "  hx_maybe_%s m; m.hay = 1; m.valor = v; return m; }\n", t);
+        hx_buf_printf(b, "static inline %s hx_maybe_or_%s(hx_maybe_%s m, %s otro) {\n", t, t,
+                      t, t);
+        hx_buf_str(b, "  return m.hay ? m.valor : otro; }\n");
+    }
+    for (int i = 0; i < e->maybe_maps.len; i++) {
+        HxIterMap *mp = &e->maybe_maps.data[i];
+        const char *desde = hx_c_ty(e, mp->from->elem);
+        const char *hasta = hx_c_ty(e, mp->to->elem);
+        hx_buf_printf(b, "typedef hx_maybe_%s (*hx_maybe_f_%s)(%s);\n", hasta, hasta, desde);
+        hx_buf_printf(b, "static inline hx_maybe_%s hx_maybe_map_%s_%s(hx_maybe_%s m, "
+                         "hx_maybe_f_%s f) {\n  hx_maybe_%s r; r.hay = 0;\n",
+                      hasta, desde, hasta, desde, hasta, hasta);
+        hx_buf_str(b, "  if (m.hay) r = f(m.valor);\n  return r; }\n");
+    }
+}
+
 static void hx_emit_module_header(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b) {
     char *guard = hx_arena_sprintf(e->arena, "HX_MOD_%s_H", hx_sym_str(m->name));
     for (char *p = guard; *p; p++) *p = hx_ascii_upper(*p);
@@ -2736,6 +2871,9 @@ static void hx_emit_module_header(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b
     hx_buf_printf(b, "#ifndef %s\n#define %s\n", guard, guard);
     hx_buf_str(b, "#include \"_runtime.h\"\n");
     hx_emit_decls(e, m);
+    /* los typedef de MAYBE van aqui: un TYPE declarado se convierte en
+       hx_T_Nombre en este mismo punto, y el typedef lo necesita */
+    hx_emit_maybe_types(e, b);
     for (int k = 0; k < m->consts.len; k++) {
         HxConst *kc = &m->consts.data[k];
         if (!kc->value || !kc->is_export) continue;
@@ -2843,7 +2981,8 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
         hx_scan_body(&e, &m->top);
         for (int j = 0; j < m->funcs.len; j++) {
             hx_scan_body(&e, &m->funcs.data[j].body);
-            if (hx_ty_is_result(m->funcs.data[j].ret)) e.uses_result = 1;
+            if (m->funcs.data[j].ret && m->funcs.data[j].ret->kind == TY_MAYBE)
+                hx_c_ty(&e, m->funcs.data[j].ret);
             for (int q = 0; q < m->funcs.data[j].params.len; q++)
                 if (hx_ty_is_result(m->funcs.data[j].params.data[q].ty)) e.uses_result = 1;
         }
@@ -2854,6 +2993,7 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
             }
             for (int q = 0; q < m->types.data[t].fields.len; q++) {
                 HxTy *ft = m->types.data[t].fields.data[q].ty;
+                if (ft && ft->kind == TY_MAYBE) hx_c_ty(&e, ft);
                 if (hx_ty_is_result(ft)) e.uses_result = 1;
                 if (ft && hx_vec_len(ft)) e.uses_vec = 1;
                 /* un campo de arreglo se reserva al construir el registro */
@@ -2985,8 +3125,14 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
                    "void hx_static_init(void) { hx_arena_init(&hx_static_arena); }\n");
     }
     if (opt->profile == HX_PROFILE_FREESTANDING)
+        /* El kernel llama a _start con la pila alineada a 16 y luego empuja
+           argc: rsp queda a 8, pero el ABI de SysV supone 16 en cada entrada
+           de funcion. Con escalares no se nota; en cuanto un struct se copia
+           con movaps, revienta. */
         hx_buf_str(&main_b,
-                   "void _start(void) {\n  hx_exit((int)hx_main());\n  __builtin_unreachable();\n}\n");
+                   "void _start(void) {\n"
+                   "  __asm__ volatile(\"andq $-16, %rsp\");\n"
+                   "  hx_exit((int)hx_main());\n  __builtin_unreachable();\n}\n");
     else
         hx_buf_str(&main_b, "int main(void) { return (int)hx_main(); }\n");
     char *mp = hx_arena_sprintf(arena, "%s/_entry.c", opt->dir_gen);

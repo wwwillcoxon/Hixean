@@ -1,0 +1,100 @@
+"MAYBE: un valor o nada, y ningun operador nuevo"
+FUNCTION perfil(usuario AS STRING) AS MAYBE STRING
+  IF usuario == "ana" THEN RETURN "admin"
+  IF usuario == "beto" THEN RETURN "invitado"
+  RETURN NIL
+END FUNCTION
+
+"envolver es automatico: un STRING cabe en un MAYBE STRING"
+DIM p AS MAYBE STRING = perfil("ana")
+DIM q AS MAYBE STRING = perfil("carlos")
+
+PRINT p.IsNil
+PRINT q.IsNil
+
+".Or da el valor si lo hay, y el replacement si no"
+PRINT p.Or("nadie")
+PRINT q.Or("nadie")
+
+"y un MAYBE se pasa a una funcion que pide el MAYBE, no el valor"
+FUNCTION etiqueta(m AS MAYBE STRING) AS STRING
+  RETURN "[" ++ m.Or("?") ++ "]"
+END FUNCTION
+
+PRINT etiqueta(p)
+PRINT etiqueta(q)
+
+"Map aplica la funcion solo si hay valor, y devuelve un MAYBE"
+FUNCTION surrounds(s AS STRING) AS MAYBE STRING
+  RETURN "<" ++ s ++ ">"
+END FUNCTION
+
+DIM envuelto AS MAYBE STRING = p.Map(surrounds)
+PRINT envuelto.IsNil
+PRINT envuelto.Or("vacio")
+PRINT q.Map(surrounds).Or("vacio")
+
+"con una FUNC elevated tambien funciona"
+PRINT p.Map(FUNC(s AS STRING) AS MAYBE STRING
+  RETURN s ++ "!"
+END).Or("-")
+PRINT q.Map(FUNC(s AS STRING) AS MAYBE STRING
+  RETURN s ++ "!"
+END).Or("-")
+
+"MATCH con CASE NIL: la forma de preguntar sin operadores raros"
+FUNCTION saludar(usuario AS STRING) AS STRING
+  MATCH perfil(usuario)
+    CASE NIL THEN RETURN "sin nombre"
+    CASE nombre THEN RETURN "hola " ++ nombre
+  END MATCH
+END FUNCTION
+
+PRINT saludar("ana")
+PRINT saludar("beto")
+PRINT saludar("carlos")
+
+"un MAYBE tambien envuelve registros"
+TYPE Sesion
+  token AS STRING
+  intentos AS INT
+END TYPE
+
+FUNCTION abrir(ok AS BOOL) AS MAYBE Sesion
+  IF NOT ok THEN RETURN NIL
+  DIM s AS Sesion
+  s.token = "abc123"
+  s.intentos = 1
+  RETURN s
+END FUNCTION
+
+DIM s AS MAYBE Sesion = abrir(TRUE)
+PRINT s.IsNil
+DIM sesion AS MAYBE Sesion = abrir(FALSE)
+PRINT sesion.IsNil
+DIM buena AS MAYBE Sesion = abrir(TRUE)
+PRINT buena.IsNil
+MATCH buena
+  CASE NIL THEN PRINT "nada"
+  CASE v THEN PRINT v.token
+END MATCH
+
+"MATCH tambien acepta literales sobre el valor de dentro"
+DIM numero AS MAYBE INT = abrir(TRUE).Map(FUNC(x AS Sesion) AS MAYBE INT
+  RETURN x.intentos + 41
+END)
+MATCH numero
+  CASE NIL THEN PRINT "sin numero"
+  CASE 42 THEN PRINT "cuarenta y dos"
+  CASE otro THEN PRINT "otro"
+END MATCH
+
+"MAYBE INT con Or y comparacion IsNil, sin desempaquetar a mano"
+DIM nada AS MAYBE INT = abrir(FALSE).Map(FUNC(x AS Sesion) AS MAYBE INT
+  RETURN x.intentos
+END)
+PRINT nada.IsNil
+PRINT nada.Or(0)
+PRINT numero.Or(-1)
+
+"un MAYBE de MAYBE no tiene sentido y el verificador lo dice"

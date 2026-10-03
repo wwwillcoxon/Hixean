@@ -157,6 +157,41 @@ nombre en mayúsculas nunca se convierte silenciosamente en un binding.
 `BOOL INT I64 FLOAT STRING DURATION` más `REF T`, `PTR T`, `MAYBE T`,
 `ARRAY[T]` y los tipos declarados con `TYPE`.
 
+### `MAYBE T`
+
+`MAYBE T` es un valor de tipo `T` o nada. En C sale como un struct con una
+bandera y el valor, y el tamaño lo pone el tipo interior.
+
+```
+FUNCTION perfil(usuario AS STRING) AS MAYBE STRING
+  IF usuario == "ana" THEN RETURN "admin"
+  RETURN NIL
+END FUNCTION
+```
+
+- **Envolver es automático.** Un `T` donde se espera `MAYBE T` se convierte
+  solo; lo contrario no: un `MAYBE T` no se desempaqueta por sorpresa, y
+  detrás de un `MAYBE` siempre hay que decidir (`E0301`).
+- **Tres métodos, ningún operador nuevo.** `m.IsNil` es un miembro sin
+  paréntesis, `m.Or(x)` devuelve el valor o el reemplazo, y `m.Map(f)` aplica
+  `f` sólo si hay valor y devuelve otro `MAYBE`. No hay `??`, no hay `IS`: el
+  lenguaje ya resuelve métodos sobre valores y añadir un operador sería la
+  excepción.
+- **`NIL` sólo vale dentro de un `MAYBE`.** Como no tiene tipo propio, fuera de
+  un `MAYBE` es un error (`E0211`), no un cero disfrazado.
+- **`MATCH` sobre un `MAYBE`** usa `CASE NIL` para el hueco y cualquier binding
+  para el valor:
+
+```
+MATCH perfil("ana")
+  CASE NIL THEN PRINT "sin nombre"
+  CASE nombre THEN PRINT "hola " ++ nombre
+END MATCH
+```
+
+Un `MATCH` así necesita las dos ramas o da `E0405`, igual que un `Result` sin
+`Ok` y `Err`.
+
 Reglas aritméticas actuales:
 
 | operador | ENTERO / I64 / DURATION | FLOAT |

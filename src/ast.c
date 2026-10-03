@@ -34,6 +34,16 @@ const char *hx_ty_name(const HxTy *t) {
         case TY_MAT4: return "mat4";
         case TY_QUAT: return "quat";
         case TY_ITER: return "ITER";
+        case TY_MAYBE: {
+            /* sin arena en HxTy: un buffer en anillo para los diagnosticos */
+            static char bufs[4][96];
+            static int turno = 0;
+            char *b = bufs[turno];
+            turno = (turno + 1) % 4;
+            snprintf(b, sizeof(bufs[0]), "MAYBE %s",
+                     hx_ty_name(t->elem));
+            return b;
+        }
         case TY_NAMED: return t->name ? hx_sym_str(t->name) : "?";
         default: return "?";
     }
@@ -100,6 +110,10 @@ int hx_ty_equal(const HxTy *a, const HxTy *b) {
         case TY_QUAT: return 1;
         case TY_REF:
         case TY_PTR: return hx_ty_equal(a->inner, b->inner);
+        /* sin esta linea, TY_MAYBE caia en default y todos los MAYBE parecia
+           el mismo tipo: dos helpers distintos se confundian en uno */
+        case TY_MAYBE: return hx_ty_equal(a->elem, b->elem);
+        case TY_ITER: return hx_ty_equal(a->elem, b->elem);
         default: return 1;
     }
 }

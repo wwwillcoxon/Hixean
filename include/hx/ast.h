@@ -22,7 +22,8 @@ typedef enum {
     TY_VEC4,
     TY_MAT4,
     TY_QUAT,
-    TY_ITER /* ITER<T>: elem es el tipo del elemento */
+    TY_ITER,  /* ITER<T>: elem es el tipo del elemento */
+    TY_MAYBE  /* MAYBE<T>: elem es el tipo dentro, puede no haber valor */
 } HxTyKind;
 
 typedef struct HxTypeDecl HxTypeDecl;
@@ -127,6 +128,7 @@ struct HxExpr {
     int prefix_len;
     HxSym method;
     int is_intrin;
+    int is_nil; /* NIL: el valor "no hay" de un MAYBE */
     HxExpr *recv;
     struct HxFunc *fn;
     struct HxFunc *lit; /* EX_FUNC: la funcion anonima */
@@ -300,7 +302,8 @@ typedef enum {
     PAT_BIND,
     PAT_CONSTRUCTOR,
     PAT_WILDCARD,
-    PAT_RANGE
+    PAT_RANGE,
+    PAT_NIL /* CASE NIL: el patron "no hay" de un MAYBE */
 } HxPatKind;
 
 typedef struct HxPattern HxPattern;

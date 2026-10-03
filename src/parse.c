@@ -172,6 +172,10 @@ static HxPattern *hx_pat_new(HxParser *p, HxPatKind k, HxSpan sp) {
 static HxPattern *hx_pattern_primary(HxParser *p) {
     HxToken *t = hx_cur(p);
     HxSpan sp = t->span;
+    if (t->kind == TK_KW_NIL) {
+        hx_bump(p);
+        return hx_pat_new(p, PAT_NIL, sp);
+    }
     if (hx_tok_str_eq(t, "_")) {
         hx_bump(p);
         return hx_pat_new(p, PAT_WILDCARD, sp);
@@ -307,8 +311,7 @@ static HxTy *hx_type(HxParser *p) {
 
     if (hx_eat_kw(p, TK_KW_MAYBE)) {
         HxTy *inner = hx_type(p);
-        HxTy *t = hx_ty_mk(p->arena, TY_NAMED);
-        t->name = hx_intern_cstr(p->intern, "MAYBE");
+        HxTy *t = hx_ty_mk(p->arena, TY_MAYBE);
         t->elem = inner;
         return t;
     }

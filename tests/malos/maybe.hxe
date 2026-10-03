@@ -1,0 +1,9 @@
+"MAYBE: un MAYBE no se desempaqueta solo, y NIL solo vale dentro de uno"
+DIM m AS MAYBE STRING = "a"
+DIM n AS STRING = m
+PRINT NIL
+PRINT NIL.IsNil
+DIM o AS MAYBE STRING = "b"
+MATCH o
+  CASE NIL THEN PRINT "nada"
+END MATCH

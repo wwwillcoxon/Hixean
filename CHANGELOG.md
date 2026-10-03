@@ -45,6 +45,8 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   `std.net` con sockets por syscall directa (`NET_UDP`, `NET_TCP`, `NET_BIND`,
   `NET_SEND`, `NET_RECV`, `NET_LISTEN`, `NET_ACCEPT`, `NET_CONNECT`,
   `NET_CLOSE`).
+- **`MAYBE T` y `NIL`**: un valor o nada, con `.IsNil`, `.Or(x)`, `.Map(f)` y
+  `CASE NIL` en un `MATCH`. Envolver es implícito; desempaquetar no.
 - **Sobrecarga de operadores**: `FUNCTION OPERATOR + (a AS MiTipo, b AS MiTipo)
   AS MiTipo` para `+` `-` `*` `/` `MOD` `++` `==` `<>` `<` `<=` `>` `>=`. El tipo
   del primer parámetro decide cuál se usa, y la aritmética entera sigue igual.

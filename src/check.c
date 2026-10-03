@@ -143,6 +143,12 @@ static HxSym hx_fold(HxChecker *c, HxSym sym) {
     return hx_intern_fold_ascii(c->intern, s, strlen(s));
 }
 
+/* MAYBE<T> tiene tres metodos y ningun operador nuevo: el lenguaje ya hace
+   metodos sobre valores (STRING) y un `??` mas seria la excepcion. */
+static const char *hx_maybe_metodos[] = {"IsNil", "Or", "Map", NULL};
+
+static int hx_es_maybe(HxTy *t) { return t && t->kind == TY_MAYBE; }
+
 /* Los operadores que un programa puede recargar. La palabra es la que aparece en
    el nombre de C, porque un "+" no puede estar en un identificador. */
 static const char *hx_op_palabra(const char *op) {
@@ -300,6 +306,8 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report);
 static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *what) {
     if (!from || !to) return 1;
     if (from->kind == TY_UNKNOWN || to->kind == TY_UNKNOWN) return 1;
+    /* MAYBE<T> acepta un T: envolver es siempre correcto */
+    if (to->kind == TY_MAYBE && !hx_ty_equal(from, to)) return 1;
     /* un registro con mas campos sirve donde se pide uno con menos */
     if (hx_ty_subtype(from, to)) return 1;
     /* el literal 0 es el puntero nulo */
@@ -416,9 +424,48 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
 static void hx_coerce_to(HxChecker *c, HxExpr **slot, HxTy *to, HxSpan sp,
                          const char *what) {
     if (!*slot || !to) return;
+    /* NIL no tiene tipo propio: lo toma del sitio donde aparece, y solo vale
+       para un MAYBE. Fuera de ahi es un error, no un 0 disfrazado */
+    if ((*slot)->is_nil) {
+        if (to->kind != TY_MAYBE)
+            hx_error(c->diags, (*slot)->span, "E0211",
+                     "NIL solo vale para un MAYBE, y aqui se esperaba '%s'",
+                     hx_ty_name(to));
+        (*slot)->ty = to;
+        return;
+    }
     hx_coerce(c, (*slot)->ty, to, sp, what);
     if ((*slot)->ty && to && !hx_ty_equal((*slot)->ty, to) && hx_ty_subtype((*slot)->ty, to))
         (*slot)->conv_ty = to;
+    /* envolver un T en un MAYBE<T> tambien es una conversion pendiente: el
+       emisor la materializa con hx_maybe_some_T() */
+    if ((*slot)->ty && to && to->kind == TY_MAYBE && (*slot)->ty->kind != TY_MAYBE &&
+        (*slot)->kind != EX_NIL)
+        (*slot)->conv_ty = to;
+}
+
+/* Or y Map de MAYBE<T>. Sin operadores nuevos: el lenguaje ya resuelve metodos
+   sobre valores, y `??` seria justo la excepcion que el lenguaje evita. */
+static int hx_maybe_call_check(HxChecker *c, HxExpr *e, HxExpr *recv, const char *mi) {
+    int es_map = !hx_ascii_casecmp(mi, "Map");
+    if (e->call.args.len != 1)
+        hx_error(c->diags, e->span, "E0306", "'%s' espera 1 argumento, recibio %d", mi,
+                 e->call.args.len);
+    for (int q = 0; q < e->call.args.len; q++) {
+        e->call.args.data[q].value = hx_expr_check(c, e->call.args.data[q].value);
+        if (!es_map && recv->ty->elem)
+            hx_coerce_to(c, &e->call.args.data[q].value, recv->ty->elem,
+                         e->call.args.data[q].span, NULL);
+    }
+    /* Map devuelve el MAYBE que devuelve f, que puede ser de otro tipo */
+    HxTy *out = recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN);
+    if (es_map && e->call.args.len == 1 && e->call.args.data[0].value->ty)
+        out = e->call.args.data[0].value->ty;
+    e->is_intrin = es_map ? 10 : 9;
+    e->method = hx_intern_cstr(c->intern, mi);
+    e->recv = recv;
+    e->ty = out;
+    return 1;
 }
 
 static int hx_vec_len(HxTy *t) {
@@ -685,6 +732,24 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                         return e;
                     }
                 }
+                /* MAYBE<T>: `m.IsNil` es un miembro como los de ENUM */
+                if (hx_es_maybe(t) && !hx_ascii_casecmp(member, "IsNil")) {
+                    HxExpr *recvexpr = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
+                    recvexpr->kind = EX_MEMB;
+                    recvexpr->span = e->span;
+                    HxExpr *sub = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
+                    sub->kind = EX_PATH;
+                    sub->span = e->span;
+                    for (int k = 0; k < split; k++)
+                        HX_VEC_PUSH(sub->path.parts, parts[k]);
+                    recvexpr->member.base = hx_path_check(c, sub);
+                    recvexpr->member.name = parts[split].name;
+                    recvexpr->is_intrin = 8;
+                    recvexpr->method = parts[split].name;
+                    recvexpr->ty = hx_ty_builtin(c->arena, TY_BOOL);
+                    *e = *recvexpr;
+                    return e;
+                }
                 const HxIntrin *in = hx_find_intrin(t, member);
                 if (in) {
                     e->prefix_len = split;
@@ -723,9 +788,14 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         const char *mn = hx_sym_str(raw_callee->member.name);
         int es_iter = !hx_ascii_casecmp(mn, "Map") || !hx_ascii_casecmp(mn, "Filter") ||
                       !hx_ascii_casecmp(mn, "Take") || !hx_ascii_casecmp(mn, "First");
-        if (es_iter) {
+        int es_maybe = !hx_ascii_casecmp(mn, "Or") || !hx_ascii_casecmp(mn, "Map");
+        if (es_iter || es_maybe) {
             HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
-            if (hx_iter_ctor_check(c, e, mn, irecv)) return e;
+            if (es_maybe && hx_es_maybe(irecv->ty)) {
+                hx_maybe_call_check(c, e, irecv, mn);
+                return e;
+            }
+            if (es_iter && hx_iter_ctor_check(c, e, mn, irecv)) return e;
         }
     }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1) {
@@ -860,7 +930,8 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len >= 2) {
         int np = raw_callee->path.parts.len;
         const char *mn = hx_sym_str(raw_callee->path.parts.data[np - 1].name);
-        if (hx_find_array_intrin(mn)) {
+        if (hx_find_array_intrin(mn) || (!hx_ascii_casecmp(mn, "Or") ||
+                                         !hx_ascii_casecmp(mn, "Map"))) {
             HxExpr *recv_e = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
             recv_e->kind = EX_PATH;
             recv_e->span = raw_callee->span;
@@ -870,6 +941,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             if (recv->ty && recv->ty->kind == TY_ARRAY &&
                 hx_array_method_check(c, e, recv, mn))
                 return e;
+            if (hx_es_maybe(recv->ty) && hx_maybe_call_check(c, e, recv, mn)) return e;
         }
     }
     HxExpr *callee = hx_expr_check(c, raw_callee);
@@ -1459,6 +1531,8 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
         e->ty = hx_iter_ty(c, hx_ty_builtin(c->arena, is_rangof ? TY_FLOAT : TY_INT));
         return 1;
     }
+    if (recv && hx_es_maybe(recv->ty) && !hx_ascii_casecmp(hx_sym_str(e->method), "Map"))
+        return hx_maybe_call_check(c, e, recv, "Map");
     if (!recv || !recv->ty || recv->ty->kind != TY_ITER) {
         hx_error(c->diags, e->span, "E0713",
                  hx_arena_sprintf(c->arena, "%s sólo se puede aplicar a un iterador", name));
@@ -1569,9 +1643,9 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             hx_str_check(c, e);
             break;
         case EX_NIL:
-            hx_error(c->diags, e->span, "E0211",
-                     "NIL está reservado pero no implementado: en Hixean todo valor "
-                     "tiene tipo comprobable");
+            /* NIL no tiene tipo propio: lo toma del sitio donde aparece. El
+               contexto se comprueba despues, cuando ya se sabe que se espera. */
+            e->is_nil = 1;
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             break;
         case EX_FUNC: {
@@ -1672,6 +1746,20 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
             if (bt && bt->kind == TY_ARRAY &&
                 hx_array_method_check(c, e, e->member.base, member))
                 break;
+            if (hx_es_maybe(bt)) {
+                for (int mi = 0; hx_maybe_metodos[mi]; mi++)
+                    if (!hx_ascii_casecmp(hx_maybe_metodos[mi], member)) {
+                        if (mi == 0)
+                            hx_error(c->diags, e->member.name_span, "E0306",
+                                     "IsNil no lleva parentesis: se escribe como un "
+                                     "miembro");
+                        e->is_intrin = 8;
+                        e->method = e->member.name;
+                        e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+                        break;
+                    }
+                if (e->is_intrin == 8) break;
+            }
             if (bt && bt->decl) {
                 for (int fi = 0; fi < bt->decl->fields.len; fi++) {
                     HxField *fld = &bt->decl->fields.data[fi];
@@ -1741,6 +1829,14 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
                 t->inner = hx_resolve_type(c, t->inner, sp, report);
                 return t;
             }
+            if (!hx_ascii_casecmp(hx_sym_str(t->name), "MAYBE")) {
+                /* MAYBE T: un valor o nada. T -> MAYBE T es una conversion
+                   implicita, al reves que deshacerla no. */
+                t->elem = hx_resolve_type(c, t->elem, sp, report);
+                if (!t->elem) t->elem = hx_ty_builtin(c->arena, TY_UNKNOWN);
+                t->kind = TY_MAYBE;
+                return t;
+            }
             HxTy *b = hx_ty_lookup_builtin(c->arena, t->name);
             if (b) {
                 t->kind = b->kind;
@@ -1792,6 +1888,9 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
             return t;
         }
         case TY_ARRAY:
+            t->elem = hx_resolve_type(c, t->elem, sp, report);
+            return t;
+        case TY_MAYBE:
             t->elem = hx_resolve_type(c, t->elem, sp, report);
             return t;
         case TY_REF:
@@ -1849,15 +1948,29 @@ static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
             }
     }
     switch (pat->kind) {
+        case PAT_NIL:
+            /* CASE NIL solo tiene sentido sobre un MAYBE: es la forma de
+               preguntar por el Maybe sin operadores nuevos */
+            if (!hx_es_maybe(subj))
+                hx_error(c->diags, pat->span, "E0211",
+                         "CASE NIL necesita un MATCH sobre un MAYBE (aqui el sujeto es '%s')",
+                         hx_ty_name(subj));
+            break;
         case PAT_BIND:
-            hx_define_pattern_binding(c, pat->name, subj, pat->span);
+            if (hx_es_maybe(subj))
+                hx_define_pattern_binding(c, pat->name, subj->elem, pat->span);
+            else
+                hx_define_pattern_binding(c, pat->name, subj, pat->span);
             break;
         case PAT_LITERAL:
             pat->lit = hx_expr_check(c, pat->lit);
-            if (pat->lit->ty && subj && !hx_ty_equal(pat->lit->ty, subj))
-                hx_error(c->diags, pat->lit->span, "E0406",
-                         hx_arena_sprintf(c->arena, "el patrón no puede ser %s aquí",
-                                          hx_ty_name(subj)));
+            /* sobre un MAYBE, el literal se compara con el valor de dentro */
+            {
+                HxTy *cmp = hx_es_maybe(subj) ? subj->elem : subj;
+                if (pat->lit->ty && cmp && !hx_ty_equal(pat->lit->ty, cmp))
+                    hx_error(c->diags, pat->lit->span, "E0406",
+                             "el patrón no puede ser %s aquí", hx_ty_name(pat->lit->ty));
+            }
             break;
         case PAT_RANGE:
             pat->lo = hx_expr_check(c, pat->lo);
@@ -1962,6 +2075,9 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 HxPrintItem *it = &s->print.items.data[i];
                 if (it->expr) {
                     it->expr = hx_expr_propagate(c, it->expr, it->expr->span);
+                    if (it->expr->is_nil && (!it->expr->ty || it->expr->ty->kind != TY_MAYBE))
+                        hx_error(c->diags, it->expr->span, "E0211",
+                                 "PRINT no puede imprimir NIL: no hay ningun valor");
                     HxTy *t = it->expr->ty;
                     if (t && t->kind != TY_STRING && t->kind != TY_INT && t->kind != TY_I64 &&
                         t->kind != TY_FLOAT && t->kind != TY_BOOL && t->kind != TY_DURATION &&
@@ -2137,6 +2253,19 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_scope_push(c);
                 hx_check_body(c, &s->match.else_body);
                 hx_scope_pop(c);
+            } else if (hx_es_maybe(subj)) {
+                /* un MAYBE esta cubierto con CASE NIL y cualquier caso que
+                   enganche el valor (binding, literal o comodin) */
+                int nil = 0, otro = 0;
+                for (int i = 0; i < s->match.cases.len; i++) {
+                    HxPatKind k = s->match.cases.data[i].pattern->kind;
+                    if (k == PAT_NIL) nil = 1;
+                    else if (k == PAT_WILDCARD || k == PAT_BIND || k == PAT_LITERAL) otro = 1;
+                }
+                if (!nil || !otro)
+                    hx_error(c->diags, s->span, "E0405",
+                             "un MATCH sobre MAYBE necesita CASE NIL y un caso para el "
+                             "valor (por ejemplo un binding)");
             } else {
                 int covered_ok = 0, covered_err = 0;
                 for (int i = 0; i < s->match.cases.len && hx_ty_is_result(subj); i++) {
