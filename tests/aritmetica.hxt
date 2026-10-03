@@ -18,3 +18,17 @@ PRINT 0xFF
 PRINT 1_000_000
 PRINT a > b AND b > 0
 PRINT NOT (a = b)
+
+"saturante y con wrap: los seis operadores que no abortan"
+DIM grande AS INT = 2000000000
+PRINT grande +| grande
+PRINT grande -| -grande
+PRINT grande *| 3
+PRINT grande +% grande
+PRINT grande -% -grande
+DIM ancho AS I64 = 9000000000000000000
+PRINT ancho *| 4
+PRINT ancho +% 10
+DIM f AS FLOAT = 1.5
+PRINT f *| f
+PRINT f +| f

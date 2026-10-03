@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hixean: manual de programación</title>
+<style>
+:root{
+  --fondo:#fbfaf7; --papel:#ffffff; --tinta:#1b1a17; --suave:#6b675e; --linea:#e2ded4;
+  --acento:#8a3d1a; --acento2:#2f6f4f; --code:#f5f2ec; --sombra:rgba(27,26,23,.09);
+  --chip:#efe9df; --ok:#2f6f4f; --mal:#a12020;
+}
+html[data-tema="oscuro"]{
+  --fondo:#14130f; --papel:#1c1b16; --tinta:#ece8dd; --suave:#a09a8c; --linea:#33302a;
+  --acento:#e08b5e; --acento2:#7cc39b; --code:#211f1a; --sombra:rgba(0,0,0,.45);
+  --chip:#2a2822; --ok:#7cc39b; --mal:#e0736b;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--fondo);color:var(--tinta);
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+a{color:var(--acento)}
+.barra{position:sticky;top:0;z-index:20;background:var(--papel);border-bottom:1px solid var(--linea)}
+.barra-in{max-width:1180px;margin:0 auto;padding:.6rem 1rem;display:flex;gap:.8rem;align-items:center;flex-wrap:wrap}
+.marca{font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.marca span{color:var(--acento)}
+#buscar{flex:1;min-width:180px;padding:.45rem .7rem;border:1px solid var(--linea);
+  border-radius:8px;background:var(--fondo);color:var(--tinta);font-size:.9rem}
+#buscar:focus{outline:2px solid var(--acento);outline-offset:1px}
+.btn{border:1px solid var(--linea);background:var(--fondo);color:var(--tinta);border-radius:8px;
+  padding:.4rem .7rem;font-size:.85rem;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--acento);color:var(--acento)}
+.btn[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:#fff}
+#progreso{height:3px;background:linear-gradient(90deg,var(--acento),var(--acento2));width:0}
+#cuerpo{display:grid;grid-template-columns:250px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
+nav{position:sticky;top:3.2rem;align-self:start;height:calc(100vh - 3.2rem);overflow:auto;
+  padding:1.2rem 1rem 3rem 1rem;border-right:1px solid var(--linea)}
+nav h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--suave);margin:.6rem 0}
+nav ol{list-style:none;margin:0;padding:0}
+nav a{display:block;padding:.22rem .5rem;border-radius:6px;font-size:.86rem;color:var(--suave);
+  text-decoration:none;border-left:2px solid transparent}
+nav a:hover{color:var(--tinta);background:var(--code)}
+nav a.activo{color:var(--acento);border-left-color:var(--acento);background:var(--code)}
+main{padding:2rem 1.6rem 6rem;min-width:0}
+.hero{padding:2.5rem 0 1rem;border-bottom:1px solid var(--linea);margin-bottom:1rem}
+.hero h1{font-size:2.4rem;line-height:1.15;margin:0 0 .6rem}
+.hero p.lead{font-size:1.15rem;color:var(--suave);max-width:60ch;margin:.2rem 0}
+.cifras{display:flex;gap:1.4rem;flex-wrap:wrap;margin:1.2rem 0 0;padding:0;list-style:none}
+.cifras li{background:var(--code);border:1px solid var(--linea);border-radius:10px;padding:.6rem .9rem}
+.cifras b{display:block;font-size:1.3rem;line-height:1.2}
+.cifras span{font-size:.78rem;color:var(--suave)}
+section{padding-top:1.6rem;margin-top:1.2rem;border-top:1px solid var(--linea);scroll-margin-top:4rem}
+section:first-of-type{border-top:none}
+h2{font-size:1.6rem;margin:0 0 .4rem}
+h3{font-size:1.15rem;margin:1.6rem 0 .3rem}
+h4{font-size:1rem;margin:1.2rem 0 .2rem;color:var(--suave);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}
+p{max-width:74ch}
+ul,ol{max-width:74ch}
+li{margin:.2rem 0}
+code:not(pre code){background:var(--code);border:1px solid var(--linea);border-radius:5px;padding:.05em .3em;font-size:.9em}
+.ej{margin:1rem 0;border:1px solid var(--linea);border-radius:10px;background:var(--papel);overflow:hidden}
+.ej>figcaption{display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+  padding:.35rem .6rem .35rem .8rem;background:var(--code);border-bottom:1px solid var(--linea);
+  font-size:.78rem;color:var(--suave)}
+.ej pre{margin:0;padding:.8rem;overflow:auto;font-size:.85rem;line-height:1.5}
+.ej .salida{border-top:1px dashed var(--linea);padding:.5rem .8rem;background:var(--fondo);font-size:.82rem}
+.ej .salida b{color:var(--suave);font-weight:600;text-transform:uppercase;font-size:.7rem;letter-spacing:.1em}
+.copiar{border:1px solid var(--linea);background:var(--papel);color:var(--suave);border-radius:6px;
+  font-size:.72rem;padding:.15rem .45rem;cursor:pointer}
+.copiar:hover{color:var(--acento);border-color:var(--acento)}
+table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.88rem}
+th,td{border:1px solid var(--linea);padding:.42rem .6rem;text-align:left;vertical-align:top}
+th{background:var(--code);font-weight:600}
+td code{white-space:nowrap}
+.aviso{border-left:4px solid var(--acento);background:var(--code);padding:.7rem .9rem;border-radius:0 8px 8px 0;margin:1rem 0;max-width:78ch}
+.aviso.bueno{border-left-color:var(--acento2)}
+.aviso.malo{border-left-color:var(--mal)}
+.chips{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0}
+.chip{border:1px solid var(--linea);background:var(--chip);color:var(--tinta);border-radius:999px;
+  padding:.2rem .7rem;font-size:.78rem;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:#fff}
+.oculto{display:none !important}
+#recuento{font-size:.78rem;color:var(--suave);margin-left:auto}
+.kbd{border:1px solid var(--linea);border-bottom-width:2px;border-radius:5px;padding:0 .3rem;font-size:.78em;background:var(--code)}
+footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;color:var(--suave);font-size:.85rem}
+@media (max-width:860px){
+  #cuerpo{grid-template-columns:1fr}
+  nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--linea)}
+  main{padding:1.2rem 1rem 4rem}
+  .hero h1{font-size:1.8rem}
+}
+@media print{
+  html[data-tema]{--fondo:#fff;--papel:#fff;--tinta:#000;--suave:#333;--linea:#bbb;--code:#f4f4f4;--acento:#000;--acento2:#000}
+  .barra,nav,#progreso{display:none !important}
+  #cuerpo{display:block;max-width:none}
+  main{padding:0}
+  section{display:block !important;border-top:1px solid #ccc;page-break-inside:auto}
+  .ej{page-break-inside:avoid}
+  a{text-decoration:none;color:#000}
+  .copiar{display:none}
+}
+</style>
+</head>
+<body>
+<div class="barra">
+  <div class="barra-in">
+    <div class="marca">Hixean<span>.</span></div>
+    <input id="buscar" type="search" placeholder="Buscar en el manual  ( / )" autocomplete="off" spellcheck="false">
+    <span id="recuento"></span>
+    <button class="btn" id="tema" type="button" aria-pressed="false">Oscuro</button>
+    <button class="btn" id="pdf" type="button">Guardar PDF</button>
+  </div>
+  <div id="progreso"></div>
+</div>
+
+<div id="cuerpo">
+  <nav aria-label="Índice">
+    <h2>Manual</h2>
+    <ol id="indice"></ol>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <h1>Programar en Hixean</h1>
+      <p class="lead">Un lenguaje AOT que compila a C11, sin máquina virtual, sin
+      <em>unwinding</em> y sin libc por defecto. Este manual es la versión
+      interactiva de <code>docs/grammar.md</code>: la misma gramática, con los
+      ejemplos que ejecutan.</p>
+      <ul class="cifras">
+        <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
+        <li><b>12 288 B</b><span>puerta de tamaño</span></li>
+        <li><b>22/22</b><span>pruebas del corpus</span></li>
+        <li><b>0</b><span>dependencias más allá de C11</span></li>
+      </ul>
+    </div>
+
+    <section id="empezar" data-t="empezar primeros pasos instalar compilar hola mundo run build">
+      <h2>1. Primeros pasos</h2>
+      <p>Hixean se compila con <code>make</code> y un compilador de C11. No hay
+      <code>configure</code>, ni dependencias, ni paso previo.</p>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">make
+./build/hxc run examples/hola.hxe
+./build/hxc build examples/hola.hxe -o hola
+./build/hxc size hola</code></pre>
+      </figure>
+      <p>El primer programa sigue siendo el de QBasic, porque <code>PRINT</code>
+      no se tocó:</p>
+      <figure class="ej">
+        <figcaption><span>hola.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">PRINT "Hola mundo"</code></pre>
+        <div class="salida"><b>salida</b><pre>Hola mundo</pre></div>
+      </figure>
+      <p>Un programa completo tiene funciones, datos y control de flujo. Esto es
+      un programa que compila tal cual:</p>
+      <figure class="ej">
+        <figcaption><span>fib.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Fib(n AS INT) AS INT
+  IF n < 2 THEN RETURN n
+  RETURN Fib(n - 1) + Fib(n - 2)
+END FUNCTION
+
+FOR i = 0 TO 10
+  PRINT Fib(i)
+NEXT i</code></pre>
+        <div class="salida"><b>salida</b><pre>0
+1
+1
+2
+3
+5
+8
+13
+21
+34
+55</pre></div>
+      </figure>
+      <div class="aviso"><b>Los comentarios</b> son <code>' hasta el final de la línea</code>,
+      <code># …</code>, <code>// …</code> o <code>/* … */</code>. Una línea que empieza
+      por <code>"</code> también vale como comentario, y es lo que usa el corpus para
+      escribir bloques de varias líneas: el contenido sigue siendo una cadena, así
+      que una comilla sin cerrar se reporta como <code>E0103</code>.</div>
+    </section>
+
+    <section id="idea" data-t="arquitectura compila c11 aot sin vm sin unwinding sin libc runtime backend">
+      <h2>2. Qué es Hixean por dentro</h2>
+      <p>Hixean es un front-end que escribe C11 y deja que <code>cc</code> haga el
+      trabajo final. No hay VM, ni <em>unwinding</em>, ni tabla de personalidades: el
+      runtime son unas pocas páginas de C generadas junto al programa.</p>
+      <table>
+        <tr><th>Decisión</th><th>Por qué</th></tr>
+        <tr><td>Salida C11, no bytecode</td><td>el ejecutable final es un ELF/Mach-O/PE nativo; nada que instalar</td></tr>
+        <tr><td>Perfil <code>freestanding</code> por defecto</td><td>sin libc el binario de hola mundo cabe en 8,7 KiB</td></tr>
+        <tr><td>Errores como valor (<code>Result</code>, <code>?</code>)</td><td>propagar sin <code>setjmp</code> ni pila de rescue</td></tr>
+        <tr><td><code>DEFER</code> con epílogos encadenados por <code>goto</code></td><td>lo mismo que <code>ARENA</code>: cero pila en runtime</td></tr>
+        <tr><td>Genéricos monomorfizados</td><td>cada <code>F</code><span class="mono">&lt;T&gt;</span> se compila una vez por combinación de tipos; despacho estático</td></tr>
+        <tr><td>Capacidades explícitas</td><td>abrir un socket es una decisión que se declara y se autoriza, no que se deduce</td></tr>
+      </table>
+      <h3>Los dos perfiles</h3>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">./build/hxc run hola.hxe                  # freestanding: sin libc
+./build/hxc run hola.hxe --libc           # main() y printf del sistema</code></pre>
+      </figure>
+      <p>El perfil <code>freestanding</code> trae su propio <code>_start</code>,
+      sus <code>memcpy</code>/<code>memset</code> y sus syscalls directas. En
+      <code>libc</code> el programa es un programa normal de C, lo que ayuda
+      cuando se quiere <code>printf</code> o <code>malloc</code> del sistema.</p>
+    </section>
+
+    <section id="lexico" data-t="léxico comentarios literales cadenas interpolación números colores booleanos escapes">
+      <h2>3. Léxico</h2>
+      <h4>Literales</h4>
+      <table>
+        <tr><th>Tipo</th><th>Se escribe</th><th>Nota</th></tr>
+        <tr><td><code>BOOL</code></td><td><code>TRUE</code> <code>FALSE</code></td><td>el único tipo lógico</td></tr>
+        <tr><td><code>INT</code></td><td><code>42</code>, <code>0xFF</code>, <code>0o17</code>, <code>0b1010</code></td><td>separadores <code>1_000</code>, 32 bits con <code>+</code> verificado</td></tr>
+        <tr><td><code>I64</code></td><td><code>42</code> con sufijo de conversión, o resultado de <code>I64()</code></td><td>aritmética de 64 bits</td></tr>
+        <tr><td><code>FLOAT</code></td><td><code>3.5</code>, <code>1e-3</code></td><td><code>+</code> desborda a infinito en vez de romper</td></tr>
+        <tr><td><code>STRING</code></td><td><code>"texto"</code></td><td>inmutable; la interpolación <code>{expr}</code> está siempre activa</td></tr>
+      </table>
+      <figure class="ej">
+        <figcaption><span>cadenas.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM s AS STRING = "hola mundo"
+PRINT s.Len()
+PRINT s.Upper()
+PRINT s.Slice(0, 4)
+PRINT s.At(1)
+PRINT ("y" ++ s.Slice(6))
+
+DIM n AS INT = 42
+PRINT "n vale {n}, y al doble {n * 2}"
+PRINT "literal {{corchete}} escapado"</code></pre>
+        <div class="salida"><b>salida</b><pre>10
+HOLA MUNDO
+hola
+l
+hola mundoyy
+n vale 42, y al doble 84
+literal {corchete} escapado</pre></div>
+      </figure>
+      <h4>Operadores</h4>
+      <p>De menor a mayor: <code>OR</code> <code>XOR</code> · <code>AND</code> ·
+      <code>=</code> <code>==</code> <code>&lt;&gt;</code> <code>!=</code>
+      <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code> ·
+      <code>+</code> <code>-</code> <code>++</code> · <code>*</code>
+      <code>/</code> <code>MOD</code> · unario <code>-</code> <code>+</code>
+      <code>NOT</code> · llamada, índice <code>a[…]</code>, miembro
+      <code>a.b</code>, propagación <code>?</code>.</p>
+      <div class="aviso"><code>=</code> es asignación en posición de sentencia y
+      comparación en expresión; el parser lo resuelve por precedencia. Si la duda
+      queda, <code>==</code> es comparación explícita y siempre válido.</div>
+      <p>La aritmética sobre <code>INT</code>/<code>I64</code> es
+      <em>verificada</em>: <code>+</code> y <code>-</code> abortan con un
+      diagnóstico si desbordan. Para desbordar de forma envuelta o saturada están
+      <code>+%</code>, <code>-%</code> (wraping) y <code>+|</code>,
+      <code>-|</code>, <code>*|</code> (saturante).</p>
+      <figure class="ej">
+        <figcaption><span>aritmetica.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM a AS INT = 2000000000
+PRINT a + a                ' E0305: desbordamiento verificado
+PRINT (+%) a + a           ' wraping: -294967296
+PRINT (+|) a + a           ' saturante: 2147483647</code></pre>
+      </figure>
+    </section>
+
+    <section id="programa" data-t="módulo module dim const exit print estructura programa">
+      <h2>4. La forma de un programa</h2>
+      <p>Un archivo es un módulo. <code>MODULE nombre … END</code> es opcional;
+      sin él, el nombre del módulo es el nombre del archivo. Lo que está a nivel
+      superior forma el <code>Main</code> implícito.</p>
+      <figure class="ej">
+        <figcaption><span>estructura.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">MODULE saludo
+
+IMPORT utiles
+
+CONST SALUDO AS STRING = "hola"
+
+TYPE Punto
+  x AS INT
+  y AS INT
+END TYPE
+
+FUNCTION Distancia2(a AS Punto, b AS Punto) AS INT
+  DIM dx AS INT = a.x - b.x
+  DIM dy AS INT = a.y - b.y
+  RETURN dx * dx + dy * dy
+END FUNCTION
+
+DIM origen AS Punto
+origen.x = 0
+origen.y = 0
+DIM lejos AS Punto
+lejos.x = 3
+lejos.y = 4
+
+PRINT SALUDO ++ " desde " ++ utiles.Nombre()
+PRINT Distancia2(origen, lejos)
+
+END MODULE</code></pre>
+      </figure>
+      <h4>Declaraciones</h4>
+      <ul>
+        <li><code>DIM x AS INT = 0</code> declara y, si puede, inicializa. Sin
+        <code>DIM</code> no existe la variable: el uso suelto da <code>E0304</code>
+        con una ayuda.</li>
+        <li><code>CONST k AS INT = 7</code> exige un valor constante en tiempo de
+        compilación (<code>E0310</code> si no lo es).</li>
+        <li><code>DIM buf AS INT[64]</code> reserva un arreglo de tamaño fijo;
+        los índices van de 0 a 63.</li>
+        <li><code>PRINT</code> imprime una línea por sentencia; un
+        <code>;</code> final suprime el salto y una <code>,</code> emite un
+        tabulador.</li>
+        <li><code>EXIT (codigo)</code> termina con un entero como código de
+        salida; <code>EXIT FUNCTION</code>, <code>EXIT FOR</code> y
+        <code>EXIT WHILE</code> cortan el bloque actual.</li>
+      </ul>
+      <figure class="ej">
+        <figcaption><span>salida</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">hola desde utiles
+25</code></pre>
+      </figure>
+    </section>
+
+    <section id="control" data-t="if else while for next break continue exit match case when rangos control">
+      <h2>5. Control de flujo</h2>
+      <figure class="ej">
+        <figcaption><span>control.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM total AS INT = 0
+FOR i = 1 TO 5
+  total = total + i
+NEXT i
+PRINT total
+
+DIM j AS INT = 0
+WHILE TRUE
+  j = j + 1
+  IF j >= 10 THEN EXIT WHILE
+END WHILE
+PRINT j
+
+FOR k = 0 TO 20 STEP 2
+  IF k = 6 THEN CONTINUE
+  IF k >= 12 THEN BREAK
+  PRINT k
+NEXT k
+
+DIM x AS INT = 5
+IF x > 10 THEN
+  PRINT "grande"
+ELSEIF x > 3 THEN
+  PRINT "mediano"
+ELSE
+  PRINT "chico"
+END IF</code></pre>
+        <div class="salida"><b>salida</b><pre>15
+10
+0
+2
+4
+8
+10
+mediano</pre></div>
+      </figure>
+      <p><code>WHILE</code> se cierra con <code>END WHILE</code> o
+      <code>WEND</code>. <code>FOR</code> admite <code>STEP</code> negativo
+      (<code>FOR n = 10 TO 1 STEP -3</code>) y el <code>NEXT</code> repite el
+      nombre de la variable de bucle, que es opcional.</p>
+      <h3>Cuándo hace falta MATCH</h3>
+      <p><code>MATCH</code> compara un valor contra patrones. Un identificador
+      desnudo en un patrón es <em>siempre</em> un <em>binding</em>: para comparar
+      con una constante hay que cualificarla (<code>Color.Rojo</code>). Así un
+      nombre mal escrito nunca se convierte en silencio en una variable.</p>
+      <figure class="ej">
+        <figcaption><span>enums.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">ENUM Color
+  ROJO
+  VERDE
+  AZUL
+END ENUM
+
+DIM a AS Color = Color.AZUL
+PRINT a                 ' AZUL
+PRINT a.ordinal         ' 2
+PRINT a.ENUM_A_INT      ' 2
+
+MATCH a
+  CASE ROJO THEN PRINT "es rojo"
+  CASE VERDE THEN PRINT "es verde"
+  CASE AZUL THEN PRINT "es azul"
+END MATCH
+
+MATCH 7
+  CASE 1 TO 5 THEN PRINT "rango bajo"
+  CASE 6 TO 10 THEN PRINT "rango alto"
+  CASE ELSE THEN PRINT "otro"
+END MATCH</code></pre>
+        <div class="salida"><b>salida</b><pre>AZUL
+2
+2
+es azul
+rango alto</pre></div>
+      </figure>
+      <p>Un <code>MATCH</code> sobre un <code>Result</code> no necesita
+      <code>CASE ELSE</code> si cubre <code>Ok</code> y <code>Err</code>; en
+      cualquier otro caso es obligatorio (<code>E0405</code>).</p>
+    </section>
+
+    <section id="funciones" data-t="función function return recursión tco pila argumentos parámetros">
+      <h2>6. Funciones y recursión</h2>
+      <p><code>FUNCTION nombre(…) [AS tipo] … END FUNCTION</code>. Los
+      parámetros llevan tipo con <code>AS</code> o <code>:</code> y pueden
+      tener valor por defecto. Sólo lo exportado con <code>EXPORT</code> se ve
+      desde otro módulo.</p>
+      <figure class="ej">
+        <figcaption><span>funciones.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Max(a AS INT, b AS INT) AS INT
+  IF a > b THEN RETURN a
+  RETURN b
+END FUNCTION
+
+FUNCTION SumaHasta(n AS INT, acc AS I64) AS I64
+  IF n <= 0 THEN RETURN acc
+  RETURN SumaHasta(n - 1, acc + n)
+END FUNCTION
+
+FUNCTION ConPredicado(x AS INT, mayor AS BOOL = TRUE) AS STRING
+  IF (x > 0) = mayor THEN RETURN "si"
+  RETURN "no"
+END FUNCTION
+
+PRINT Max(3, 9)
+PRINT SumaHasta(10000000, 0)
+PRINT ConPredicado(5)
+PRINT ConPredicado(-5, mayor = FALSE)</code></pre>
+        <div class="salida"><b>salida</b><pre>9
+50000005000000
+si
+si</pre></div>
+      </figure>
+      <div class="aviso bueno"><b>Cola:</b> una llamada en posición de
+      <code>RETURN</code> se convierte en un bucle en el HIR, sin marco de pila.
+      Diez millones de iteraciones de <code>SumaHasta</code> con una pila de
+      128 KiB no tocan el límite.</div>
+      <p>Las funciones sin valor de retorno se declaran <code>AS VOID</code>.</p>
+    </section>
+
+    <section id="datos" data-t="type registro enum estructura datos campos copia">
+      <h2>7. Registros y enumeraciones</h2>
+      <figure class="ej">
+        <figcaption><span>tipos.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TYPE Contador
+  n AS INT
+  etiqueta AS STRING
+END TYPE
+
+DIM c AS Contador
+c.n = 10
+c.etiqueta = "cuenta"
+PRINT c.n, c.etiqueta
+
+DIM copia AS Contador = c     ' los registros se copian por valor
+copia.n = 99
+PRINT c.n                    ' 10: la copia no toca el original
+
+ENUM Error
+  SIN_ERROR
+  SIN_MEMORIA
+  SIN_SOCKET
+END ENUM
+
+DIM e AS Error = Error.SIN_SOCKET
+PRINT e.Nombre
+PRINT e.ordinal</code></pre>
+        <div class="salida"><b>salida</b><pre>10	cuenta
+10
+SIN_SOCKET
+1</pre></div>
+      </figure>
+      <p>Un <code>ENUM</code> no admite aritmética: se comparan variantes o se
+      convierte con <code>ENUM_A_INT</code> (<code>E0308</code>). Los valores
+      por defecto de sus campos son cero y cadena vacía.</p>
+    </section>
+
+    <section id="subtipado" data-t="subtipado estructural lsp ancho campos invariantes materializa animal perro">
+      <h2>8. Subtipado estructural</h2>
+      <p>Un registro sirve donde se pide otro con menos campos, si los campos
+      comunes tienen exactamente el mismo tipo. Los campos son invariantes
+      porque existe <code>REF</code>: escribir por una referencia tiene que
+      ver el mismo tipo.</p>
+      <figure class="ej">
+        <figcaption><span>estructural.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TYPE Animal
+  nombre AS STRING
+  patas AS INT
+END TYPE
+
+TYPE Perro
+  nombre AS STRING
+  patas AS INT
+  ladridos AS INT
+END TYPE
+
+TYPE Incompatible
+  nombre AS INT
+END TYPE
+
+FUNCTION Describe(a AS Animal) AS VOID
+  PRINT "{a.nombre} con {a.patas} patas"
+END FUNCTION
+
+DIM p AS Perro
+p.nombre = "Rex"
+p.patas = 4
+p.ladridos = 7
+Describe(p)                 ' legal: a Perro le sobra un campo
+
+DIM x AS Incompatible = p    ' E0301: 'nombre' es STRING en uno e INT en otro</code></pre>
+        <div class="salida"><b>salida</b><pre>Rex con 4 patas</pre></div>
+      </figure>
+      <p>Cuando el verificador acepta la conversión, la materializa al emitir
+      como un literal compuesto que copia los campos comunes, así el C generado
+      nunca mezcla structs distintas. Dos <code>ENUM</code> con las mismas
+      variantes siguen siendo tipos distintos: los enums nunca participan.</p>
+    </section>
+
+    <section id="vectores" data-t="vectores float2 float3 float4 vec2 vec3 vec4 swizzle dot cross normalized">
+      <h2>9. Vectores</h2>
+      <figure class="ej">
+        <figcaption><span>vectores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM a AS FLOAT2 = (3.0, 4.0)
+DIM b AS FLOAT2 = (1.0, 0.0)
+
+PRINT a.x, a.y             ' 3.0  4.0
+PRINT a.xx + a.yy          ' swizzle: 7.0
+
+DIM u AS FLOAT2 = NORMALIZED(a)
+PRINT DOT(a, u)            ' 1.0
+PRINT CROSS(a, b)          ' (0.0, 1.0)
+
+DIM v AS FLOAT3 = (1, 2, 3) ' los componentes admiten enteros
+PRINT v.zyx</code></pre>
+        <div class="salida"><b>salida</b><pre>3.0	4.0
+7.0
+1.0
+0.0	1.0
+3.0	2.0	1.0</pre></div>
+      </figure>
+      <p>Los literales de vector llegan hasta 4 componentes; <code>(a,b)</code> es
+      <code>vec2</code>, <code>(a,b,c)</code> <code>vec3</code> y
+      <code>(a,b,c,d)</code> <code>vec4</code>. No hay tuplas de Hixean: eso es
+      exactamente lo que significan esos paréntesis.</p>
+    </section>
+
+    <section id="errores" data-t="result ok err ? propagación match error sin excepciones unwinding">
+      <h2>10. Errores sin excepciones</h2>
+      <p>Una función que puede fallar devuelve <code>Result&lt;T,E&gt;</code>: se
+      devuelve <code>Ok(valor)</code> o <code>Err(mensaje)</code>. El operador
+      <code>?</code> en la posición de valor completo de un
+      <code>DIM</code>, una asignación o un <code>RETURN</code> desempaqueta o
+      propaga el error hacia arriba.</p>
+      <figure class="ej">
+        <figcaption><span>resultados.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Doble(x AS INT) AS Result&lt;INT, STRING&gt;
+  IF x = 0 THEN RETURN Err("no se puede doblar cero")
+  RETURN Ok(x * 2)
+END FUNCTION
+
+FUNCTION Anidado(n AS INT) AS Result&lt;INT, STRING&gt;
+  DIM v AS INT = Doble(n)?      ' si Doble falla, Anidado propaga
+  RETURN Ok(v + 1)
+END FUNCTION
+
+DIM r AS INT = Doble(21)?
+PRINT r
+
+MATCH Pedir(-1)
+  CASE Ok(n) THEN PRINT "no deberia: {n}"
+  CASE Err(e) THEN PRINT "error esperado: {e}"
+END MATCH
+
+PRINT Anidado(5)?</code></pre>
+        <div class="salida"><b>salida</b><pre>42
+error esperado: nombre negativo
+11</pre></div>
+      </figure>
+      <p>El lowering es explícito, sin <em>unwinding</em>:</p>
+      <figure class="ej">
+        <figcaption><span>C generado</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-c">hx_result hx_t0 = f(x);
+if (hx_t0.tag) return hx_t0;      ' la función devuelve Result
+hx_str hx_v_r = hx_t0.s;          ' si no, propaga y sale con 70</code></pre>
+      </figure>
+      <div class="aviso"><code>?</code> sólo vale como valor completo
+      (<code>E0403</code> en cualquier otra posición) y sólo sobre un
+      <code>Result</code> (<code>E0404</code>).</div>
+    </section>
+
+    <section id="defer" data-t="defer lifo limpieza bloque función epílogo">
+      <h2>11. DEFER</h2>
+      <p><code>DEFER sentencia</code> ejecuta la sentencia al salir del bloque,
+      en orden inverso al de declaración, tanto por <code>RETURN</code> como al
+      llegar al final. Se puede poner en un bloque o al principio de una
+      función.</p>
+      <figure class="ej">
+        <figcaption><span>defer.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Temprano(n AS INT) AS INT
+  IF n > 0 THEN
+    DEFER PRINT "limpieza antes del RETURN"
+    RETURN 99
+  END IF
+  RETURN 0
+END FUNCTION
+
+FUNCTION Anidado() AS VOID
+  DEFER PRINT "1"
+  ARENA tmp
+    DEFER PRINT "2"
+    PRINT "cuerpo"
+  END ARENA
+  DEFER PRINT "3"
+END FUNCTION
+
+PRINT Temprano(1)
+Anidado()</code></pre>
+        <div class="salida"><b>salida</b><pre>limpieza antes del RETURN
+99
+cuerpo
+2
+3
+1</pre></div>
+      </figure>
+      <p>Un <code>BREAK</code> o un <code>CONTINUE</code> no puede saltar por
+      encima de un <code>DEFER</code> (<code>E0407</code>): saltarse la
+      limpieza sería un error, no una optimización.</p>
+    </section>
+
+    <section id="memoria" data-t="arena ref ptr puntero prestamo única mmap malloc memoria">
+      <h2>12. ARENA, REF y PTR</h2>
+      <h4>ARENA: Reservas con nombre</h4>
+      <figure class="ej">
+        <figcaption><span>arena.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">ARENA tmp
+  DIM buf AS INT[64]        ' reserva visible; se libera al salir del bloque
+  buf[0] = 1
+  PRINT buf[0]
+END ARENA
+PRINT "arena liberada"</code></pre>
+        <div class="salida"><b>salida</b><pre>1
+arena liberada</pre></div>
+      </figure>
+      <p>Es un bump allocator sobre <code>mmap</code> en el perfil
+      <code>freestanding</code> y sobre <code>malloc</code> en
+      <code>libc</code>. Un puntero a una variable de <code>ARENA</code> se
+      rechaza (<code>E0721</code>): colgaría al salir del bloque.</p>
+      <h4>REF: Préstamo con unicidad</h4>
+      <figure class="ej">
+        <figcaption><span>ref.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TYPE Contador
+  n AS INT
+END TYPE
+
+FUNCTION Incrementar(c AS REF Contador) AS INT
+  c.n = c.n + 1
+  RETURN c.n
+END FUNCTION
+
+DIM c AS Contador
+c.n = 10
+PRINT Incrementar(c)   ' 11
+PRINT Incrementar(c)   ' 12
+PRINT c.n              ' 12: el prestamo muta el origen</code></pre>
+        <div class="salida"><b>salida</b><pre>11
+12
+12</pre></div>
+      </figure>
+      <p>Una variable se presta a lo sumo una vez a la vez por ámbito
+      (<code>E0408</code>), así que no hay dos referencias aliasando el mismo
+      sitio. <code>REF</code> es lo que hace invariantes los campos en el
+      subtipado estructural.</p>
+      <h4>PTR: Direcciones explícitas</h4>
+      <figure class="ej">
+        <figcaption><span>punteros.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM x AS INT = 5
+DIM p AS PTR AS INT = &amp;x     ' &amp; toma la dirección
+PRINT p^                         ' 5
+p^ = p^ + 1                     ' ^ desreferencia
+PRINT x                          ' 6
+
+DIM nulo AS PTR AS INT = 0
+IF nulo == 0 THEN PRINT "nulo es nulo"
+
+TYPE Caja
+  v AS INT
+END TYPE
+DIM c AS Caja
+c.v = 3
+DIM pc AS PTR AS Caja = &amp;c
+pc^.v = 42
+PRINT c.v                        ' 42</code></pre>
+        <div class="salida"><b>salida</b><pre>5
+6
+nulo es nulo
+42</pre></div>
+      </figure>
+    </section>
+
+    <section id="genericos" data-t="genéricos generic monomorfización type donde restricción">
+      <h2>13. Genéricos</h2>
+      <p>Una función o un tipo con <code>&lt;T&gt;</code> se compila una vez por
+      combinación concreta de tipos que aparezca en el punto de llamada. No hay
+      tabla de despacho ni boxing: el C generado es el mismo que si se hubiera
+      escrito a mano.</p>
+      <figure class="ej">
+        <figcaption><span>genericos.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Max&lt;T&gt;(a AS T, b AS T) AS T
+  IF a &gt; b THEN RETURN a
+  RETURN b
+END FUNCTION
+
+TYPE Caja&lt;T&gt;
+  valor AS T
+  veces AS INT
+END TYPE
+
+DIM c AS Caja&lt;INT&gt;
+c.valor = 7
+c.veces = 1
+PRINT c.valor
+
+PRINT Max(3, 9)
+PRINT Max(1.5, 0.5)
+PRINT Max("alfa", "beta")</code></pre>
+        <div class="salida"><b>salida</b><pre>7
+9
+1.5
+alfa</pre></div>
+      </figure>
+      <p>Una llamada que deduce dos tipos distintos para el mismo parámetro es
+      un error (<code>E0703</code>). Con <code>DONDE T: Trait</code> se exige
+      que el tipo implemente un trait, y el cuerpo de la función puede llamar a
+      sus métodos:</p>
+      <figure class="ej">
+        <figcaption><span>donde.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION MaxConTrait&lt;T&gt;(a AS T, b AS T) AS T DONDE T: Compara
+  RETURN Compara.Mayor(a, b)
+END FUNCTION
+
+PRINT MaxConTrait(3, 9)
+PRINT MaxConTrait("alfa", "beta")</code></pre>
+        <div class="salida"><b>salida</b><pre>9
+alfa</pre></div>
+      </figure>
+    </section>
+
+    <section id="traits" data-t="trait implementar para metodo method despacho estático self">
+      <h2>14. Traits</h2>
+      <p>Un <code>TRAIT</code> declara métodos; <code>IMPLEMENTAR T PARA
+      Nombre</code> los da para un tipo. El despacho es estático: se llama
+      <code>Trait.Método(...)</code> y en el C generado hay una función normal.</p>
+      <figure class="ej">
+        <figcaption><span>traits.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TRAIT Compara
+  METODO Mayor(a AS SELF, b AS SELF) AS SELF
+  METODO Nombre(quien AS SELF) AS STRING
+END TRAIT
+
+IMPLEMENTAR INT PARA Compara
+  METODO Mayor(a AS INT, b AS INT) AS INT
+    IF a &gt; b THEN RETURN a
+    RETURN b
+  END METHOD
+  METODO Nombre(quien AS SELF) AS STRING
+    RETURN "int"
+  END METHOD
+END IMPLEMENTAR
+
+IMPLEMENTAR STRING PARA Compara
+  METODO Mayor(a AS STRING, b AS STRING) AS STRING
+    RETURN a
+  END METHOD
+  METODO Nombre(quien AS SELF) AS STRING
+    RETURN "string"
+  END METHOD
+END IMPLEMENTAR
+
+PRINT Compara.Mayor(3, 9)
+PRINT Compara.Mayor("alfa", "beta")
+PRINT Compara.Nombre(7)</code></pre>
+        <div class="salida"><b>salida</b><pre>9
+alfa
+int</pre></div>
+      </figure>
+      <p><code>SELF</code> sólo existe dentro de una implementación
+      (<code>E0706</code>). Un tipo que no implementa el trait que se le exige
+      es <code>E0707</code>/<code>E0716</code> en el punto de uso, con el
+      nombre del método que falta.</p>
+    </section>
+
+    <section id="iteradores" data-t="iterador iterator range map filter take next perezoso lambda func">
+      <h2>15. Iteradores y funciones anónimas</h2>
+      <p>Los iteradores son perezosos: <code>MAP</code>, <code>FILTER</code> y
+      <code>TAKE</code> componen sin materializar nada. <code>TAKE</code> sobre
+      mil elementos consume tres.</p>
+      <figure class="ej">
+        <figcaption><span>iteradores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Doble(n AS INT) AS INT
+  RETURN n * 2
+END FUNCTION
+
+FUNCTION MayorQueCinco(n AS INT) AS BOOL
+  RETURN n &gt; 5
+END FUNCTION
+
+FOR x IN Rango(1, 1000).Take(3)
+  PRINT x
+NEXT x
+
+FOR y IN Rango(1, 4).Map(Doble)
+  PRINT y
+NEXT y
+
+FOR z IN Rango(1, 20).Filter(MayorQueCinco)
+  PRINT z
+NEXT z</code></pre>
+        <div class="salida"><b>salida</b><pre>1
+2
+3
+2
+4
+6
+8
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20</pre></div>
+      </figure>
+      <p>Una función anónima se escribe <code>FUNC(parámetros) AS tipo … END</code>
+      y sirve donde el iterador espera una función:</p>
+      <figure class="ej">
+        <figcaption><span>anonimas.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FOR x IN Rango(1, 10).Map(FUNC(n AS INT) AS INT
+  RETURN n * n
+END).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n &gt; 20
+END).Take(3)
+  PRINT x
+NEXT x</code></pre>
+        <div class="salida"><b>salida</b><pre>25
+36
+49
+64
+81</pre></div>
+      </figure>
+      <p><code>MAP</code> puede cambiar el tipo del elemento
+      (<code>Rango(1,3).Map(Texto)</code> produce cadenas); <code>FILTER</code>
+      exige una función de <code>T</code> a <code>BOOL</code>
+      (<code>E0715</code> si no).</p>
+    </section>
+
+    <section id="modulos" data-t="módulos module import export usar biblioteca hxc">
+      <h2>16. Módulos y bibliotecas</h2>
+      <p><code>IMPORT ruta</code> carga un módulo; <code>EXPORT</code> decide qué
+      ve el mundo exterior. Los sufijos: <code>.hxs</code> módulo interno,
+      <code>.hxf</code> biblioteca, <code>.hxe</code> programa,
+      <code>.hxt</code> prueba.</p>
+      <figure class="ej">
+        <figcaption><span>mate.hxs</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">MODULE mate
+
+EXPORT FUNCTION Cuadra(x AS INT) AS INT
+  RETURN x * x
+END FUNCTION
+
+FUNCTION Oculto(x AS INT) AS INT
+  RETURN x
+END FUNCTION
+
+END MODULE</code></pre>
+        <div class="salida"><b>usa.hxe</b><pre>import mate
+PRINT mate.Cuadra(7)
+' mate.Oculto(7)  ' E0302: no está exportado</pre></div>
+      </figure>
+      <p>Una biblioteca se publica como una unidad <code>.hxc</code> (interfaz
+      con tipos, constantes y firmas) más un <code>lib&lt;modulo&gt;.a</code> con
+      la implementación. Quien la usa no necesita sus fuentes:</p>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">hxc build mate.hxs --emit-hxc unidades/     ' publica mate.hxc + libmate.a
+hxc build usa.hxe --use-hxc unidades/       ' compila contra la interfaz</code></pre>
+      </figure>
+      <p>El cuerpo de la unidad lleva un hash: una unidad truncada o manipulada se
+      rechaza con <code>E0601</code>/<code>E0602</code> en vez de compilar algo
+      raro.</p>
+    </section>
+
+    <section id="paquetes" data-t="hxk paquete kit manifiesto dep require provides feature capability profile entry">
+      <h2>17. Paquetes (.hxk)</h2>
+      <p>Un manifiesto dice qué ofrece un paquete, qué necesita, con qué perfil
+      se compila y qué capacidades usa. No es Hixean: es la entrada de
+      <code>hxc build --kit</code>.</p>
+      <figure class="ej">
+        <figcaption><span>aritmetica.hxk</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hxk">KIT aritmetica 1.0.0
+  TARGET hixe &gt;= 0.1
+  PROFILE freestanding
+  ENTRY aritmetica.hxe
+  DEP base &gt;= 0.2
+  PROVIDES aritmetica
+  REQUIRE vectores
+  DEFINE HX_MATEMATICAS 1
+END KIT</code></pre>
+      </figure>
+      <table>
+        <tr><th>Instrucción</th><th>Qué dice</th></tr>
+        <tr><td><code>ENTRY</code></td><td>el fuente que se construye</td></tr>
+        <tr><td><code>DEP</code></td><td>paquete del que depende, con versión mínima</td></tr>
+        <tr><td><code>REQUIRE</code></td><td>característica que hace falta (<code>FEATURE</code> propia o heredada)</td></tr>
+        <tr><td><code>PROVIDES</code></td><td>lo que este paquete da a los demás</td></tr>
+        <tr><td><code>FEATURE</code></td><td>lo que este paquete saber hacer</td></tr>
+        <tr><td><code>PROFILE</code></td><td><code>freestanding</code> o <code>libc</code></td></tr>
+        <tr><td><code>DEFINE</code></td><td>símbolo para el <code>cc</code> (<code>-D</code>)</td></tr>
+        <tr><td><code>CAPABILITY</code></td><td>capacidad que el paquete está autorizado a usar</td></tr>
+        <tr><td><code>ASSET</code> <code>OPT</code> <code>BENCH</code> <code>EXPECT</code> <code>LINK</code> <code>BACKEND</code> <code>TARGET</code></td><td>metadatos que hoy se registran y no cambian la construcción</td></tr>
+      </table>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">hxc kit   aritmetica.hxk --path kits/   ' resuelve y muestra el grafo
+hxc build --kit aritmetica.hxk --path kits/ -o salida</code></pre>
+      </figure>
+    </section>
+
+    <section id="consultas" data-t="hxq consulta query busca paquetes descubre">
+      <h2>18. Consultas (.hxq)</h2>
+      <p>Un <code>.hxq</code> pregunta qué paquetes hay en las rutas sin compilar
+      nada. El texto tras <code>QUERY</code> es una descripción libre; los
+      predicados se combinan con Y.</p>
+      <figure class="ej">
+        <figcaption><span>aritmetica.hxq</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hxq">QUERY matematicas por encima de la base 0.2
+  DEP base &gt;= 0.2
+  PROVIDES aritmetica
+END QUERY</code></pre>
+        <div class="salida"><b>salida</b><pre>aritmetica 1.0.0  kits/aritmetica.hxk</pre></div>
+      </figure>
+      <p>Predicados: <code>PROVIDES</code>, <code>FEATURE</code>,
+      <code>CAPABILITY</code>, <code>DEP</code> (que admite
+      <code>op version</code>) y <code>VERSION</code> con
+      <code>&gt;</code> <code>&gt;=</code> <code>&lt;</code> <code>&lt;=</code>.
+      La salida va en orden alfabético y un manifiesto roto se salta en
+      silencio: una consulta no es el sitio donde se oyen los errores de un
+      paquete ajeno.</p>
+    </section>
+
+    <section id="capacidades" data-t="capacidad enable capability net std.net sockets kernel">
+      <h2>19. Capacidades</h2>
+      <p>Una capacidad es algo que un programa no debería decidir por su cuenta:
+      hablar con el kernel, abrir un dispositivo, lanzar un kernel de cálculo.
+      El fuente declara lo que usa con <code>ENABLE</code>; el manifiesto lo
+      autoriza con <code>CAPABILITY</code>. Si no coinciden,
+      <code>hxc build --kit</code> se niega a construir.</p>
+      <figure class="ej">
+        <figcaption><span>red.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">ENABLE net
+
+DIM envio AS INT = NET_UDP()
+PRINT NET_BIND(envio, 45000)
+PRINT NET_SEND(envio, 45001, 2130706433, "hola red")</code></pre>
+      </figure>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">$ hxc build --kit paquete.hxk -o salida
+hx: paquete.hxk usa la capacidad 'net' pero el manifiesto no la declara con
+    CAPABILITY net</code></pre>
+      </figure>
+      <table>
+        <tr><th>Llamada</th><th>Hace</th></tr>
+        <tr><td><code>NET_UDP()</code> / <code>NET_TCP()</code></td><td>abre un socket y devuelve el descriptor</td></tr>
+        <tr><td><code>NET_BIND(fd, puerto)</code></td><td>enlaza a <code>127.0.0.1:puerto</code>; 0 si ok</td></tr>
+        <tr><td><code>NET_SEND(fd, puerto, ip, datos)</code></td><td>envía; <code>ip</code> es un <code>I64</code> con los cuatro octetos</td></tr>
+        <tr><td><code>NET_RECV(fd)</code></td><td>espera un datagrama y devuelve su texto</td></tr>
+        <tr><td><code>NET_RECV_DE(fd, REF puerto, REF ip)</code></td><td>además devuelve quién lo envió</td></tr>
+        <tr><td><code>NET_LISTEN</code> <code>NET_ACCEPT</code> <code>NET_CONNECT</code> <code>NET_CLOSE</code></td><td>el resto de la API de sockets</td></tr>
+      </table>
+      <div class="aviso">En el perfil <code>freestanding</code> los sockets son
+      syscalls directas, sin libc; en <code>libc</code> son las llamadas del
+      sistema. La prueba de la suite manda un datagrama por loopback y lo recibe
+      en el otro extremo. En plataformas que no son Linux x86_64 las llamadas
+      devuelven <code>-1</code> en vez de romper el binario.</div>
+    </section>
+
+    <section id="herramienta" data-t="hxc herramienta comandos cli run build check size test kit query flags">
+      <h2>20. La herramienta</h2>
+      <figure class="ej">
+        <figcaption><span>hxc</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">hxc run   &lt;archivo.hxe&gt; [--freestanding|--libc] [--timing] [--keep-c]
+hxc build &lt;archivo.hxe&gt; [-o salida] [--emit-only] [--keep-c]
+hxc build &lt;archivo.hxe&gt; --emit-hxc DIR     publica la interfaz .hxc y lib&lt;mod&gt;.a
+hxc build &lt;archivo.hxe&gt; --use-hxc DIR      compila contra interfaces .hxc
+hxc build --kit &lt;archivo.hxk&gt; [--path DIR] construye el paquete
+hxc kit    &lt;archivo.hxk&gt; [--path DIR]      resuelve dependencias y muestra el plan
+hxc query  &lt;archivo.hxq&gt; [--path DIR]      busca paquetes por lo que ofrecen
+hxc test   &lt;archivo.hxt&gt;...               ejecuta el corpus
+hxc check  &lt;archivo.hxe&gt;                   sólo verifica
+hxc size   &lt;binario&gt;                       comprueba la puerta de 12 KiB
+hxc version</code></pre>
+      </figure>
+      <p><code>hxc build</code> acepta <code>--jobs N</code> para compilar los
+      módulos en paralelo. <code>--keep-c</code> deja el C generado en
+      <code>build/gen</code> para leerlo, que es la forma más rápida de entender
+      una decisión del compilador.</p>
+      <h3>La puerta de tamaño</h3>
+      <figure class="ej">
+        <figcaption><span>terminal</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">$ make size
+build/hola 8896 bytes (8.69 KiB)
+OK: 8896 &lt;= 12288 bytes</code></pre>
+      </figure>
+      <p>Las medidas del diseño, en una máquina de desarrollo:</p>
+      <table>
+        <tr><th>Métrica</th><th>Valor</th></tr>
+        <tr><td>front-end + emisión a C, 10 012 líneas</td><td>60 ms</td></tr>
+        <tr><td>20 módulos (22 unidades) en frío</td><td>4,7 s en serie, 1,8 s con 4 núcleos</td></tr>
+        <tr><td>20 módulos sin cambios</td><td>9 ms de <code>cc</code></td></tr>
+        <tr><td>tocar 1 de 20 módulos</td><td>240 ms</td></tr>
+        <tr><td>hola mundo, freestanding</td><td>8 896 B</td></tr>
+      </table>
+    </section>
+
+    <section id="diagnosticos" data-t="errores diagnósticos códigos e0103 e0304 tabla referencia">
+      <h2>21. Diagnósticos</h2>
+      <p>Cada error trae archivo, línea, columna, código y el trozo de fuente con
+      un caret. Los códigos van por familias: <code>E01</code> léxico,
+      <code>E02</code> sintaxis, <code>E03</code> tipos y nombres,
+      <code>E04</code> semántica, <code>E05</code> módulos, <code>E06</code>
+      unidades <code>.hxc</code>, <code>E07</code> genéricos y traits,
+      <code>E08</code> paquetes y consultas, <code>E09</code> capacidades.</p>
+      <div class="chips" id="filtros">
+        <button class="chip" data-familia="todas" aria-pressed="true" type="button">todas</button>
+        <button class="chip" data-familia="E01" aria-pressed="false" type="button">léxico</button>
+        <button class="chip" data-familia="E02" aria-pressed="false" type="button">sintaxis</button>
+        <button class="chip" data-familia="E03" aria-pressed="false" type="button">tipos</button>
+        <button class="chip" data-familia="E04" aria-pressed="false" type="button">semántica</button>
+        <button class="chip" data-familia="E05" aria-pressed="false" type="button">módulos</button>
+        <button class="chip" data-familia="E06" aria-pressed="false" type="button">unidades</button>
+        <button class="chip" data-familia="E07" aria-pressed="false" type="button">genéricos</button>
+        <button class="chip" data-familia="E08" aria-pressed="false" type="button">paquetes</button>
+        <button class="chip" data-familia="E09" aria-pressed="false" type="button">capacidades</button>
+      </div>
+      <table id="tabla-errores">
+        <tr><th>Código</th><th>Qué significa</th></tr>
+        <!--TABLA-->
+      </table>
+    </section>
+
+    <section id="limites" data-t="límites no existe pendiente futuro audio gpu comptime honesto">
+      <h2>22. Lo que Hixean todavía no tiene</h2>
+      <p>Lista corta y sin adornos, porque un manual que promete lo que no
+      existe es peor que uno que no lo menciona:</p>
+      <ul>
+        <li><code>audio</code> y <code>gpu</code>: no existen. Necesitan un
+        dispositivo o un compilador por objetivo, y no hay forma honesta de
+        probarlos aquí. No hay capacidad declarada que no abra nada.</li>
+        <li><code>COMPTIME</code>, <code>DYN</code> y el resto de palabras clave
+        reservadas sin uso: están en el lexer, no en el lenguaje.</li>
+        <li>Sin <em>unwinding</em> a propósito; sin <code>async</code>, sin
+        concurrencia, sin red más allá de <code>127.0.0.1</code>.</li>
+        <li>Sin empaquetado <code>.hxv</code>/<code>.hxa</code>: hay un ELF
+        nativo y ya.</li>
+        <li>El compilador se compila a sí mismo en C, no en Hixean: el
+        auto-hospedaje es un objetivo, no un hecho.</li>
+      </ul>
+    </section>
+
+    <section id="recetas" data-t="recetas ejemplos programas completos referencia rápida">
+      <h2>23. Recetas</h2>
+      <h4>Un registro que se pasa por valor</h4>
+      <figure class="ej">
+        <figcaption><span>tabla.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TYPE Fila
+  clave AS STRING
+  veces AS INT
+END TYPE
+
+FUNCTION MasGrande(a AS Fila, b AS Fila) AS Fila
+  IF a.veces &gt; b.veces THEN RETURN a
+  RETURN b
+END FUNCTION
+
+DIM tabla AS Fila[3]
+tabla[0].clave = "uno"
+tabla[0].veces = 3
+tabla[1].clave = "dos"
+tabla[1].veces = 9
+tabla[2].clave = "tres"
+tabla[2].veces = 5
+
+DIM mejor AS Fila = tabla[0]
+FOR i = 1 TO 2
+  mejor = MasGrande(mejor, tabla[i])
+NEXT i
+PRINT "gana {mejor.clave} con {mejor.veces}"</code></pre>
+        <div class="salida"><b>salida</b><pre>gana dos con 9</pre></div>
+      </figure>
+      <h4>Contar palabras</h4>
+      <figure class="ej">
+        <figcaption><span>palabras.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION Normalizar(palabra AS STRING) AS STRING
+  RETURN Lower(Trim(palabra))
+END FUNCTION
+
+"Trim y Lower son metodos de STRING, no funciones libres"
+FUNCTION Lower(s AS STRING) AS STRING
+  RETURN s.Lower()
+END FUNCTION
+
+FUNCTION Trim(s AS STRING) AS STRING
+  RETURN s.Trim()
+END FUNCTION
+
+DIM frase AS STRING = "el gato y el perro"
+DIM palabra AS STRING = ""
+DIM cuenta AS INT = 0
+
+FOR i = 0 TO frase.Len() - 1
+  DIM c AS STRING = frase.At(i)
+  IF c = " " THEN
+    IF palabra.Len() &gt; 0 THEN
+      cuenta = cuenta + 1
+      palabra = ""
+    END IF
+  ELSE
+    palabra = palabra ++ c
+  END IF
+NEXT i
+IF palabra.Len() &gt; 0 THEN cuenta = cuenta + 1
+PRINT cuenta</code></pre>
+      </figure>
+      <h4>Suma con acumulador y TCO</h4>
+      <figure class="ej">
+        <figcaption><span>suma.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">FUNCTION SumaHasta(n AS INT, acc AS I64) AS I64
+  IF n &lt;= 0 THEN RETURN acc
+  RETURN SumaHasta(n - 1, acc + n)
+END FUNCTION
+
+PRINT SumaHasta(10000000, 0)</code></pre>
+        <div class="salida"><b>salida</b><pre>50000005000000</pre></div>
+      </figure>
+      <h4>Buscar y cortar</h4>
+      <figure class="ej">
+        <figcaption><span>texto.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM ruta AS STRING = "mio/juego/hola.txt"
+DIM corte AS INT = ruta.Slice(0, 3)
+DIM partes AS INT = 1
+FOR i = 0 TO ruta.Len() - 1
+  IF ruta.At(i) = "/" THEN partes = partes + 1
+NEXT i
+PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
+      </figure>
+    </section>
+
+    <footer>
+      <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
+      <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
+      <code>make test</code> ejecuta los 22 programas del corpus, y
+      <code>make size</code> la puerta de 12 KiB.</p>
+      <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
+      para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del
+      navegador.</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  var raiz = document.documentElement;
+  var cuerpo = document.getElementById('cuerpo');
+  var indice = document.getElementById('indice');
+  var buscar = document.getElementById('buscar');
+  var recuento = document.getElementById('recuento');
+  var progreso = document.getElementById('progreso');
+  var secciones = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var enlaces = {};
+
+  var guardado = null;
+  try { guardado = localStorage.getItem('hixean-tema'); } catch (e) {}
+  if (guardado) aplicarTema(guardado === 'oscuro');
+
+  function aplicarTema(oscuro){
+    raiz.setAttribute('data-tema', oscuro ? 'oscuro' : 'claro');
+    var b = document.getElementById('tema');
+    b.textContent = oscuro ? 'Claro' : 'Oscuro';
+    b.setAttribute('aria-pressed', oscuro ? 'true' : 'false');
+    try { localStorage.setItem('hixean-tema', oscuro ? 'oscuro' : 'claro'); } catch (e) {}
+  }
+  document.getElementById('tema').addEventListener('click', function(){
+    aplicarTema(raiz.getAttribute('data-tema') !== 'oscuro');
+  });
+  document.getElementById('pdf').addEventListener('click', function(){ window.print(); });
+
+  document.querySelectorAll('.copiar').forEach(function(b){
+    b.addEventListener('click', function(){
+      var pre = b.closest('.ej').querySelector('pre');
+      var texto = pre.innerText.replace(/^\$ /gm, '');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = texto;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+      var antes = b.textContent;
+      b.textContent = 'copiado';
+      setTimeout(function(){ b.textContent = antes; }, 1200);
+    });
+  });
+
+  secciones.forEach(function(s){
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    var h = s.querySelector('h2');
+    a.href = '#' + s.id;
+    a.textContent = h ? h.textContent : s.id;
+    li.appendChild(a);
+    indice.appendChild(li);
+    enlaces[s.id] = a;
+  });
+
+  if ('IntersectionObserver' in window) {
+    var visibles = {};
+    var observador = new IntersectionObserver(function(entradas){
+      entradas.forEach(function(e){
+        visibles[e.target.id] = e.isIntersecting;
+      });
+      var activo = null;
+      secciones.forEach(function(s){ if (visibles[s.id]) activo = s.id; });
+      if (!activo) {
+        var mejor = 0;
+        secciones.forEach(function(s){
+          var d = Math.abs(s.getBoundingClientRect().top);
+          if (s.getBoundingClientRect().top < 120 && d > mejor) { mejor = d; activo = s.id; }
+        });
+      }
+      Object.keys(enlaces).forEach(function(id){ enlaces[id].classList.remove('activo'); });
+      if (activo && enlaces[activo]) enlaces[activo].classList.add('activo');
+    }, { rootMargin: '-72px 0px -60% 0px', threshold: 0 });
+    secciones.forEach(function(s){ observador.observe(s); });
+  }
+
+  function filtrar(){
+    var q = buscar.value.trim().toLowerCase();
+    var vistas = 0;
+    secciones.forEach(function(s){
+      var extra = (s.dataset.t || '').toLowerCase();
+      var h = s.querySelector('h2');
+      var coincide = !q || (h && h.textContent.toLowerCase().indexOf(q) >= 0) ||
+        s.textContent.toLowerCase().indexOf(q) >= 0 || extra.indexOf(q) >= 0;
+      s.classList.toggle('oculto', !coincide);
+      if (coincide) vistas++;
+      var a = enlaces[s.id];
+      if (a) a.style.display = coincide ? '' : 'none';
+    });
+    recuento.textContent = q ? vistas + ' de ' + secciones.length + ' secciones' : '';
+  }
+  buscar.addEventListener('input', filtrar);
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === '/' && document.activeElement !== buscar) {
+      e.preventDefault();
+      buscar.focus();
+      buscar.select();
+    } else if (e.key === 'Escape' && document.activeElement === buscar) {
+      buscar.value = '';
+      filtrar();
+      buscar.blur();
+    }
+  });
+
+  function alDesplazar(){
+    var alto = document.body.scrollHeight - window.innerHeight;
+    var p = alto > 0 ? (window.scrollY / alto) * 100 : 0;
+    progreso.style.width = p + '%';
+  }
+  window.addEventListener('scroll', alDesplazar, { passive: true });
+  alDesplazar();
+
+  var familia = 'todas';
+  var filas = Array.prototype.slice.call(document.querySelectorAll('#tabla-errores tr.fila'));
+  document.getElementById('filtros').addEventListener('click', function(e){
+    var b = e.target.closest('.chip');
+    if (!b) return;
+    familia = b.dataset.familia;
+    Array.prototype.forEach.call(this.querySelectorAll('.chip'), function(c){
+      c.setAttribute('aria-pressed', c === b ? 'true' : 'false');
+    });
+    filas.forEach(function(f){
+      f.classList.toggle('oculto', familia !== 'todas' && f.dataset.codigo.indexOf(familia) !== 0);
+    });
+  });
+})();
+</script>
+</body>
+</html>

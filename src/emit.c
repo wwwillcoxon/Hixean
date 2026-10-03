@@ -503,6 +503,18 @@ static const char *HX_RT_CHECKED =
     "  if (b < 0 && a < -9223372036854775807LL - 1 - b) return -9223372036854775807LL - 1;\n"
     "  return a + b;\n"
     "}\n"
+    "static inline int32_t hx_mul_sat_i32(int32_t a, int32_t b) {\n"
+    "  int64_t r = (int64_t)a * (int64_t)b;\n"
+    "  if (r > 2147483647LL) return 2147483647;\n"
+    "  if (r < -2147483647LL - 1) return -2147483647 - 1;\n"
+    "  return (int32_t)r;\n"
+    "}\n"
+    "static inline int64_t hx_mul_sat_i64(int64_t a, int64_t b) {\n"
+    "  if (a == 0 || b == 0) return 0;\n"
+    "  int64_t r = a * b;\n"
+    "  if (r / b != a) return (a ^ b) < 0 ? -9223372036854775807LL - 1 : 9223372036854775807LL;\n"
+    "  return r;\n"
+    "}\n"
     "static inline int64_t hx_sub_sat_i64(int64_t a, int64_t b) {\n"
     "  if (b < 0 && a > 9223372036854775807LL + b) return 9223372036854775807LL;\n"
     "  if (b > 0 && a < -9223372036854775807LL - 1 + b) return -9223372036854775807LL - 1;\n"
@@ -1414,6 +1426,9 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             const char *cop = o;
             if (x->bin.op == OP_ADDW) cop = "+";
             if (x->bin.op == OP_SUBW) cop = "-";
+            if (x->bin.op == OP_ADDS) cop = "+";
+            if (x->bin.op == OP_SUBS) cop = "-";
+            if (x->bin.op == OP_MULS) cop = "*";
             if (x->bin.op == OP_NE) cop = "!=";
             if (x->bin.op == OP_EQ) cop = "==";
             if (x->bin.op == OP_AND) cop = "&&";
@@ -1450,8 +1465,20 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, ")");
                 break;
             }
+            if (x->bin.op == OP_ADDW || x->bin.op == OP_SUBW) {
+                const char *k = x->ty && (x->ty->kind == TY_I64 || x->ty->kind == TY_DURATION)
+                                    ? "int64_t" : "int32_t";
+                const char *uk = x->ty && (x->ty->kind == TY_I64 || x->ty->kind == TY_DURATION)
+                                     ? "uint64_t" : "uint32_t";
+                hx_buf_printf(b, "((%s)((%s)(", k, uk);
+                hx_expr_str(e, x->bin.lhs, 0, b);
+                hx_buf_printf(b, ") %s (%s)(", x->bin.op == OP_ADDW ? "+" : "-", uk);
+                hx_expr_str(e, x->bin.rhs, 0, b);
+                hx_buf_str(b, ")))");
+                break;
+            }
             if (x->bin.op == OP_ADD || x->bin.op == OP_SUB || x->bin.op == OP_ADDS ||
-                x->bin.op == OP_SUBS) {
+                x->bin.op == OP_SUBS || x->bin.op == OP_MULS) {
                 const char *kind = x->ty && x->ty->kind == TY_FLOAT   ? "f64"
                                    : x->ty && x->ty->kind == TY_I64    ? "i64"
                                    : x->ty && x->ty->kind == TY_DURATION ? "i64"
@@ -1461,6 +1488,7 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 if (x->bin.op == OP_SUB) fn = hx_kind(kind, "sub", "");
                 if (x->bin.op == OP_ADDS) fn = hx_kind(kind, "add_sat", "");
                 if (x->bin.op == OP_SUBS) fn = hx_kind(kind, "sub_sat", "");
+                if (x->bin.op == OP_MULS) fn = hx_kind(kind, "mul_sat", "");
                 if (fn && strcmp(kind, "f64")) {
                     hx_buf_printf(b, "%s(", fn);
                     hx_expr_str(e, x->bin.lhs, 0, b);
