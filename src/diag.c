@@ -124,16 +124,71 @@ void hx_diag_render(const HxDiagBag *d, const char *src, FILE *out) {
     for (int i = 0; i < d->items.len; i++) hx_render_one(&d->items.data[i], src, out);
 }
 
+static void hx_json_str(FILE *out, const char *s) {
+    fputc('"', out);
+    for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++) {
+        switch (*p) {
+            case '"': fputs("\\\"", out); break;
+            case '\\': fputs("\\\\", out); break;
+            case '\n': fputs("\\n", out); break;
+            case '\r': fputs("\\r", out); break;
+            case '\t': fputs("\\t", out); break;
+            default:
+                if (*p < 0x20) fprintf(out, "\\u%04x", *p);
+                else fputc(*p, out);
+        }
+    }
+    fputc('"', out);
+}
+
+/* El formato que consumen el editor, el LSP y el CI: un objeto por diagnostico
+   con la posicion real, el codigo estable y el mensaje entero. */
 void hx_diag_render_json(const HxDiagBag *d, const char *src, FILE *out) {
-    (void)src;
-    fprintf(out, "{\"diagnostics\":[");
+    fputs("{\"diagnostics\":[", out);
     for (int i = 0; i < d->items.len; i++) {
         const HxDiag *x = &d->items.data[i];
+        const char *fuente = x->src ? x->src : src;
+        uint32_t line = 1, col = 1, end_line = 1, end_col = 1;
+        if (fuente) {
+            for (uint32_t k = 0; k < x->span.start && fuente[k]; k++) {
+                if (fuente[k] == '\n') {
+                    line++;
+                    col = 1;
+                } else {
+                    col++;
+                }
+            }
+            end_line = line;
+            end_col = col;
+            for (uint32_t k = x->span.start; k < x->span.start + x->span.len && fuente[k];
+                 k++) {
+                if (fuente[k] == '\n') {
+                    end_line++;
+                    end_col = 1;
+                } else {
+                    end_col++;
+                }
+            }
+        }
         if (i) fputc(',', out);
-        fprintf(out, "{\"code\":\"%s\",\"severity\":\"%s\",\"line\":0,\"col\":0,\"message\":\"%s\"",
-                x->code, hx_sev_label(x->sev), x->msg ? x->msg : "");
-        if (x->note) fprintf(out, ",\"note\":\"%s\"", x->note);
-        if (x->help) fprintf(out, ",\"help\":\"%s\"", x->help);
+        fputs("{\"file\":", out);
+        hx_json_str(out, x->file ? x->file : "");
+        fprintf(out, ",\"line\":%u,\"col\":%u,\"endLine\":%u,\"endCol\":%u", line, col, end_line,
+                end_col);
+        fputs(",\"severity\":", out);
+        hx_json_str(out, hx_sev_label(x->sev));
+        fputs(",\"code\":", out);
+        hx_json_str(out, x->code ? x->code : "");
+        fputs(",\"message\":", out);
+        hx_json_str(out, x->msg ? x->msg : "");
+        if (x->note) {
+            fputs(",\"note\":", out);
+            hx_json_str(out, x->note);
+        }
+        if (x->help) {
+            fputs(",\"help\":", out);
+            hx_json_str(out, x->help);
+        }
         fputc('}', out);
     }
     fprintf(out, "],\"errors\":%d,\"warnings\":%d}\n", d->errors, d->warnings);

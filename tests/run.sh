@@ -132,3 +132,23 @@ printf 'CONST S AS STRING = "ho" ++ "la"\nCONST T AS STRING = "hola"\nPRINT S, T
 printf 'hola        hola\n' > build/constcadena.expected
 diff -u build/constcadena.expected build/constcadena.out >/dev/null \
   && echo "ok     CONST de cadena, literal y concatenado, sin C invalido"
+
+echo "== diagnosticos en json =="
+printf 'DIM x AS INT = "hola"\nDIM y AS INT = noexiste\n' > build/json.hxe
+./build/hxc check build/json.hxe --json 2> build/json.out || true
+if command -v python3 >/dev/null 2>&1; then
+  python3 -c "
+import json,sys
+d=json.load(open('build/json.out'))
+xs=d['diagnostics']
+assert len(xs)==2, xs
+assert [x['code'] for x in xs]==['E0301','E0304'], xs
+assert xs[0]['line']==1 and xs[0]['col']==16, xs[0]
+assert xs[1].get('help'), xs[1]
+assert d['errors']==2, d
+" && echo "ok     check --json con posiciones, codigos, nota y ayuda"
+else
+  grep -q '"code":"E0301"' build/json.out && grep -q '"help":' build/json.out \
+    && echo "ok     check --json trae codigo y ayuda (sin python3 no se valida el JSON)"
+fi
+./build/hxc version --json | grep -q '"version": "0.1.0"' && echo "ok     version --json para las herramientas"

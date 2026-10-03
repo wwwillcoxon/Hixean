@@ -52,7 +52,8 @@ char *hx_arena_vsprintf(HxArena *a, const char *fmt, va_list ap);
     do {                                                                       \
         if ((len) == (cap)) {                                                  \
             int nx = (cap) ? (cap) * 2 : 8;                                    \
-            ptr = (__typeof__(ptr))hx_arena_realloc_tmp((void *)(uintptr_t)ptr, (size_t)nx * (elem));             \
+            ptr = (__typeof__(ptr))(uintptr_t)hx_arena_realloc_tmp(             \
+                      (void *)(uintptr_t)ptr, (size_t)nx * (elem));              \
             cap = nx;                                                          \
         }                                                                      \
     } while (0)
@@ -61,7 +62,7 @@ void *hx_arena_realloc_tmp(void *p, size_t n);
 
 #define HX_VEC_PUSH(v, item)                                                   \
     do {                                                                       \
-        void *hx_p_ = (void *)(v).data;                                        \
+        __typeof__((v).data) hx_p_ = (v).data;                                 \
         hx_vec_grow(hx_p_, (v).len, (v).cap, sizeof(*(v).data));               \
         (v).data = (__typeof__((v).data))hx_p_;                                \
         (v).data[(v).len++] = (item);                                          \

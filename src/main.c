@@ -146,7 +146,7 @@ static int g_n_extra_mod_dirs;
 static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
-    HX_VEC(pending, char *);
+    HX_VEC(pending, const char *);
     HX_VEC(done, const char *);
     char *dir = hx_path_dirname(&s->arena, entry_path);
     HX_VEC_PUSH(pending, entry_path);
@@ -155,9 +155,10 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
     int entry_loaded = 0;
 
     while (pending.len) {
-        char *path = pending.data[0];
+        const char *path = pending.data[0];
         int is_entry = path == entry_path;
-        memmove(pending.data, pending.data + 1, (pending.len - 1) * sizeof(char *));
+        memmove(pending.data, pending.data + 1,
+                (pending.len - 1) * sizeof(pending.data[0]));
         pending.len--;
         HxModule *m = hx_load_module(s, path, is_entry);
         if (!m) continue;
@@ -494,7 +495,7 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
     if (o->emit_hxc) {
         for (int i = 0; i < s->unit.modules.len; i++) {
             HxModule *m = &s->unit.modules.data[i];
-            char *stem = hx_sym_str(m->name);
+            const char *stem = hx_sym_str(m->name);
             const char *srcobj = NULL;
             if (m->is_entry) srcobj = tu_entry->obj;
             else
@@ -572,6 +573,16 @@ static int hx_exec(const char *bin, const char *out_path) {
 #endif
 }
 
+/* --json decide como se imprimen los diagnosticos en todos los comandos */
+static int g_json = 0;
+
+static void hx_render(HxDiagBag *d, const char *src) {
+    if (g_json)
+        hx_diag_render_json(d, src, stderr);
+    else
+        hx_diag_render(d, src, stderr);
+}
+
 static void hx_usage(void) {
     fprintf(stderr,
             "hxc %s\n"
@@ -583,7 +594,7 @@ static void hx_usage(void) {
             "  hxc build --kit <archivo.hxk>   (construye el paquete)\n"
             "  hxc kit    <archivo.hxk> [--path DIR]  (resuelve dependencias)\n"
             "  hxc query  <archivo.hxq> [--path DIR]  (busca paquetes por sus PROVIDES)\n"
-            "  hxc check <archivo.hxe>\n"
+            "  hxc check <archivo.hxe> [--json]\n"
             "  hxc size <binario>\n"
             "  hxc version\n", HX_VERSION);
 }
@@ -598,8 +609,15 @@ int main(int argc, char **argv) {
         return 2;
     }
     const char *cmd = argv[1];
+    for (int i = 2; i < argc; i++)
+        if (!strcmp(argv[i], "--json")) g_json = 1;
     if (!strcmp(cmd, "version") || !strcmp(cmd, "--version") || !strcmp(cmd, "-V")) {
-        printf("hxc %s\n", HX_VERSION);
+        if (g_json)
+            printf("{\"name\": \"hixean\", \"compiler\": \"hxc\", \"version\": \"%s\","
+                   " \"profile_default\": \"freestanding\", \"size_gate\": 12288}\n",
+                   HX_VERSION);
+        else
+            printf("hxc %s\n", HX_VERSION);
         return 0;
     }
     if (!strcmp(cmd, "size")) {
@@ -639,7 +657,7 @@ int main(int argc, char **argv) {
         HxQuery q;
         q.arena = &arena;
         if (!hx_query_parse(&arena, file, &diags, &q)) {
-            hx_diag_render(&diags, NULL, stderr);
+            hx_render(&diags, NULL);
             return 1;
         }
         if (hx_query_run(&q, &paths, &diags) < 0) return 1;
@@ -668,7 +686,7 @@ int main(int argc, char **argv) {
         hx_diag_init(&diags, &arena);
         HxKit kit;
         if (!hx_kit_resolve(&arena, file, &paths, &diags, &kit)) {
-            hx_diag_render(&diags, NULL, stderr);
+            hx_render(&diags, NULL);
             return 1;
         }
         printf("%s %s\n", kit.name, kit.version);
@@ -699,7 +717,7 @@ int main(int argc, char **argv) {
             to.profile = HX_PROFILE_FREESTANDING;
             double ms = 0;
             if (hx_build_main(ts, arg, &to, bin, &ms) != 0) {
-                hx_diag_render(&ts->diags, NULL, stderr);
+                hx_render(&ts->diags, NULL);
                 fail++;
                 continue;
             }
@@ -756,6 +774,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--jobs") && i + 1 < argc) o.jobs = atoi(argv[++i]);
         else if (!strcmp(a, "--kit") && i + 1 < argc) { o.kit_file = argv[++i]; if (!entry) entry = ""; }
         else if (!strcmp(a, "--path") && i + 1 < argc) ++i; /* se lee antes */
+        else if (!strcmp(a, "--json")) g_json = 1;
         else if (a[0] == '-') {
             fprintf(stderr, "hx: opción desconocida '%s'\n", a);
             return 2;
@@ -782,7 +801,7 @@ int main(int argc, char **argv) {
         /* el manifiesto decide el punto de entrada, el perfil y los DEFINE */
         HxKit kit;
         if (!hx_kit_resolve(&s->arena, o.kit_file, &kitpaths, &s->diags, &kit)) {
-            hx_diag_render(&s->diags, NULL, stderr);
+            hx_render(&s->diags, NULL);
             return 1;
         }
         if (o.verbose) {
@@ -847,10 +866,10 @@ int main(int argc, char **argv) {
     if (hx_build_main(s, entry, &o, bin_path, &ms) != 0) {
         const char *src = NULL;
         for (int i = 0; i < s->unit.modules.len; i++) src = s->unit.modules.data[i].src;
-        hx_diag_render(&s->diags, src ? src : "", stderr);
+        hx_render(&s->diags, src ? src : "");
         return 1;
     }
-    hx_diag_render(&s->diags, NULL, stderr);
+    hx_render(&s->diags, NULL);
 
     /* un paquete debe declarar cada capacidad que usen sus fuentes */
     if (o.kit_file && kit_gates_set) {

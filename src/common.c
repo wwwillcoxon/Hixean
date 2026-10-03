@@ -16,7 +16,7 @@
 #define HX_MKDIR(p) mkdir((p), 0777)
 #endif
 
-const char *HX_VERSION = "0.1.0-dev";
+const char *HX_VERSION = "0.1.0";
 
 void hx_buf_reserve(HxBuf *b, size_t n) {
     if (b->len + n + 1 <= b->cap) return;
