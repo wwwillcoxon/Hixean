@@ -301,8 +301,27 @@ static HxTy *hx_resolve_builtin_ty(HxArena *a, HxIntern *in, HxTy *t) {
             return NULL;
         }
         case TY_ARRAY: return NULL;
-        default: return t;
+        /* Ningun builtin: se queda como esta para que el verificador lo diga con
+           nombre, en vez de sustituirlo aqui por un tipo equivocado. */
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_REF:
+        case TY_PTR:
+        case TY_VEC2:
+        case TY_VEC3:
+        case TY_VEC4:
+        case TY_MAT4:
+        case TY_QUAT:
+        case TY_ITER:
+        case TY_MAYBE: break;
     }
+    return t;
 }
 
 static HxTy *hx_type(HxParser *p) {

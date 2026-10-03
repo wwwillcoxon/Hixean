@@ -86,8 +86,12 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
             if (t->decl && !t->decl->is_enum)
                 return hx_arena_sprintf(e->arena, "hx_T_%s", hx_sym_str(t->decl->name));
             return "int32_t";
-        default: return "int32_t";
+        case TY_ITER: return "hx_iter";
+        /* sin default: un kind nuevo emitiendo "int32_t" en silencio era justo
+           el fallo que busco cerrar */
+        case TY_UNKNOWN: return "int32_t";
     }
+    return "int32_t";
 }
 
 static const char *HX_RT_ITER =
@@ -1092,8 +1096,23 @@ static int hx_vec_len(HxTy *t) {
         case TY_VEC3: return 3;
         case TY_VEC4:
         case TY_QUAT: return 4;
-        default: return 0;
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_NAMED:
+        case TY_ARRAY:
+        case TY_REF:
+        case TY_PTR:
+        case TY_MAT4:
+        case TY_ITER:
+        case TY_MAYBE: break;
     }
+    return 0;
 }
 
 static int hx_vec_comp_index(char c) {
@@ -1157,8 +1176,18 @@ static const char *hx_print_fn(HxEmit *e, HxTy *t) {
         case TY_BOOL: return "hx_print_bool";
         case TY_STRING: return "hx_print_str";
         case TY_DURATION: return "hx_print_duration";
-        default: return "hx_print_i64";
+        case TY_INT:
+        case TY_I64:
+        case TY_NAMED:
+        case TY_REF:
+        case TY_PTR:
+        case TY_ARRAY:
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_ITER:
+        case TY_MAYBE: return "hx_print_i64";
     }
+    return "hx_print_i64";
 }
 
 static const char *hx_str_of_fn(HxTy *t) {
@@ -1166,8 +1195,25 @@ static const char *hx_str_of_fn(HxTy *t) {
     switch (t->kind) {
         case TY_FLOAT: return "hx_str_of_f64";
         case TY_BOOL: return "hx_str_of_bool";
-        default: return "hx_str_of_i64";
+        case TY_INT:
+        case TY_I64:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_NAMED:
+        case TY_REF:
+        case TY_PTR:
+        case TY_ARRAY:
+        case TY_VEC2:
+        case TY_VEC3:
+        case TY_VEC4:
+        case TY_MAT4:
+        case TY_QUAT:
+        case TY_ITER:
+        case TY_MAYBE:
+        case TY_UNKNOWN:
+        case TY_VOID: return "hx_str_of_i64";
     }
+    return "hx_str_of_i64";
 }
 
 static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {

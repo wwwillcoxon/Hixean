@@ -64,7 +64,13 @@ void hx_ty_mangle(const HxTy *t, char *out, int cap) {
         case TY_MAT4: simple = "m4"; break;
         case TY_QUAT: simple = "q4"; break;
         case TY_UNKNOWN: simple = "u"; break;
-        default: simple = NULL; break;
+        /* estos llevan el nombre puesto en C, no una abreviatura */
+        case TY_NAMED:
+        case TY_ARRAY:
+        case TY_REF:
+        case TY_PTR:
+        case TY_ITER:
+        case TY_MAYBE: simple = NULL; break;
     }
     if (simple) {
         snprintf(out, (size_t)cap, "%s", simple);
@@ -115,7 +121,27 @@ void hx_ty_mangle(const HxTy *t, char *out, int cap) {
             snprintf(out, (size_t)cap, "Q%s", tmp);
             return;
         }
-        default:
+        /* ITER y MAYBE tambien se nombran por su interior */
+        case TY_ITER:
+        case TY_MAYBE: {
+            hx_ty_mangle(t->elem, tmp, sizeof(tmp));
+            snprintf(out, (size_t)cap, "%c%s", t->kind == TY_MAYBE ? 'M' : 'T', tmp);
+            return;
+        }
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_VEC2:
+        case TY_VEC3:
+        case TY_VEC4:
+        case TY_MAT4:
+        case TY_QUAT:
+        case TY_NAMED:
             snprintf(out, (size_t)cap, "u");
             return;
     }

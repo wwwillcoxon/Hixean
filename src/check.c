@@ -475,8 +475,23 @@ static int hx_vec_len(HxTy *t) {
         case TY_VEC3: return 3;
         case TY_VEC4:
         case TY_QUAT: return 4;
-        default: return 0;
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_NAMED:
+        case TY_ARRAY:
+        case TY_REF:
+        case TY_PTR:
+        case TY_MAT4:
+        case TY_ITER:
+        case TY_MAYBE: break;
     }
+    return 0;
 }
 
 /* Len/At/First/Last de un arreglo de tamaño fijo. El tamaño vive en el tipo, de
@@ -1897,8 +1912,26 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
         case TY_PTR:
             t->inner = hx_resolve_type(c, t->inner, sp, report);
             return t;
-        default: return t;
+        case TY_ITER:
+            t->elem = hx_resolve_type(c, t->elem, sp, report);
+            return t;
+        /* estos no llevan nada que resolver: se listan uno a uno para que un
+           kind nuevo avise al compilar en vez de colarse por aqui */
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION:
+        case TY_VEC2:
+        case TY_VEC3:
+        case TY_VEC4:
+        case TY_MAT4:
+        case TY_QUAT: return t;
     }
+    return t;
 }
 
 static void hx_decl_locals(HxChecker *c, HxStmtVec *body) {

@@ -18,6 +18,7 @@ static const struct {
 const char *hx_ty_name(const HxTy *t) {
     if (!t) return "?";
     switch (t->kind) {
+        case TY_UNKNOWN: return "UNKNOWN";
         case TY_VOID: return "VOID";
         case TY_BOOL: return "BOOL";
         case TY_INT: return "INT";
@@ -45,8 +46,10 @@ const char *hx_ty_name(const HxTy *t) {
             return b;
         }
         case TY_NAMED: return t->name ? hx_sym_str(t->name) : "?";
-        default: return "?";
     }
+    /* Fuera del switch a proposito: un TY_* nuevo rompe la compilacion con
+       -Wswitch en vez de imprimirse como "?" y esconder el fallo. */
+    return "?";
 }
 
 HxTy *hx_ty_builtin(HxArena *a, HxTyKind kind) {
@@ -103,6 +106,14 @@ int hx_ty_equal(const HxTy *a, const HxTy *b) {
             return 1;
         }
         case TY_ARRAY: return a->size == b->size && hx_ty_equal(a->elem, b->elem);
+        /* el kind ya era igual: los escalares no llevan nada mas que comparar */
+        case TY_VOID:
+        case TY_BOOL:
+        case TY_INT:
+        case TY_I64:
+        case TY_FLOAT:
+        case TY_STRING:
+        case TY_DURATION: return 1;
         case TY_VEC2:
         case TY_VEC3:
         case TY_VEC4:
@@ -110,12 +121,13 @@ int hx_ty_equal(const HxTy *a, const HxTy *b) {
         case TY_QUAT: return 1;
         case TY_REF:
         case TY_PTR: return hx_ty_equal(a->inner, b->inner);
-        /* sin esta linea, TY_MAYBE caia en default y todos los MAYBE parecia
-           el mismo tipo: dos helpers distintos se confundian en uno */
+        /* sin esto, TY_MAYBE y TY_ITER caian en default y todos los MAYBE
+           parecian el mismo tipo: dos helpers distintos se confundian en uno */
         case TY_MAYBE: return hx_ty_equal(a->elem, b->elem);
         case TY_ITER: return hx_ty_equal(a->elem, b->elem);
-        default: return 1;
+        case TY_UNKNOWN: return 1; /* el verificador ya ha reportado el problema */
     }
+    return 1;
 }
 
 HxTy *hx_ty_lookup_builtin(HxArena *a, HxSym name) {
@@ -147,8 +159,24 @@ int hx_ty_rank(const HxTy *t) {
         case TY_I64: return 3;
         case TY_FLOAT: return 4;
         case TY_DURATION: return 3;
-        default: return 0;
+        /* VOID, STRING, los vectores y los declarados no tienen rango: se
+           listan para que un kind nuevo avise al compilar */
+        case TY_UNKNOWN:
+        case TY_VOID:
+        case TY_STRING:
+        case TY_NAMED:
+        case TY_ARRAY:
+        case TY_REF:
+        case TY_PTR:
+        case TY_VEC2:
+        case TY_VEC3:
+        case TY_VEC4:
+        case TY_MAT4:
+        case TY_QUAT:
+        case TY_ITER:
+        case TY_MAYBE: return 0;
     }
+    return 0;
 }
 
 const char *hx_binop_symbol(HxBinOp op) {
