@@ -45,6 +45,14 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   `std.net` con sockets por syscall directa (`NET_UDP`, `NET_TCP`, `NET_BIND`,
   `NET_SEND`, `NET_RECV`, `NET_LISTEN`, `NET_ACCEPT`, `NET_CONNECT`,
   `NET_CLOSE`).
+- **`.hxc` con `MAYBE` e `ITER` en firmas**: al publicar y releer una unidad sin
+  fuentes, esos dos tipos se perdían y se consumían como `VOID`. Ahora tienen
+  etiqueta propia y el formato de la unidad pasa a ser 2: una unidad publicada
+  con 0.1.0 se rechaza con el mensaje de versión, en vez de leerse mal.
+- **`FOR ... IN` sobre un `ITER` que ya existe** (un parámetro, un campo) se
+  emitía como si fuera un constructor y reventaba el compilador. Ahora se
+  recorre directamente. Y `Rango(...)` fuera de un `FOR` da `E0717` en vez de
+  reventar también.
 - **`MAYBE T` y `NIL`**: un valor o nada, con `.IsNil`, `.Or(x)`, `.Map(f)` y
   `CASE NIL` en un `MATCH`. Envolver es implícito; desempaquetar no.
 - **Sobrecarga de operadores**: `FUNCTION OPERATOR + (a AS MiTipo, b AS MiTipo)

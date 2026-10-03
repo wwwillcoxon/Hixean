@@ -1,0 +1,29 @@
+IMPORT quiz
+
+"Esta parte se compila sin las fuentes de quiz: todo lo que llega por --use-hxc
+  viene de la unidad .hxc. Si una firma pierde su tipo al publicar, aqui se ve."
+
+"MAYBE STRING sigue siendo MAYBE STRING"
+DIM r AS MAYBE STRING = quiz.Resumen(9)
+PRINT r.IsNil
+PRINT r.Or("suspendido")
+DIM s AS MAYBE STRING = quiz.Resumen(1)
+PRINT s.IsNil
+PRINT s.Or("suspendido")
+
+"Lo de dentro del modulo, a traves de la unidad"
+PRINT quiz.Total(1)
+PRINT quiz.Aprobada(9)
+
+"Suma(it AS ITER<INT>) no se puede llamar desde aqui: hoy un ITER solo nace en
+  el iterable de un FOR, asi que no hay forma de tener uno que pasarle. Lo que
+  comprueba el fixture es que la firma sobrevive: si al releer la unidad el
+  ITER<INT> se volviera VOID, la cabecera de este modulo declararia
+  hx_call_Suma con el tipo equivocado y el enlazado no cuadraria."
+
+"Un MAYBE puede ir a una funcion que espera un MAYBE, no el valor"
+FUNCTION Etiqueta(o AS MAYBE STRING) AS STRING
+  RETURN "[" ++ o.Or("-") ++ "]"
+END FUNCTION
+PRINT Etiqueta(r)
+PRINT Etiqueta(quiz.Resumen(1))

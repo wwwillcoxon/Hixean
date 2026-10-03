@@ -17,6 +17,13 @@ rm -rf build/units
 ./build/usa > build/usa.out
 diff -u tests/hxc/usa.out build/usa.out && echo "ok     tests/hxc/usa.out"
 echo
+echo "== unidad .hxc con MAYBE e ITER en firmas exportadas =="
+rm -rf build/units_quiz
+./build/hxc build tests/hxc/quiz.hxs --emit-hxc build/units_quiz -o build/quiz
+./build/hxc build tests/hxc/usa_quiz.hxe --use-hxc build/units_quiz -o build/usa_quiz
+./build/usa_quiz > build/usa_quiz.out
+diff -u tests/hxc/usa_quiz.out build/usa_quiz.out && echo "ok     tests/hxc/usa_quiz.out"
+echo
 echo "== unidad .hxc dañada =="
 mkdir -p build/units_bad build/sinsrc
 head -c 40 build/units/mate.hxc > build/units_bad/mate.hxc

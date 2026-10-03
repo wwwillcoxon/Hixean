@@ -44,6 +44,7 @@ typedef struct {
     int loop_defer_depth;
     int arena_depth;
     int match_defer;
+    int in_forin; /* dentro del iterable de un FOR: ahi si caben los iteradores */
 } HxChecker;
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
@@ -1531,6 +1532,19 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     e->method = hx_intern_cstr(c->intern, name);
 
     if (is_rango || is_rangof) {
+        /* El emisor construye el iterador como una declaracion antes del
+           bucle. Fuera del FOR no hay donde dejarla, y antes de avisar esto
+           reventaba el compilador con `DIM it AS ITER<INT> = Rango(1, 3)`. */
+        if (!c->in_forin) {
+            hx_error(c->diags, e->span, "E0717",
+                     hx_arena_sprintf(c->arena,
+                                      "%s sólo se puede usar en el iterable de un FOR", name),
+                     "un iterador necesita una variable y una arena, y el emisor las crea "
+                     "al abrir el bucle",
+                     NULL);
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return 1;
+        }
         if (e->call.args.len != 2) {
             hx_error(c->diags, e->span, "E0306",
                      hx_arena_sprintf(c->arena, "%s espera 2 argumento(s)", name));
@@ -2200,7 +2214,9 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             }
             break;
         case ST_FORIN: {
+            c->in_forin++;
             s->forin_.iter = hx_expr_check(c, s->forin_.iter);
+            c->in_forin--;
             HxTy *elem = NULL;
             if (s->forin_.iter->ty && s->forin_.iter->ty->kind == TY_ITER)
                 elem = s->forin_.iter->ty->elem;

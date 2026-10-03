@@ -352,6 +352,7 @@ la secuencia y consume sólo tres elementos.
 |---|---|
 | `E0712` | `FOR ... IN` sobre algo que no es un iterador |
 | `E0713` | adaptador aplicado a algo que no es `ITER<T>` |
+| `E0717` | un constructor de iteradores (`Rango`) fuera del `FOR` |
 | `E0714` | `MAP`/`FILTER` sin una función de primer orden |
 | `E0715` | la función no tiene la firma que exige el adaptador |
 

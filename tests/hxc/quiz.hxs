@@ -1,0 +1,36 @@
+MODULE quiz
+EXPORT CONST MAXIMO AS INT = 10
+EXPORT TYPE Nota
+  texto AS STRING
+  puntos AS INT
+END TYPE
+EXPORT FUNCTION Aprobada(n AS INT) AS BOOL
+  RETURN n * 2 >= MAXIMO
+END FUNCTION
+EXPORT FUNCTION Texto(nota AS Nota) AS STRING
+  RETURN nota.texto
+END FUNCTION
+"Una firma con MAYBE: al publicar y releer sin fuentes, esto tiene que seguir
+  siendo MAYBE STRING y no VOID."
+EXPORT FUNCTION Resumen(n AS INT) AS MAYBE STRING
+  IF Aprobada(n) == FALSE THEN RETURN NIL
+  DIM nota AS Nota
+  nota.texto = "aprobada"
+  nota.puntos = n
+  RETURN nota.texto ++ "/" ++ Texto(nota)
+END FUNCTION
+"Y una firma con ITER<INT>: el elemento tampoco puede perderse"
+EXPORT FUNCTION Total(desde AS INT) AS INT
+  DIM suma AS INT = 0
+  FOR n IN Rango(desde, desde + 3)
+    suma = suma + n
+  NEXT n
+  RETURN suma
+END FUNCTION
+EXPORT FUNCTION Suma(it AS ITER<INT>) AS INT
+  DIM suma AS INT = 0
+  FOR n IN it
+    suma = suma + n
+  NEXT n
+  RETURN suma
+END FUNCTION

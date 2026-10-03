@@ -94,8 +94,13 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
     return "int32_t";
 }
 
+/* El typedef de ITER va siempre: una cabecera de modulo puede declarar
+   "extern hx_iter hx_call_X(...)" aunque el programa que la genera no itere
+   nunca, y sin el typedef el C de mas abajo no compila. */
+static const char *HX_RT_ITER_TYPE =
+    "typedef struct { void *estado; int32_t (*paso)(void *estado, void *out); } hx_iter;\n";
+
 static const char *HX_RT_ITER =
-    "typedef struct { void *estado; int32_t (*paso)(void *estado, void *out); } hx_iter;\n"
     "typedef struct { int32_t i, fin; } hx_iter_st_rango_i;\n"
     "static inline int32_t hx_iter_paso_rango_i(void *st, void *out) {\n"
     "  hx_iter_st_rango_i *s = (hx_iter_st_rango_i *)st;\n"
@@ -2222,18 +2227,30 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             char *aname = hx_arena_sprintf(e->arena, "hx_a%d", aname_idx);
             if (e->arena_depth < 16) e->arena_stack[e->arena_depth++] = aname;
             char it[64];
-            hx_indent(b, ind);
-            hx_buf_printf(b, "hx_arena %s;\n", aname);
-            hx_indent(b, ind);
-            hx_buf_printf(b, "hx_arena_init(&%s);\n", aname);
-            const char *arena = aname;
-            HxBuf *saved = &e->out;
-            e->out = *b;
-            hx_iter_ctor(e, s->forin_.iter, arena, it, sizeof(it), ind);
-            b->data = e->out.data;
-            b->len = e->out.len;
-            b->cap = e->out.cap;
-            e->out = *saved;
+            if (s->forin_.iter->is_intrin == 4) {
+                /* Rango(...).Map(...) y compañía: el estado del iterador vive
+                   en una arena que se abre aqui */
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_arena %s;\n", aname);
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_arena_init(&%s);\n", aname);
+                const char *arena = aname;
+                HxBuf *saved = &e->out;
+                e->out = *b;
+                hx_iter_ctor(e, s->forin_.iter, arena, it, sizeof(it), ind);
+                b->data = e->out.data;
+                b->len = e->out.len;
+                b->cap = e->out.cap;
+                e->out = *saved;
+            } else {
+                /* Un ITER que ya existe (un parametro, un campo): no hay nada
+                   que construir, solo recorrerlo */
+                snprintf(it, sizeof(it), "hx_it%d", e->iter_n++);
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_iter %s = ", it);
+                hx_expr_str(e, s->forin_.iter, 0, b);
+                hx_buf_str(b, ";\n");
+            }
             hx_indent(b, ind);
             hx_buf_printf(b, "%s hx_itv%d;\n", hx_c_ty(e, elem), aname_idx);
             hx_indent(b, ind);
@@ -2246,8 +2263,11 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             if (lab >= 0) hx_epilogue_end(e, lab, &s->forin_.body, ind + 1);
             hx_indent(b, ind);
             hx_buf_str(b, "}\n");
-            hx_indent(b, ind);
-            hx_buf_printf(b, "hx_arena_free(&%s);\n", aname);
+            /* la arena solo existe si el iterable se construia aqui */
+            if (s->forin_.iter->is_intrin == 4) {
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_arena_free(&%s);\n", aname);
+            }
             if (e->arena_depth) e->arena_depth--;
             break;
         }
@@ -2798,6 +2818,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     }
     hx_buf_str(b, HX_RT_TYPES);
     hx_buf_str(b, HX_RT_CORE);
+    hx_buf_str(b, HX_RT_ITER_TYPE);
     if (e->uses_vec) {
         hx_buf_str(b, HX_RT_VEC_PRE);
         hx_buf_str(b, HX_RT_VEC);
@@ -2889,24 +2910,35 @@ static void hx_emit_instance_decls(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *
 
 /* Un MAYBE<T> es un struct con una bandera y el valor, y sus ayudantes. */
 static void hx_emit_maybe_types(HxEmit *e, HxBuf *b) {
+    /* El typedef va en la cabecera de cada modulo, porque un MAYBE de un TYPE
+       declarado necesita hx_T_Nombre antes de existir. Con dos modulos los dos
+       lo escriben, asi que cada bloque va con su guarda: gana el primero, y los
+       demas son el mismo texto. Que gane el correcto lo asegura el orden de
+      includes: un modulo que usa un TYPE siempre incluye antes al que lo
+       declara. */
     for (int i = 0; i < e->maybe_inners.len; i++) {
         const char *t = e->maybe_inners.data[i];
+        hx_buf_printf(b, "#ifndef HX_MAYBE_%s\n#define HX_MAYBE_%s\n", t, t);
         hx_buf_printf(b, "typedef struct { uint8_t hay; %s valor; } hx_maybe_%s;\n", t, t);
         hx_buf_printf(b, "static inline hx_maybe_%s hx_maybe_some_%s(%s v) {\n", t, t, t);
         hx_buf_printf(b, "  hx_maybe_%s m; m.hay = 1; m.valor = v; return m; }\n", t);
         hx_buf_printf(b, "static inline %s hx_maybe_or_%s(hx_maybe_%s m, %s otro) {\n", t, t,
                       t, t);
         hx_buf_str(b, "  return m.hay ? m.valor : otro; }\n");
+        hx_buf_str(b, "#endif\n");
     }
     for (int i = 0; i < e->maybe_maps.len; i++) {
         HxIterMap *mp = &e->maybe_maps.data[i];
         const char *desde = hx_c_ty(e, mp->from->elem);
         const char *hasta = hx_c_ty(e, mp->to->elem);
+        hx_buf_printf(b, "#ifndef HX_MAYBE_MAP_%s_%s\n#define HX_MAYBE_MAP_%s_%s\n",
+                      desde, hasta, desde, hasta);
         hx_buf_printf(b, "typedef hx_maybe_%s (*hx_maybe_f_%s)(%s);\n", hasta, hasta, desde);
         hx_buf_printf(b, "static inline hx_maybe_%s hx_maybe_map_%s_%s(hx_maybe_%s m, "
                          "hx_maybe_f_%s f) {\n  hx_maybe_%s r; r.hay = 0;\n",
                       hasta, desde, hasta, desde, hasta, hasta);
         hx_buf_str(b, "  if (m.hay) r = f(m.valor);\n  return r; }\n");
+        hx_buf_str(b, "#endif\n");
     }
 }
 

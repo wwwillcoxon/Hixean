@@ -14,7 +14,7 @@
    Todos los enteros en little-endian, todos los desplazados dentro del búfer. */
 
 #define HXCU_MAGIC "HXCU"
-#define HXCU_FORMAT 1u
+#define HXCU_FORMAT 2u /* 2: MAYBE e ITER tienen etiqueta propia */
 #define HXCU_ABI 1u
 #define HXCU_HEADER 40
 
@@ -36,6 +36,8 @@ enum {
     T_ARRAY,
     T_RESULT,
     T_NAMED,
+    T_ITER,  /* T_ITER seguido del tipo del elemento */
+    T_MAYBE, /* T_MAYBE seguido del tipo de dentro */
     T_MAX
 };
 
@@ -103,6 +105,14 @@ static void w_ty(W *w, HxTy *t) {
             w_ty(w, t->elem);
             w_u64(w, (uint64_t)t->size);
             return;
+        case TY_ITER:
+            w_u8(w, T_ITER);
+            w_ty(w, t->elem);
+            return;
+        case TY_MAYBE:
+            w_u8(w, T_MAYBE);
+            w_ty(w, t->elem);
+            return;
         case TY_NAMED:
             if (hx_ty_is_result(t)) {
                 w_u8(w, T_RESULT);
@@ -113,8 +123,11 @@ static void w_ty(W *w, HxTy *t) {
             w_u8(w, T_NAMED);
             w_sym(w, t->name);
             return;
-        default: w_u8(w, T_VOID); return;
+        case TY_UNKNOWN: w_u8(w, T_VOID); return;
     }
+    /* Si se llega aqui es que hay un kind sin etiqueta: se escribe VOID como
+       antes, pero el compilador no lo deja pasar en silencio al developing. */
+    w_u8(w, T_VOID);
 }
 
 int hx_hxc_write(HxArena *arena, HxUnit *unit, HxModule *m, const char *path) {
@@ -329,10 +342,21 @@ static HxTy *r_ty_body(R *r, HxArena *arena, HxIntern *intern, unsigned tag) {
             t->kind = TY_NAMED;
             t->name = r_sym(r, intern);
             return t;
-        default:
-            t->kind = TY_UNKNOWN;
+        case T_ITER:
+            t->kind = TY_ITER;
+            t->elem = r_ty(r, arena, intern);
+            return t;
+        case T_MAYBE:
+            t->kind = TY_MAYBE;
+            t->elem = r_ty(r, arena, intern);
             return t;
     }
+    /* Una etiqueta que no se conoce significa unidad de otra version o
+       corrupta: avisar es mejor que devolver un tipo que no es el que se
+       escribio, que es como se comportaba esto antes (E0602). */
+    hx_error(r->diags, (HxSpan){0, 0}, "E0602",
+             "%s: etiqueta de tipo %u desconocida en la unidad", r->path, tag);
+    return t;
 }
 
 static HxTy *r_ty(R *r, HxArena *arena, HxIntern *intern) {
