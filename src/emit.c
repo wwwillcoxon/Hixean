@@ -981,7 +981,17 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
         case EX_VEC:
             for (int i = 0; i < x->vec.len; i++) hx_scan_expr(e, x->vec.items[i]);
             break;
-        default: break;
+        /* literales, FUNC, un nombre y una desreferencia: nada que escanear */
+        case EX_INT:
+        case EX_FLOAT:
+        case EX_STR:
+        case EX_DURATION:
+        case EX_BOOL:
+        case EX_NIL:
+        case EX_PATH:
+        case EX_MEMBER:
+        case EX_DEREF:
+        case EX_FUNC: break;
     }
     for (int i = 0; i < x->n_segs; i++) hx_scan_expr(e, x->segs[i].hole);
 }
@@ -1062,7 +1072,10 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
             body = &s->arena.body;
             break;
         case ST_DEFER: hx_scan_body(e, &s->inner); break;
-        default: break;
+        /* estas no tienen nada que escanear: no llevan expresiones */
+        case ST_BREAK:
+        case ST_CONTINUE:
+        case ST_NOP: break;
     }
     if (body) hx_scan_body(e, body);
 }
@@ -1165,8 +1178,24 @@ static int hx_prec_of(HxExpr *x) {
             return 5;
         }
         case EX_UN: return x->un.op == UOP_NOT ? 1 : 6;
-        default: return 7;
+        /* un literal, un nombre o una llamada no llevan operadores dentro */
+        case EX_INT:
+        case EX_FLOAT:
+        case EX_STR:
+        case EX_DURATION:
+        case EX_BOOL:
+        case EX_NIL:
+        case EX_PATH:
+        case EX_CALL:
+        case EX_INDEX:
+        case EX_MEMBER:
+        case EX_TRY:
+        case EX_VEC:
+        case EX_MEMB:
+        case EX_DEREF:
+        case EX_FUNC: return 7;
     }
+    return 7;
 }
 
 static const char *hx_print_fn(HxEmit *e, HxTy *t) {
@@ -1833,7 +1862,19 @@ static int hx_count_defers(HxStmtVec *body) {
                     n += hx_count_defers(&st->match.cases.data[k].body);
                 n += hx_count_defers(&st->match.else_body);
                 break;
-            default: break;
+            /* un DEFER dentro de otro DEFER tambien cuenta */
+            case ST_DEFER: n += hx_count_defers(&st->inner); break;
+            /* ninguna de estas envuelve un cuerpo */
+            case ST_EXPR:
+            case ST_ASSIGN:
+            case ST_DIM:
+            case ST_PRINT:
+            case ST_RETURN:
+            case ST_BREAK:
+            case ST_CONTINUE:
+            case ST_EXIT:
+            case ST_CONST:
+            case ST_NOP: break;
         }
     }
     return n;
@@ -1987,7 +2028,11 @@ static void hx_emit_pattern_bind(HxEmit *e, HxPattern *pat, const char *subj, Hx
                 hx_emit_pattern_bind(e, &pat->args.data[i], subj, subj_ty, ind);
             return;
         }
-        default: return;
+        /* estos patrones no atan ningun nombre */
+        case PAT_WILDCARD:
+        case PAT_NIL:
+        case PAT_LITERAL:
+        case PAT_RANGE: return;
     }
 }
 

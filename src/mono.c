@@ -219,8 +219,24 @@ static HxExpr *hx_clone_expr(HxArena *a, const HxExpr *x, const HxSym *tps, HxTy
             c->n_segs = 0;
             break;
         }
-        default:
+        /* EX_DEREF guarda lo desreferenciado en try.inner, igual que EX_TRY */
+        case EX_DEREF:
+            c->try.inner = hx_clone_expr(a, x->try.inner, tps, subs, n);
             break;
+        /* un acceso a miembro tambien trae una expresion dentro: sin clonarla
+           se quedaba apuntando al nodo original y la instancia rigia sobre el
+           cuerpo de la declaracion */
+        case EX_MEMBER:
+        case EX_MEMB:
+            c->member.base = hx_clone_expr(a, x->member.base, tps, subs, n);
+            break;
+        /* literales y FUNC: no hay punteros que clonar */
+        case EX_INT:
+        case EX_FLOAT:
+        case EX_DURATION:
+        case EX_BOOL:
+        case EX_NIL:
+        case EX_FUNC: break;
     }
     if (x->recv) c->recv = hx_clone_expr(a, x->recv, tps, subs, n);
     if (x->fn) c->fn = x->fn;
@@ -307,7 +323,14 @@ static HxStmt *hx_clone_stmt(HxArena *a, const HxStmt *s, const HxSym *tps, HxTy
             c->match.else_body = hx_clone_stmts(a, &s->match.else_body, tps, subs, n);
             break;
         }
-        default: break;
+        case ST_FORIN:
+            c->forin_.iter = hx_clone_expr(a, s->forin_.iter, tps, subs, n);
+            c->forin_.body = hx_clone_stmts(a, &s->forin_.body, tps, subs, n);
+            break;
+        /* no llevan ninguna referencia que clonar */
+        case ST_BREAK:
+        case ST_CONTINUE:
+        case ST_NOP: break;
     }
     return c;
 }

@@ -1442,7 +1442,19 @@ static int hx_has_nested_try(HxExpr *e) {
         case EX_INDEX:
             return hx_has_nested_try(e->index.base) || hx_has_nested_try(e->index.start);
         case EX_TRY: return 1;
-        default: break;
+        /* el resto no puede contener un `?` */
+        case EX_INT:
+        case EX_FLOAT:
+        case EX_STR:
+        case EX_DURATION:
+        case EX_BOOL:
+        case EX_NIL:
+        case EX_PATH:
+        case EX_MEMBER:
+        case EX_VEC:
+        case EX_MEMB:
+        case EX_DEREF:
+        case EX_FUNC: break;
     }
     return 0;
 }
