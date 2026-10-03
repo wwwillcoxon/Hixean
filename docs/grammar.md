@@ -428,6 +428,41 @@ literal compuesto que copia los campos comunes, de modo que el C generado nunca
 mezcla structs distintas. Los `ENUM` nunca participan: dos enums con las mismas
 variantes siguen siendo tipos nominalmente distintos.
 
-## 20. Lo que este documento *no* cubre todavía
+## 20. Capacidades
 
-`COMPTIME`, consultas `.hxq`, capacidades (`std.net`, `audio`, `gpu`).
+```
+habilitar  = "ENABLE" ident { "," ident } ;
+```
+
+Una capacidad es algo que el programa no puede decidir por su cuenta: hablar con
+el kernel, abrir un dispositivo, lanzar un kernel de cálculo. `ENABLE net` la
+declara en el fuente; el manifiesto tiene que declararla también con
+`CAPABILITY net`, y si no, `hxc build --kit` se niega a construir. Así una
+revisión puede exigir que una capacidad esté autorizada sin leer el código.
+
+| código | significa |
+|---|---|
+| `E0902` | un argumento de la capacidad no es `INT`, `I64` ni `STRING` |
+| `E0306` | número de argumentos incorrecto |
+
+Funciones de `net` (perfil `freestanding`: syscalls directas, sin libc):
+
+| llamada | hace |
+|---|---|
+| `NET_UDP()` / `NET_TCP()` | abre un socket y devuelve el descriptor |
+| `NET_BIND(fd, puerto)` | enlaza a `127.0.0.1:puerto`, `0` si ok |
+| `NET_LISTEN(fd, cola)` | pone a escuchar |
+| `NET_CONNECT(fd, puerto)` | conecta a `127.0.0.1:puerto` |
+| `NET_ACCEPT(fd)` | acepta una conexión y devuelve el nuevo descriptor |
+| `NET_SEND(fd, puerto, ip, datos)` | envía; `ip` es un `I64` con los cuatro octetos |
+| `NET_RECV(fd)` | espera un datagrama y devuelve su texto |
+| `NET_RECV_DE(fd, REF puerto, REF ip)` | además devuelve quién envió el datagrama |
+| `NET_CLOSE(fd)` | cierra el descriptor |
+
+El texto recibido se copia en una arena, así que vive hasta que termina el
+bloque. En plataformas que no son Linux x86_64, las llamadas devuelven `-1` en
+lugar de romper el binario.
+
+## 21. Lo que este documento *no* cubre todavía
+
+`COMPTIME`, consultas `.hxq`, capacidades `audio` y `gpu`.

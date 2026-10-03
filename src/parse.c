@@ -1341,6 +1341,24 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             hx_skip_rest_of_line(&p);
             continue;
         }
+        if (hx_is_kw(&p, TK_KW_ENABLE)) {
+            /* ENABLE capacidad: documenta que el programa usa algo que exige
+               una capacidad del compilador */
+            hx_bump(&p);
+            while (hx_is_kw(&p, TK_IDENT)) {
+                HxSym cap = hx_cur(&p)->sym;
+                hx_bump(&p);
+                HxField capf;
+                memset(&capf, 0, sizeof(capf));
+                capf.name = cap;
+                capf.span = hx_cur(&p)->span;
+                HX_VEC_PUSH(m->caps, capf);
+                if (!hx_eat_punct(&p, ",")) break;
+                hx_skip_nl(&p);
+            }
+            hx_skip_rest_of_line(&p);
+            continue;
+        }
         if (hx_is_kw(&p, TK_KW_ENUM)) {
             HxTypeDecl td;
             memset(&td, 0, sizeof(td));

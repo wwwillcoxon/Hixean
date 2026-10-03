@@ -1,0 +1,4 @@
+KIT red 0.1.0
+  ENTRY net.hxe
+  CAPABILITY net
+END KIT

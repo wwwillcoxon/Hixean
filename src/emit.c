@@ -20,6 +20,7 @@ typedef struct {
     int uses_arena;
     int uses_iter;
     int uses_enum;
+    int uses_net;
     int iter_depth;
     int iter_n; /* contador global de variables de iterador por funcion */
     /* tipos de elemento usados por iteradores, para generar sus ayudantes */
@@ -97,6 +98,173 @@ static const char *HX_RT_ITER =
     "  hx_iter_st_rango_f *s = (hx_iter_st_rango_f *)hx_arena_alloc(a, sizeof(*s));\n"
     "  s->i = desde; s->fin = hasta; s->paso_ = paso;\n"
     "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_rango_f; return it;\n"
+    "}\n";
+
+/* La capacidad net habla con el kernel: en freestanding son syscalls directas
+   de Linux x86_64 y en el perfil libc las llamadas de la biblioteca. */
+static const char *HX_NET_PRE =
+    "typedef struct { uint16_t puerto; uint32_t addr; } hx_inet;\n"
+    "static inline hx_span hx_span_of(hx_str s) { hx_span sp; sp.data = s.p; sp.len = s.n; return sp; }\n"
+    "static inline hx_inet hx_inet_de(int64_t puerto, uint32_t a1, uint32_t a2, uint32_t a3,\n"
+    "                              uint32_t a4) {\n"
+    "  hx_inet r; r.puerto = (uint16_t)puerto;\n"
+    "  r.addr = (a1 << 24) | (a2 << 16) | (a3 << 8) | a4; return r;\n"
+    "}\n";
+
+static const char *HX_RT_NET_FREESTANDING =
+    "#if defined(__linux__) && defined(__x86_64__)\n"
+    "typedef struct { uint16_t f; uint16_t puerto; uint32_t addr; uint64_t pad; } hx_sockaddr;\n"
+    "static inline uint16_t hx_htons(uint16_t v) { return (uint16_t)((v >> 8) | (v << 8)); }\n"
+    "static inline uint32_t hx_htonl(uint32_t v) {\n"
+    "  return ((v & 0xffu) << 24) | ((v & 0xff00u) << 8) | ((v >> 8) & 0xff00u) | ((v >> 24) & 0xffu);\n"
+    "}\n"
+    "static inline hx_sockaddr hx_sa(hx_inet a) {\n"
+    "  hx_sockaddr s; s.f = 2; s.puerto = hx_htons(a.puerto); s.addr = hx_htonl(a.addr); s.pad = 0; return s;\n"
+    "}\n"
+    "static inline int64_t hx_sys3(long n, long a1, long a2, long a3) {\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r) : \"a\"(n), \"D\"(a1), \"S\"(a2), \"d\"(a3)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
+    "}\n"
+    "static inline int64_t hx_sys6(long n, long a1, long a2, long a3, long a4, long a5, long a6) {\n"
+    "  long r;\n"
+    "  register long r10 __asm__(\"r10\") = a4;\n"
+    "  register long r8 __asm__(\"r8\") = a5;\n"
+    "  register long r9 __asm__(\"r9\") = a6;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r) : \"a\"(n), \"D\"(a1), \"S\"(a2), \"d\"(a3),\n"
+    "                   \"r\"(r10), \"r\"(r8), \"r\"(r9) : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
+    "}\n"
+    "static inline int64_t hx_socket(int64_t tipo) { return hx_sys3(41L, 2L, tipo, 0L); }\n"
+    "static inline int64_t hx_bind(int64_t fd, hx_inet a) {\n"
+    "  hx_sockaddr sa = hx_sa(a); return hx_sys3(49L, fd, (long)&sa, 16L);\n"
+    "}\n"
+    "static inline int64_t hx_listen(int64_t fd, int64_t cola) { return hx_sys3(50L, fd, cola, 0L); }\n"
+    "static inline int64_t hx_connect(int64_t fd, hx_inet a) {\n"
+    "  hx_sockaddr sa = hx_sa(a); return hx_sys3(42L, fd, (long)&sa, 16L);\n"
+    "}\n"
+    "static inline int64_t hx_accept(int64_t fd, int64_t *quien) {\n"
+    "  hx_sockaddr sa;\n"
+    "  int64_t c = hx_sys3(43L, fd, (long)&sa, 16L);\n"
+    "  if (quien && c >= 0) { quien[0] = (int64_t)hx_htons(sa.puerto); quien[1] = (int64_t)hx_htonl(sa.addr); }\n"
+    "  return c;\n"
+    "}\n"
+    "static inline int64_t hx_sendto(int64_t fd, hx_span buf, hx_inet a) {\n"
+    "  hx_sockaddr sa = hx_sa(a);\n"
+    "  return hx_sys6(44L, fd, (long)buf.data, buf.len, 0L, (long)&sa, 16L);\n"
+    "}\n"
+    "static inline int64_t hx_recvfrom(int64_t fd, hx_span buf, hx_inet *de) {\n"
+    "  hx_sockaddr sa;\n"
+    "  int64_t n = hx_sys6(45L, fd, (long)buf.data, buf.len, 0L, (long)&sa, 16L);\n"
+    "  if (de && n >= 0) { de->puerto = hx_htons(sa.puerto); de->addr = hx_htonl(sa.addr); }\n"
+    "  return n;\n"
+    "}\n"
+    "static inline int64_t hx_close_fd(int64_t fd) { return hx_sys3(3L, fd, 0L, 0L); }\n"
+    "static inline int64_t hx_net_error(void) { return 0; }\n"
+    "static hx_str hx_net_recv(int64_t fd, hx_arena *a) {\n"
+    "  char buf[1024];\n"
+    "  int64_t n = hx_recvfrom(fd, ((hx_span){buf, 1024}), 0);\n"
+    "  if (n <= 0) return hx_lit(\"\", 0);\n"
+    "  char *p = (char *)hx_arena_alloc(a, n + 1);\n"
+    "  __builtin_memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  hx_str s; s.p = p; s.n = n; return s;\n"
+    "}\n"
+    "static hx_str hx_net_recv_de(int64_t fd, hx_arena *a, int64_t *puerto, int64_t *ip) {\n"
+    "  char buf[1024];\n"
+    "  hx_inet de;\n"
+    "  int64_t n = hx_recvfrom(fd, ((hx_span){buf, 1024}), &de);\n"
+    "  if (n <= 0) return hx_lit(\"\", 0);\n"
+    "  char *p = (char *)hx_arena_alloc(a, n + 1);\n"
+    "  __builtin_memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  if (puerto) *puerto = (int64_t)de.puerto;\n"
+    "  if (ip) *ip = (int64_t)de.addr;\n"
+    "  hx_str s; s.p = p; s.n = n; return s;\n"
+    "}\n"
+    "#else\n"
+    "static inline int64_t hx_socket(int64_t t) { return -1; }\n"
+    "static inline int64_t hx_bind(int64_t f, hx_inet a) { (void)f; (void)a; return -1; }\n"
+    "static inline int64_t hx_listen(int64_t f, int64_t c) { (void)f; (void)c; return -1; }\n"
+    "static inline int64_t hx_connect(int64_t f, hx_inet a) { (void)f; (void)a; return -1; }\n"
+    "static inline int64_t hx_accept(int64_t f, int64_t *q) { (void)f; (void)q; return -1; }\n"
+    "static inline int64_t hx_sendto(int64_t f, hx_span b, hx_inet a) { (void)f; (void)b; (void)a; return -1; }\n"
+    "static inline int64_t hx_recvfrom(int64_t f, hx_span b, hx_inet *d) {\n"
+    "  (void)f; (void)b; (void)d; return -1;\n"
+    "}\n"
+    "static inline int64_t hx_close_fd(int64_t f) { (void)f; return -1; }\n"
+    "static inline int64_t hx_net_error(void) { return 0; }\n"
+    "static hx_str hx_net_recv(int64_t f, hx_arena *a) { (void)f; (void)a; return hx_lit(\"\", 0); }\n"
+    "static hx_str hx_net_recv_de(int64_t f, hx_arena *a, int64_t *p, int64_t *i) {\n"
+    "  (void)f; (void)a; (void)p; (void)i; return hx_lit(\"\", 0);\n"
+    "}\n"
+    "#endif\n";
+
+static const char *HX_RT_NET_LIBC =
+    "#include <sys/socket.h>\n"
+    "#include <netinet/in.h>\n"
+    "#include <unistd.h>\n"
+    "#include <errno.h>\n"
+    "static inline uint16_t hx_htons(uint16_t v) { return htons(v); }\n"
+    "static inline int64_t hx_socket(int64_t t) { return (int64_t)socket(AF_INET, (int)t, 0); }\n"
+    "static inline int64_t hx_bind(int64_t fd, hx_inet a) {\n"
+    "  struct sockaddr_in sa;\n"
+    "  __builtin_memset(&sa, 0, sizeof(sa));\n"
+    "  sa.sin_family = AF_INET; sa.sin_port = hx_htons(a.puerto); sa.sin_addr.s_addr = htonl(a.addr);\n"
+    "  return (int64_t)bind((int)fd, (struct sockaddr *)&sa, sizeof(sa));\n"
+    "}\n"
+    "static inline int64_t hx_sendto(int64_t fd, hx_span buf, hx_inet a) {\n"
+    "  struct sockaddr_in sa;\n"
+    "  __builtin_memset(&sa, 0, sizeof(sa));\n"
+    "  sa.sin_family = AF_INET; sa.sin_port = hx_htons(a.puerto); sa.sin_addr.s_addr = htonl(a.addr);\n"
+    "  return (int64_t)sendto((int)fd, buf.data, (size_t)buf.len, 0, (struct sockaddr *)&sa, sizeof(sa));\n"
+    "}\n"
+    "static inline int64_t hx_recvfrom(int64_t fd, hx_span buf, hx_inet *de) {\n"
+    "  struct sockaddr_in sa;\n"
+    "  __builtin_memset(&sa, 0, sizeof(sa));\n"
+    "  socklen_t sl = sizeof(sa);\n"
+    "  int64_t n = (int64_t)recvfrom((int)fd, buf.data, (size_t)buf.len, 0, (struct sockaddr *)&sa, &sl);\n"
+    "  if (de) { de->puerto = ntohs(sa.sin_port); de->addr = ntohl(sa.sin_addr.s_addr); }\n"
+    "  return n;\n"
+    "}\n"
+    "static inline int64_t hx_connect(int64_t fd, hx_inet a) {\n"
+    "  struct sockaddr_in sa;\n"
+    "  __builtin_memset(&sa, 0, sizeof(sa));\n"
+    "  sa.sin_family = AF_INET; sa.sin_port = hx_htons(a.puerto); sa.sin_addr.s_addr = htonl(a.addr);\n"
+    "  return (int64_t)connect((int)fd, (struct sockaddr *)&sa, sizeof(sa));\n"
+    "}\n"
+    "static inline int64_t hx_listen(int64_t fd, int64_t cola) { return (int64_t)listen((int)fd, (int)cola); }\n"
+    "static inline int64_t hx_accept(int64_t fd, int64_t *de) {\n"
+    "  struct sockaddr_in sa;\n"
+    "  __builtin_memset(&sa, 0, sizeof(sa));\n"
+    "  socklen_t sl = sizeof(sa);\n"
+    "  int64_t c = (int64_t)accept((int)fd, (struct sockaddr *)&sa, &sl);\n"
+    "  if (de) { de[0] = (int64_t)ntohs(sa.sin_port); de[1] = (int64_t)ntohl(sa.sin_addr.s_addr); }\n"
+    "  return c;\n"
+    "}\n"
+    "static inline int64_t hx_close_fd(int64_t fd) { return (int64_t)close((int)fd); }\n"
+    "static inline int64_t hx_net_error(void) { return (int64_t)errno; }\n"
+    "static hx_str hx_net_recv(int64_t fd, hx_arena *a) {\n"
+    "  char buf[1024];\n"
+    "  int64_t n = hx_recvfrom(fd, ((hx_span){buf, 1024}), 0);\n"
+    "  if (n <= 0) return hx_lit(\"\", 0);\n"
+    "  char *p = (char *)hx_arena_alloc(a, n + 1);\n"
+    "  __builtin_memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  hx_str s; s.p = p; s.n = n; return s;\n"
+    "}\n"
+    "static hx_str hx_net_recv_de(int64_t fd, hx_arena *a, int64_t *puerto, int64_t *ip) {\n"
+    "  char buf[1024];\n"
+    "  hx_inet de;\n"
+    "  int64_t n = hx_recvfrom(fd, ((hx_span){buf, 1024}), &de);\n"
+    "  if (n <= 0) return hx_lit(\"\", 0);\n"
+    "  char *p = (char *)hx_arena_alloc(a, n + 1);\n"
+    "  __builtin_memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  if (puerto) *puerto = (int64_t)de.puerto;\n"
+    "  if (ip) *ip = (int64_t)de.addr;\n"
+    "  hx_str s; s.p = p; s.n = n; return s;\n"
     "}\n";
 
 static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, unsigned long);\n"
@@ -700,6 +868,11 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
     if (x->ty && hx_ty_is_result(x->ty)) e->uses_result = 1;
     switch (x->kind) {
         case EX_CALL:
+            if (x->is_intrin == 6) {
+                /* recibir copia el datagrama en una arena */
+                e->uses_net = 1;
+                e->uses_arena = 1;
+            }
             hx_scan_expr(e, x->call.callee);
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
             break;
@@ -933,6 +1106,101 @@ static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
 }
 
 static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
+/* Las llamadas de la capacidad net se traducen a las primitivas del runtime.
+   La direccion se recibe como I64 con los cuatro octetos empaquetados. */
+static void hx_emit_net(HxEmit *e, HxExpr *x, HxBuf *b) {
+    const char *nm = hx_sym_str(x->method);
+    /* los argumentos son HxArg: hay que copiar los valores, no reinterpretar */
+    HxExpr *vals[8];
+    int n = x->call.args.len < 8 ? x->call.args.len : 8;
+    for (int i = 0; i < n; i++) vals[i] = x->call.args.data[i].value;
+    HxExpr **a = vals;
+    e->uses_net = 1;
+    if (!hx_ascii_casecmp(nm, "NET_UDP") || !hx_ascii_casecmp(nm, "NET_TCP")) {
+        hx_buf_printf(b, "hx_socket(%sL)", !hx_ascii_casecmp(nm, "NET_TCP") ? "1" : "2");
+        return;
+    }
+    if (!a || n < 1) {
+        hx_buf_printf(b, "0 /* %s */", nm);
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_ERROR")) {
+        hx_buf_str(b, "hx_net_error()");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_CLOSE")) {
+        hx_buf_str(b, "hx_close_fd(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ")");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_LISTEN") && n >= 2) {
+        hx_buf_str(b, "hx_listen(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", ");
+        hx_expr_str(e, a[1], 0, b);
+        hx_buf_str(b, ")");
+        return;
+    }
+    if ((!hx_ascii_casecmp(nm, "NET_BIND") || !hx_ascii_casecmp(nm, "NET_CONNECT")) && n >= 2) {
+        hx_buf_printf(b, "hx_%s(", !hx_ascii_casecmp(nm, "NET_BIND") ? "bind" : "connect");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", hx_inet_de(");
+        hx_expr_str(e, a[1], 0, b);
+        hx_buf_str(b, ", 127, 0, 0, 1))");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_ACCEPT")) {
+        hx_buf_str(b, "hx_accept(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", 0)");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_SEND") && n >= 4) {
+        /* la direccion llega como I64 con los cuatro octetos empaquetados */
+        hx_buf_str(b, "hx_sendto(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", hx_span_of(");
+        hx_expr_str(e, a[3], 0, b);
+        hx_buf_str(b, "), hx_inet_de(");
+        hx_expr_str(e, a[1], 0, b);
+        for (int k = 24; k >= 0; k -= 8) {
+            hx_buf_printf(b, ", (int)(((int64_t)(");
+            hx_expr_str(e, a[2], 0, b);
+            hx_buf_printf(b, ") >> %d) & 255)", k);
+        }
+        hx_buf_str(b, "))");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_RECV")) {
+        hx_buf_str(b, "hx_net_recv(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", ");
+        if (e->arena_depth) hx_buf_printf(b, "&%s", e->arena_stack[e->arena_depth - 1]);
+        else hx_buf_str(b, "&hx_static_arena");
+        hx_buf_str(b, ")");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "NET_RECV_DE")) {
+        hx_buf_str(b, "hx_net_recv_de(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, ", ");
+        if (e->arena_depth) hx_buf_printf(b, "&%s", e->arena_stack[e->arena_depth - 1]);
+        else hx_buf_str(b, "&hx_static_arena");
+        hx_buf_str(b, ", ");
+        if (n > 1 && a[1] && a[1]->ty && a[1]->ty->kind == TY_REF && a[1]->path.parts.len)
+            hx_buf_printf(b, "&hx_v_%s", hx_sym_str(a[1]->path.parts.data[0].name));
+        else hx_buf_str(b, "0");
+        hx_buf_str(b, ", ");
+        if (n > 2 && a[2] && a[2]->ty && a[2]->ty->kind == TY_REF && a[2]->path.parts.len)
+            hx_buf_printf(b, "&hx_v_%s", hx_sym_str(a[2]->path.parts.data[0].name));
+        else hx_buf_str(b, "0");
+        hx_buf_str(b, ")");
+        return;
+    }
+    hx_buf_printf(b, "0 /* %s */", nm);
+}
+
 /* Cuando el verificador acepta un registro con mas campos donde se piden
    menos, la conversion se materializa copiando los campos comunes. */
 static void hx_emit_conv(HxEmit *e, HxExpr *x, HxBuf *b) {
@@ -1022,6 +1290,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_enum_member_str(e, x, b);
                 break;
             }
+            if (x->is_intrin == 6) {
+                hx_emit_net(e, x, b);
+                break;
+            }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
             if (x->is_intrin) {
                 hx_buf_printf(b, "hx_%s(hx_v_%s", hx_intrin_cname(hx_sym_str(x->method)),
@@ -1088,6 +1360,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             if (x->is_intrin == 5) {
                 hx_enum_member_str(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 6) {
+                hx_emit_net(e, x, b);
                 break;
             }
             if (x->is_intrin) {
@@ -1235,6 +1511,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
         case EX_MEMB: {
             if (x->is_intrin == 5) {
                 hx_enum_member_str(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 6) {
+                hx_emit_net(e, x, b);
                 break;
             }
             hx_expr_str(e, x->member.base, 7, b);
@@ -2250,6 +2530,12 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_ARENA);
         hx_buf_str(b, "extern hx_arena hx_static_arena;\n");
         hx_buf_str(b, "void hx_static_init(void);\n");
+    }
+    if (e->uses_net) {
+        e->uses_arena = 1;
+        hx_buf_str(b, HX_NET_PRE);
+        hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_RT_NET_FREESTANDING
+                                                           : HX_RT_NET_LIBC);
     }
     if (e->uses_iter) {
         hx_buf_str(b, HX_RT_ITER);

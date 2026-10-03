@@ -28,6 +28,8 @@ struct HxKit {
     const char *entry;
     const char *target;
     const char *profile;
+    const char *caps[HX_KIT_MAX];
+    int n_caps;
     const char *features[HX_KIT_MAX];
     int n_features;
     const char *provides[HX_KIT_MAX];

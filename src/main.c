@@ -587,6 +587,10 @@ static void hx_usage(void) {
             "  hxc version\n", HX_VERSION);
 }
 
+static const char *kit_gates[HX_KIT_MAX];
+static int kit_gates_n;
+static int kit_gates_set;
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         hx_usage();
@@ -761,6 +765,9 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (kit.profile && !hx_ascii_casecmp(kit.profile, "libc")) o.profile = HX_PROFILE_LIBC;
+        for (int i = 0; i < kit.n_caps && kit_gates_n < HX_KIT_MAX; i++)
+            kit_gates[kit_gates_n++] = kit.caps[i];
+        kit_gates_set = 1;
         /* cada dependencia resuelta aporta su directorio a la busqueda */
         for (int i = 0; i < kit.n_kits && i < HX_KIT_MAX; i++) {
             const char *dir = kitpaths.data[0];
@@ -813,6 +820,23 @@ int main(int argc, char **argv) {
         return 1;
     }
     hx_diag_render(&s->diags, NULL, stderr);
+
+    /* un paquete debe declarar cada capacidad que usen sus fuentes */
+    if (o.kit_file && kit_gates_set) {
+        for (int i = 0; i < s->unit.n_caps_used; i++) {
+            const char *usada = s->unit.caps_used[i];
+            int declarada = 0;
+            for (int j = 0; j < kit_gates_n; j++)
+                if (!hx_ascii_casecmp(kit_gates[j], usada)) declarada = 1;
+            if (!declarada) {
+                fprintf(stderr,
+                        "hx: %s usa la capacidad '%s' pero el manifiesto no la declara con "
+                        "CAPABILITY %s\n",
+                        o.kit_file, usada, usada);
+                return 1;
+            }
+        }
+    }
 
     if (emit_only) return 0;
 

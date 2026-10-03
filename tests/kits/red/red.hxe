@@ -1,0 +1,20 @@
+ENABLE net
+' std.net: ida y vuelta por loopback con sockets reales (syscalls directas)
+
+DIM envio AS INT = NET_UDP()
+PRINT NET_BIND(envio, 45000)
+
+DIM recibo AS INT = NET_UDP()
+PRINT NET_BIND(recibo, 45001)
+
+DIM ip AS I64 = 2130706433   ' 127.0.0.1
+PRINT NET_SEND(envio, 45001, ip, "hola red")
+
+DIM msg AS STRING = NET_RECV(recibo)
+PRINT msg
+
+' el segundo datagrama tambien llega, en orden
+PRINT NET_SEND(recibo, 45000, ip, "respuesta")
+PRINT NET_RECV(envio)
+PRINT NET_CLOSE(envio)
+PRINT NET_CLOSE(recibo) >= 0

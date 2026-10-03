@@ -434,6 +434,7 @@ typedef struct HxModule {
     const char *file;
     const char *src;
     HX_VEC_ANON(HxImport) imports;
+    HX_VEC_ANON(HxField) caps; /* ENABLE <capacidad> */
     HX_VEC_ANON(HxTraitDecl) traits;
     HX_VEC_ANON(HxImplDecl) impls;
     HX_VEC_ANON(HxFunc) funcs;
@@ -453,6 +454,9 @@ typedef struct {
     /* instancias monomorfizadas de funciones genericas, una por combinacion
        de argumentos de tipo que aparece en el programa. Son punteros porque
        el vector crece y los puntos de llamada guardan la referencia. */
+    /* capacidades que el programa declara con ENABLE y usa de verdad */
+    const char *caps_used[8];
+    int n_caps_used;
     HxFunc **instances;
     int n_instances;
     int cap_instances;

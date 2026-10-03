@@ -35,6 +35,9 @@ typedef struct {
        tipo como Caja<T> se deja sin resolver hasta la instancia */
     HxSym cur_tparams[HX_MAX_TPARAMS];
     int n_cur_tparams;
+    const char *caps[16]; /* capacidades activadas con --capability */
+    int n_caps;
+    int uses_net;
     HxTy *cur_self; /* tipo que implementa el TRAIT que se esta comprobando */
     int defer_depth;
     int loop_defer_depth;
@@ -49,6 +52,119 @@ static void hx_collect_names(HxChecker *c, HxModule *mod);
 static void hx_resolve_signature(HxChecker *c, struct HxFunc *fn);
 static void hx_check_func(HxChecker *c, struct HxFunc *f);
 static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
+static int hx_capability(const HxChecker *c, const char *name);
+static int hx_net_check(HxChecker *c, HxExpr *e, const char *name);
+
+/* --- capacidades ---------------------------------------------------------
+   `net` es la primera capacidad del lenguaje: sin ella, IMPORT net falla con
+   un mensaje que dice cómo activarla. Las primitivas viven en el runtime y el
+   módulo de la biblioteca estándar se genera en build/gen. */
+
+static const char *HX_STD_NET_UNUSED =
+    "ENABLE net\n"
+    "\n"
+    "ENUM Protocolo\n"
+    "  UDP\n"
+    "  TCP\n"
+    "END ENUM\n"
+    "\n"
+    "TYPE Direccion\n"
+    "  puerto AS INT\n"
+    "  a AS INT\n"
+    "  b AS INT\n"
+    "  c AS INT\n"
+    "  d AS INT\n"
+    "END TYPE\n"
+    "\n"
+    "CONST TIPO_UDP AS INT = 2\n"
+    "CONST TIPO_TCP AS INT = 1\n"
+    "\n"
+    "ENUM ErrorNet\n"
+    "  SIN_ERROR\n"
+    "  SIN_MEMORIA\n"
+    "  SIN_SOCKET\n"
+    "  DIRECCION_OCUPADA\n"
+    "  SIN_DESTINO\n"
+    "  CORTADO\n"
+    "END ENUM\n"
+    "\n"
+    "FUNCTION De(puerto AS INT, a AS INT, b AS INT, c AS INT, d AS INT) AS Direccion\n"
+    "  DIM dir AS Direccion\n"
+    "  dir.puerto = puerto\n"
+    "  dir.a = a\n"
+    "  dir.b = b\n"
+    "  dir.c = c\n"
+    "  dir.d = d\n"
+    "  RETURN dir\n"
+    "END FUNCTION\n"
+    "\n"
+    "FUNCTION LOCALHOST(puerto AS INT) AS Direccion\n"
+    "  RETURN De(puerto, 127, 0, 0, 1)\n"
+    "END FUNCTION\n"
+    "\n"
+    "ENABLE net\n";
+
+/* --- std.net -------------------------------------------------------------
+   Funciones de la capacidad `net`. Todas hablan con 127.0.0.1 salvo donde se
+   pasa la direccion. Devuelven ENTERO: 0 o mas si todo va bien, o un codigo de
+   error del sistema (negativo) si no. */
+
+static int hx_net_check(HxChecker *c, HxExpr *e, const char *name) {
+    if (!hx_capability(c, "net")) return 0;
+    struct {
+        const char *name;
+        int nargs;
+        int ret_string;
+    } tabla[] = {{"NET_UDP", 0, 0},   {"NET_TCP", 0, 0},        {"NET_BIND", 2, 0},
+                 {"NET_SEND", 4, 0},   {"NET_RECV", 1, 1},        {"NET_RECV_DE", 3, 1},
+                 {"NET_LISTEN", 2, 0}, {"NET_ACCEPT", 1, 0},      {"NET_CONNECT", 2, 0},
+                 {"NET_CLOSE", 1, 0},  {"NET_ERROR", 0, 0},       {NULL, 0, 0}};
+    int idx = -1;
+    for (int i = 0; tabla[i].name; i++)
+        if (!hx_ascii_casecmp(name, tabla[i].name)) idx = i;
+    if (idx < 0) return 0;
+    if (e->call.args.len != tabla[idx].nargs) {
+        hx_error(c->diags, e->span, "E0306",
+                 hx_arena_sprintf(c->arena, "%s espera %d argumento(s), recibió %d", name,
+                                  tabla[idx].nargs, e->call.args.len));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    for (int i = 0; i < e->call.args.len; i++) {
+        e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+        HxExpr *a = e->call.args.data[i].value;
+        HxTy *ty = a->ty;
+        if (!ty) continue;
+        int es_ref = ty->kind == TY_REF;
+        HxTy *inner = es_ref ? ty->inner : ty;
+        int es_str = inner->kind == TY_STRING;
+        int es_i64 = inner->kind == TY_I64 || inner->kind == TY_INT;
+        if (!es_i64 && !es_str)
+            hx_error(c->diags, a->span, "E0902",
+                     hx_arena_sprintf(c->arena, "%s: el argumento %d debe ser INT, I64 o STRING",
+                                      name, i + 1));
+    }
+    c->uses_net = 1;
+    if (c->unit->n_caps_used < 8) {
+        const char **slot = &c->unit->caps_used[c->unit->n_caps_used];
+        *slot = hx_intern_cstr(c->intern, "net");
+        c->unit->n_caps_used++;
+    }
+    e->is_intrin = 6;
+    e->method = hx_intern_cstr(c->intern, tabla[idx].name);
+    e->ty = hx_ty_builtin(c->arena, tabla[idx].ret_string ? TY_STRING : TY_INT);
+    return 1;
+}
+
+static int hx_capability(const HxChecker *c, const char *name) {
+    for (int i = 0; i < c->n_caps; i++)
+        if (!hx_ascii_casecmp(c->caps[i], name)) return 1;
+    return 0;
+}
+
+static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr *recv);
+static int hx_capability(const HxChecker *c, const char *name);
+static int hx_net_check(HxChecker *c, HxExpr *e, const char *name);
 static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e);
 static int hx_ty_enum_like(const HxTy *t);
 static int hx_enum_member(HxChecker *c, HxExpr *e, const char *member, HxExpr *recv);
@@ -539,6 +655,12 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
             if (hx_iter_ctor_check(c, e, mn, irecv)) return e;
         }
+    }
+    if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1) {
+        const char *solo = hx_sym_str(raw_callee->path.parts.data[0].name);
+        if (!hx_lookup(c, raw_callee->path.parts.data[0].name) &&
+            !strncmp(solo, "NET_", 4) && hx_net_check(c, e, solo))
+            return e;
     }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1 &&
         !hx_lookup(c, raw_callee->path.parts.data[0].name)) {
@@ -2028,6 +2150,13 @@ int hx_check_unit(HxUnit *unit) {
         hx_scope_push(&c);
         hx_define_module_scope(&c, mod);
         hx_collect_names(&c, mod);
+        for (int k = 0; k < mod->caps.len; k++) {
+            const char *cap = hx_sym_str(mod->caps.data[k].name);
+            int ya = 0;
+            for (int q = 0; q < c.n_caps; q++)
+                if (!hx_ascii_casecmp(c.caps[q], cap)) ya = 1;
+            if (!ya && c.n_caps < 16) c.caps[c.n_caps++] = cap;
+        }
         for (int t = 0; t < mod->types.len; t++) {
             if (mod->types.data[t].n_tparams) {
                 mod->types.data[t].is_generic = 1;

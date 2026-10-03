@@ -27,7 +27,8 @@ Hola mundo
 | M8 | `ENUM` con `MATCH` exhaustivo, `DONDE T: Trait`, funciones anónimas `FUNC`, división verificada | `1 / 0` da `E0305`; `n / 0` aborta con 70 |
 | M9 | `PTR` con `&`/`^`, compilación paralela, paquetes `.hxk` con resolución de dependencias | 20 módulos: 4 636 ms → 1 767 ms |
 | M10 | subtipado estructural (LSP) con materialización de la conversión | `Perro` sirve donde se pide `Animal` |
-| M11–M12 | capacidades (`std.net`/`audio`/`gpu`), `.hxq` | *pendiente* |
+| M11 | capacidades: `ENABLE net` con sockets por syscall directa y puerta `CAPABILITY` del manifiesto | ida y vuelta UDP por loopback |
+| M12 | `audio`/`gpu`, `.hxq` | *pendiente* |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -185,6 +186,34 @@ Describe(p)            ' un Perro donde se pide un Animal
 Los campos son invariantes (no hay subtipado de covarianza) porque se puede
 escribir a través de `REF`, y dos registros con un campo del mismo nombre pero
 de distinto tipo siguen siendo incompatibles.
+
+M11 añade el mecanismo de capacidades. Un programa declara lo que usa y el
+manifiesto tiene que declararlo también, de modo que una revisión puede exigir
+que `net` esté autorizado:
+
+```
+ENABLE net
+
+DIM envio AS INT = NET_UDP()
+PRINT NET_BIND(envio, 45000)
+PRINT NET_SEND(envio, 45001, 2130706433, "hola red")
+PRINT NET_RECV(recibo)
+```
+
+En el perfil `freestanding` los sockets son syscalls directas (`socket`, `bind`,
+`sendto`, `recvfrom`, `listen`, `accept`, `connect`), sin libc; en el perfil
+`libc` son las llamadas de la biblioteca. El programa se ejecuta en un binario
+de 9 KB que habla con el kernel de verdad: la prueba de la suite manda un
+datagrama por loopback y lo recibe en el otro extremo.
+
+```
+$ ./build/hxc build --kit paquete.hxk -o salida
+hx: paquete.hxk usa la capacidad 'net' pero el manifiesto no la declara con
+    CAPABILITY net
+```
+
+`audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador
+por objetivo, y no hay forma honesta de probarlos aquí.
 
 `hxc test` ejecuta el corpus `.hxt` y compara con la salida esperada (`.hxt.out`).
 Si el `.out` no existe, se escribe y la prueba se cuenta como nueva.

@@ -140,6 +140,11 @@ static int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
             if (kit->n_provides < HX_KIT_MAX) {
                 kit->provides[kit->n_provides++] = hx_arena_strdup(kit->arena, word);
             }
+        } else if (!strcmp(word, "CAPABILITY")) {
+            hx_kit_line(&p, rest, sizeof(rest));
+            if (kit->n_caps < HX_KIT_MAX) {
+                kit->caps[kit->n_caps++] = hx_arena_strdup(kit->arena, rest);
+            }
         } else if (!strcmp(word, "FEATURE")) {
             hx_kit_word(&p, word, sizeof(word));
             if (kit->n_features < HX_KIT_MAX) {

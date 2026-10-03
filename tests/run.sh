@@ -34,6 +34,15 @@ else
   echo "FALLO: no se rechazo la unidad con magia incorrecta"; exit 1
 fi
 
+echo "== capacidad net (sockets reales por loopback) =="
+if [ "$(uname -s)" = "Linux" ]; then
+  ./build/hxc build tests/hxc_red.hxe -o build/red
+  ./build/red > build/red.out
+  diff -u tests/hxc_red.out build/red.out && echo "ok     ida y vuelta UDP por loopback"
+else
+  echo "ok     net omitida: sockets por syscall solo en Linux"
+fi
+
 echo "== paquetes .hxk =="
 ./build/hxc build --kit tests/kits/aritmetica.hxk --path tests/kits -o build/kit_aritmetica
 ./build/kit_aritmetica > build/kit.out
@@ -66,3 +75,12 @@ echo
 echo "== puertas de tamano =="
 ./build/hxc build examples/hola.hxe -o build/hola
 ./build/hxc size build/hola
+
+echo "== puerta de capacidades =="
+printf 'KIT sin_net 0.1.0\n  ENTRY red.hxe\nEND KIT\n' > build/sin_net.hxk
+mkdir -p build/redsrc && cp tests/hxc_red.hxe build/redsrc/red.hxe
+if ./build/hxc build --kit build/sin_net.hxk -o build/red2 >/dev/null 2>&1; then
+  echo "FALLO: un manifiesto sin CAPABILITY no deberia compilar una fuente con ENABLE net"
+  exit 1
+fi
+echo "ok     CAPABILITY net exigido por el manifiesto"
