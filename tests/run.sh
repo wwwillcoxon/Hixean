@@ -173,3 +173,37 @@ if ./build/hxc check build/forraro.hxt >/dev/null 2>&1; then
 fi
 ./build/hxc check build/forraro.hxt 2>&1 | grep -q "E0206" \
   && echo "ok     FOR sin variable de bucle da E0206 sin NameError"
+
+echo "== publicar e instalar paquetes =="
+rm -rf build/reg build/inst
+./build/hxc pack tests/kits/base/base.hxk --out build/reg | grep -q "base 0.2.0" \
+  && ./build/hxc pack tests/kits/aritmetica.hxk --out build/reg | grep -q "aritmetica 1.0.0" \
+  && echo "ok     hxc pack publica base y aritmetica en el registro"
+test -f build/reg/base/base.hxs -a -f build/reg/aritmetica/aritmetica.hxk \
+  && echo "ok     el paquete lleva su fuente y el manifiesto con su nombre"
+if ./build/hxc pack tests/kits/aritmetica.hxk --out build/reg >/dev/null 2>&1; then
+  echo "FALLO: publicar dos veces el mismo paquete deberia fallar"; exit 1
+fi
+echo "ok     publicar dos veces el mismo paquete se rechaza"
+./build/hxc install base --registry build/reg --into build/inst >/dev/null
+./build/hxc install aritmetica --registry build/reg --into build/inst >/dev/null
+./build/hxc build --kit build/inst/aritmetica/aritmetica.hxk --path build/inst -o build/inst_arit
+./build/inst_arit > build/inst_arit.out
+echo "32" > build/inst_arit.expected
+diff -u build/inst_arit.expected build/inst_arit.out \
+  && echo "ok     el paquete instalado se construye y ejecuta (32)"
+if ./build/hxc install base --registry build/reg --into build/inst 2>&1 | grep -q E0818; then
+  echo "ok     instalar dos veces da E0818"
+else
+  echo "FALLO: reinstalar deberia dar E0818"; exit 1
+fi
+if ./build/hxc install fantasma --registry build/reg --into build/inst 2>&1 | grep -q E0817; then
+  echo "ok     un paquete que no esta en el registro da E0817"
+else
+  echo "FALLO: instalar un paquete inexistente deberia dar E0817"; exit 1
+fi
+printf 'QUERY lo que hay en el registro\n  VERSION >= 0.1\nEND QUERY\n' > build/reg.hxq
+./build/hxc query build/reg.hxq --path build/reg > build/reg.out
+printf 'aritmetica 1.0.0  build/reg/aritmetica/aritmetica.hxk\nbase 0.2.0  build/reg/base/base.hxk\n' > build/reg.expected
+diff -u build/reg.expected build/reg.out >/dev/null \
+  && echo "ok     hxc query encuentra lo publicado en el registro"

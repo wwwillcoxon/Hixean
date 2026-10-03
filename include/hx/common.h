@@ -126,6 +126,7 @@ char *hx_path_dirname(HxArena *a, const char *path);
 char *hx_path_stem(HxArena *a, const char *path);
 char *hx_path_basename(HxArena *a, const char *path);
 int hx_file_exists(const char *path);
+int hx_path_exists(const char *path); /* archivo o directorio */
 int hx_write_file(const char *path, const char *data, size_t len);
 void hx_mkdir_p(const char *path);
 

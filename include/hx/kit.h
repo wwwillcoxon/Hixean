@@ -66,6 +66,15 @@ int hx_query_parse(HxArena *arena, const char *file, HxDiagBag *diags, HxQuery *
 /* Devuelve el numero de paquetes que cumplen la consulta. */
 int hx_query_run(HxQuery *q, HxPathList *paths, HxDiagBag *diags);
 
+/* Un paquete publicado es un directorio `<registro>/<nombre>/` con el manifiesto
+   `<nombre>.hxk` al lado de sus fuentes. `hxc pack` lo arma y `hxc install` lo
+   copia desde un registro (un directorio o un repositorio git clonado). */
+/* Publicar un paquete: copia el manifiesto y los modulos que importa al layout
+   `<registro>/<nombre>/<nombre>.hxk`. */
+int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags);
+int hx_kit_install(HxArena *arena, const char *name, const char *registry, const char *into,
+                   HxDiagBag *diags, char *installed_dir, size_t installed_cap);
+
 int hx_version_cmp(const char *a, const char *b);
 int hx_kit_resolve(HxArena *arena, const char *file, HxPathList *paths, HxDiagBag *diags,
                    HxKit *out);

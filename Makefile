@@ -2,6 +2,8 @@ CC      ?= cc
 CFLAGS  ?= -O2 -g -std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -Iinclude
 LDFLAGS ?=
 SAN     ?= -fsanitize=address,undefined -fno-sanitize-recover=all
+VERSION := $(shell sed -n 's/^const char \*HX_VERSION = "\(.*\)";/\1/p' src/common.c)
+PLAT    ?= $(shell sh tools/plat.sh)
 
 SRCS := $(wildcard src/*.c)
 OBJS := $(SRCS:.c=.o)
@@ -42,6 +44,11 @@ asan:
 fuzz:
 	@sh tests/fuzz.sh
 
+# El paquete que se publica en la release de GitHub: binario, licencia,
+# changelog, gramatica, manual y ejemplos, mas su SHA256.
+dist: build/hxc
+	@sh tools/dist.sh $(VERSION) $(PLAT)
+
 manual:
 	@echo "docs/manual.html: abriend en un navegador busqueda, tema oscuro y tabla de errores con filtro"
 	@echo "para PDF: el boton 'Guardar PDF' usa el dialogo de impresión del navegador"
@@ -50,4 +57,4 @@ manual:
 clean:
 	rm -rf build $(OBJS) $(DEPS)
 
-.PHONY: all clean test size asan fuzz manual
+.PHONY: all clean test size asan fuzz dist manual

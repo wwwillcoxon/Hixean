@@ -576,11 +576,90 @@ static int hx_exec(const char *bin, const char *out_path) {
 /* --json decide como se imprimen los diagnosticos en todos los comandos */
 static int g_json = 0;
 
+/* Solo para los valores por defecto de install, que se calculan antes de tener
+   arena propia; no sobrevive a main y no se usa para diagnostics. */
+static HxArena g_arena_scratch;
+
 static void hx_render(HxDiagBag *d, const char *src) {
     if (g_json)
         hx_diag_render_json(d, src, stderr);
     else
         hx_diag_render(d, src, stderr);
+}
+
+/* Publicar un paquete es copiar su manifiesto y los modulos que importa al
+   layout que ya entienden hxc query, hxc kit y hxc install:
+   <registro>/<nombre>/<nombre>.hxk mas los fuentes, todos con nombre plano. */
+static int hx_cmd_pack(const char *manifest, const char *out) {
+    HxSession *s = (HxSession *)malloc(sizeof(HxSession));
+    hx_session_init(s);
+    HxPathList paths;
+    memset(&paths, 0, sizeof(paths));
+    paths.data[paths.len++] = ".";
+    HxKit kit;
+    memset(&kit, 0, sizeof(kit));
+    kit.arena = &s->arena;
+    if (!hx_kit_parse(&kit, manifest, &s->diags)) {
+        hx_render(&s->diags, NULL);
+        return 1;
+    }
+    const char *nombre = hx_sym_str(kit.name);
+    char *destino = hx_arena_sprintf(&s->arena, "%s/%s", out, nombre);
+    if (hx_path_exists(destino)) {
+        fprintf(stderr,
+                "hx: el registro ya tiene '%s': borra %s o publica otra version\n", nombre,
+                destino);
+        return 1;
+    }
+    char *entry = hx_kit_entry_path(&s->arena, &kit, manifest);
+    if (!hx_file_exists(entry)) {
+        fprintf(stderr,
+                "hx: el ENTRY %s del manifiesto no existe; un paquete sin su fuente no se "
+                "puede publicar\n",
+                entry);
+        return 1;
+    }
+    hx_collect_modules2(s, entry, NULL);
+    hx_mkdir_p(destino);
+    int n = 0;
+    /* el ENTRY se copia siempre: una biblioteca (.hxs) no entra en la unidad
+       que construye hxc, y un paquete sin su fuente no sirve para nada */
+    for (int i = 0; i < s->unit.modules.len; i++) {
+        HxModule *m = &s->unit.modules.data[i];
+        if (!m->file) continue;
+        size_t len = 0;
+        char *data = hx_read_file(&s->arena, m->file, &len);
+        if (!data) {
+            fprintf(stderr, "hx: no se pudo leer %s\n", m->file);
+            return 1;
+        }
+        char *dest = hx_arena_sprintf(&s->arena, "%s/%s", destino, hx_path_basename(&s->arena, m->file));
+        if (hx_write_file(dest, data, len) != 0) {
+            fprintf(stderr, "hx: no se pudo escribir %s\n", dest);
+            return 1;
+        }
+        n++;
+    }
+    char *entrada_dest = hx_arena_sprintf(&s->arena, "%s/%s", destino,
+                                          hx_path_basename(&s->arena, entry));
+    if (!hx_file_exists(entrada_dest)) {
+        size_t elen = 0;
+        char *edata = hx_read_file(&s->arena, entry, &elen);
+        if (!edata || hx_write_file(entrada_dest, edata, elen) != 0) {
+            fprintf(stderr, "hx: no se pudo escribir %s\n", entrada_dest);
+            return 1;
+        }
+        n++;
+    }
+    size_t mlen = 0;
+    char *mtext = hx_read_file(&s->arena, manifest, &mlen);
+    char *mkit = hx_arena_sprintf(&s->arena, "%s/%s.hxk", destino, nombre);
+    if (!mtext || hx_write_file(mkit, mtext, mlen) != 0) {
+        fprintf(stderr, "hx: no se pudo escribir %s\n", mkit);
+        return 1;
+    }
+    printf("%s %s  ->  %s (%d modulos)\n", nombre, kit.version, mkit, n);
+    return 0;
 }
 
 static void hx_usage(void) {
@@ -594,6 +673,8 @@ static void hx_usage(void) {
             "  hxc build --kit <archivo.hxk>   (construye el paquete)\n"
             "  hxc kit    <archivo.hxk> [--path DIR]  (resuelve dependencias)\n"
             "  hxc query  <archivo.hxq> [--path DIR]  (busca paquetes por sus PROVIDES)\n"
+            "  hxc pack   <archivo.hxk> [--out DIR]    publica un paquete en un registro\n"
+            "  hxc install <nombre> [--registry DIR] [--into DIR]\n"
             "  hxc check <archivo.hxe> [--json]\n"
             "  hxc size <binario>\n"
             "  hxc version\n", HX_VERSION);
@@ -604,6 +685,7 @@ static int kit_gates_n;
 static int kit_gates_set;
 
 int main(int argc, char **argv) {
+    hx_arena_init(&g_arena_scratch);
     if (argc < 2) {
         hx_usage();
         return 2;
@@ -661,6 +743,59 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (hx_query_run(&q, &paths, &diags) < 0) return 1;
+        return 0;
+    }
+    if (!strcmp(cmd, "pack")) {
+        if (argc < 3) {
+            hx_usage();
+            return 2;
+        }
+        const char *out = "registro";
+        const char *manifest = NULL;
+        for (int i = 2; i < argc; i++) {
+            if (!strcmp(argv[i], "--out") && i + 1 < argc) out = argv[++i];
+            else if (argv[i][0] != '-') manifest = argv[i];
+        }
+        if (!manifest) {
+            hx_usage();
+            return 2;
+        }
+        return hx_cmd_pack(manifest, out);
+    }
+    if (!strcmp(cmd, "install")) {
+        if (argc < 3) {
+            hx_usage();
+            return 2;
+        }
+        const char *name = argv[2];
+        const char *registry = NULL;
+        const char *into = NULL;
+        for (int i = 3; i < argc; i++) {
+            if (!strcmp(argv[i], "--registry") && i + 1 < argc) registry = argv[++i];
+            else if (!strcmp(argv[i], "--into") && i + 1 < argc) into = argv[++i];
+        }
+        if (!registry) {
+            const char *home = getenv("HOME");
+            char *defecto = hx_arena_sprintf(&g_arena_scratch, "%s/.hixean/registro",
+                                             home ? home : ".");
+            registry = defecto;
+        }
+        if (!into) {
+            const char *home = getenv("HOME");
+            into = hx_arena_sprintf(&g_arena_scratch, "%s/.hixean/paquetes",
+                                    home ? home : ".");
+        }
+        HxArena arena;
+        hx_arena_init(&arena);
+        HxDiagBag diags;
+        hx_diag_init(&diags, &arena);
+        char donde[1024];
+        if (!hx_kit_install(&arena, name, registry, into, &diags, donde, sizeof(donde))) {
+            hx_render(&diags, NULL);
+            return 1;
+        }
+        printf("%s instalado en %s\n", name, donde);
+        printf("añade esa ruta a tus comandos:\n  --path %s\n", into);
         return 0;
     }
     if (!strcmp(cmd, "kit")) {

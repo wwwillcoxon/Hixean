@@ -301,6 +301,11 @@ int hx_file_exists(const char *path) {
     return stat(path, &st) == 0 && S_ISREG(st.st_mode);
 }
 
+int hx_path_exists(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
 int hx_write_file(const char *path, const char *data, size_t len) {
     FILE *f = fopen(path, "wb");
     if (!f) return -1;

@@ -91,4 +91,4 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   promesa que no se pueda cumplir.
 - El compilador se compila a sí mismo en C, no en Hixean.
 
-[0.1.0]: https://github.com/hixean/hixean/releases/tag/v0.1.0
+[0.1.0]: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.1.0

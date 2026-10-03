@@ -49,8 +49,8 @@ npx @vscode/vsce publish --pat "$VSCE_PAT"
 
 Mientras tanto, `npx @vscode/vsce package` produce un `.vsix` que se puede
 instalar con **Extensions: Install from VSIX…**. El campo `publisher` de
-`package.json` (`hixean`) tiene que existir en la organización de destino o
-`vsce` lo rechaza.
+`package.json` (`wwwillcoxon`) tiene que existir en la organización de destino
+o `vsce` lo rechaza.
 
 ## La prueba de humo
 

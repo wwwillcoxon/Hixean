@@ -1,0 +1,47 @@
+# Manifiesto para winget-pkgs. Para publicar:
+#   winget create --manifestpackage ... --manifestpath packaging/winget/hixean.yaml
+#
+# winget exige InstallerSha256: hay que copiarlo de dist/SHA256SUMS de la
+# release correspondiente.
+PackageIdentifier: wwwillcoxon.Hixean
+PackageVersion: 0.1.0
+DefaultLocale: en-US
+ManifestType: installer
+ManifestVersion: 1.6.0
+Publisher: wwwillcoxon
+PublisherUrl: https://github.com/wwwillcoxon
+PublisherSupportUrl: https://github.com/wwwillcoxon/Hixean/issues
+Author: wwwillcoxon
+PackageName: Hixean
+PackageUrl: https://github.com/wwwillcoxon/Hixean
+License: MIT
+LicenseUrl: https://github.com/wwwillcoxon/Hixean/blob/main/LICENSE
+ShortDescription: Lenguaje AOT que compila a C11, sin VM y sin unwinding
+Description: |-
+  Hixean es un lenguaje compilado, estatico y estandar (evolucion de QBasic)
+  cuyo compilador, hxc, emite C11 y deja que el compilador del sistema termine
+  el trabajo. Sin maquina virtual, sin unwinding y con un perfil freestanding
+  por defecto: hola mundo ocupa 8896 bytes.
+Homepage: https://github.com/wwwillcoxon/Hixean
+ReleaseNotes: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.1.0
+Tags:
+  - compiler
+  - language
+ReleaseDate: 2026-10-03
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-windows-x64.zip
+    InstallerSha256: REEMPLAZAR_CON_EL_SHA256_DE_windows-x64
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: bin\hxc.exe
+        PortableCommandAlias: hxc
+  - Architecture: arm64
+    InstallerType: zip
+    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-windows-arm64.zip
+    InstallerSha256: REEMPLAZAR_CON_EL_SHA256_DE_windows-arm64
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: bin\hxc.exe
+        PortableCommandAlias: hxc

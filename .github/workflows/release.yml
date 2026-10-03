@@ -1,0 +1,111 @@
+name: release
+
+# La release de GitHub es la fuente de verdad de la distribucion: Homebrew,
+# winget e install.sh solo saben leer de aqui.
+#
+#   git tag v0.1.0 && git push --tags
+#
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+      - run: make test
+      - run: make size
+
+  # Un artefacto por plataforma. El nombre sale de la etiqueta, asi que la
+  # release y tools/dist.sh no pueden discrepar.
+  artefactos:
+    needs: comprobar
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, plat: linux-x64, cc: gcc }
+          - { os: ubuntu-latest, plat: linux-arm64, cc: gcc, cross: aarch64-linux-gnu-gcc }
+          - { os: macos-latest, plat: macos-x64, cc: clang }
+          - { os: macos-latest, plat: macos-arm64, cc: clang }
+          - { os: windows-latest, plat: windows-x64, cc: clang }
+          - { os: windows-latest, plat: windows-arm64, cc: clang }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: compilar
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.cross }}" ]; then
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+            make CC=${{ matrix.cross }} PLAT=${{ matrix.plat }}
+          else
+            make CC=${{ matrix.cc }} PLAT=${{ matrix.plat }}
+          fi
+      - name: probar
+        shell: bash
+        run: make test
+      - name: empaquetar
+        shell: bash
+        run: sh tools/dist.sh "${GITHUB_REF_NAME#v}" ${{ matrix.plat }}
+      - name: zip para windows
+        if: startsWith(matrix.plat, 'windows-')
+        shell: bash
+        run: |
+          cd build/dist && zip -qr "../../dist/hixean-${GITHUB_REF_NAME#v}-${{ matrix.plat }}.zip" \
+            "hixean-${GITHUB_REF_NAME#v}-${{ matrix.plat }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hixean-${{ matrix.plat }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+  # Los checksums se calculan una sola vez, sobre lo que subio cada runner, y se
+  # adjuntan a la release. Un checksum por artefacto, no uno por maquina.
+  checksums:
+    needs: artefactos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: todos
+          merge-multiple: true
+      - name: SHA256 de cada artefacto
+        run: |
+          cd todos
+          sha256sum *.tar.gz *.zip > SHA256SUMS || true
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: todos/SHA256SUMS
+
+  publicar:
+    needs: checksums
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: todos
+          merge-multiple: true
+      - name: crear la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            todos/*.tar.gz
+            todos/*.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+      # La segunda subida es la de SHA256SUMS: gh release upload es mas simple
+      # de encadenar que volver a crear la release.
+      - name: adjuntar los checksums
+        run: gh release upload "${GITHUB_REF_NAME}" todos/SHA256SUMS --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

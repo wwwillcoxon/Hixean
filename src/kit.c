@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -78,7 +79,7 @@ static int hx_kit_feature(HxKit *kit, const char *name) {
     return 0;
 }
 
-static int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
+int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
     char *src = hx_read_file(kit->arena, file, NULL);
     if (!src) {
         hx_error(diags, (HxSpan){0, 0}, "E0801", "no se encontró el manifiesto %s", file);
@@ -563,4 +564,84 @@ int hx_query_run(HxQuery *q, HxPathList *paths, HxDiagBag *diags) {
         }
     if (!cuenta) printf("sin resultados\n");
     return cuenta;
+}
+
+/* --- publicar e instalar paquetes ----------------------------------------- */
+
+static int hx_kit_copy_file(HxArena *arena, const char *from, const char *to) {
+    size_t n = 0;
+    char *data = hx_read_file(arena, from, &n);
+    if (!data) return 1;
+    return hx_write_file(to, data, n) == 0 ? 0 : 1;
+}
+
+/* Copia recursivamente un directorio. El registro es un arbol de archivos
+   pequenos y no lleva enlaces, asi que con stat basta. */
+static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
+    mkdir(to, 0755);
+    DIR *d = opendir(from);
+    if (!d) return;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.') continue;
+        char *src = hx_arena_sprintf(arena, "%s/%s", from, ent->d_name);
+        char *dst = hx_arena_sprintf(arena, "%s/%s", to, ent->d_name);
+        struct stat st;
+        if (stat(src, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) hx_kit_copy_dir(arena, src, dst);
+        else hx_kit_copy_file(arena, src, dst);
+    }
+    closedir(d);
+}
+
+int hx_kit_install(HxArena *arena, const char *name, const char *registry, const char *into,
+                   HxDiagBag *diags, char *installed_dir, size_t installed_cap) {
+    const char *ctx_prev = diags->ctx_file;
+    diags->ctx_file = name;
+    char *anidado = hx_arena_sprintf(arena, "%s/%s/%s.hxk", registry, name, name);
+    char *plano = hx_arena_sprintf(arena, "%s/%s.hxk", registry, name);
+    char *origen = NULL;
+    if (hx_file_exists(anidado)) {
+        origen = hx_kit_dir_of(arena, anidado);
+    } else if (hx_file_exists(plano)) {
+        origen = hx_kit_dir_of(arena, plano);
+    } else {
+        hx_error(diags, (HxSpan){0, 0}, "E0817",
+                 "'%s' no esta en el registro %s (busque %s y %s)", name, registry, anidado,
+                 plano);
+        diags->ctx_file = ctx_prev;
+        return 0;
+    }
+    char *destino = hx_arena_sprintf(arena, "%s/%s", into, name);
+    if (hx_path_exists(destino)) {
+        hx_error(diags, (HxSpan){0, 0}, "E0818",
+                 "'%s' ya esta instalado en %s: borra ese directorio antes de reinstalar", name,
+                 destino);
+        diags->ctx_file = ctx_prev;
+        return 0;
+    }
+    mkdir(into, 0755);
+    hx_kit_copy_dir(arena, origen, destino);
+    char *copia = hx_arena_sprintf(arena, "%s/%s.hxk", destino, name);
+    if (!hx_file_exists(copia)) {
+        /* el manifiesto puede tener otro nombre: se renombra al del paquete */
+        HxPathList entradas;
+        hx_dir_entries(arena, destino, &entradas);
+        for (int i = 0; i < entradas.len; i++) {
+            const char *n = entradas.data[i];
+            size_t ln = strlen(n);
+            if (ln > 4 && !strcmp(n + ln - 4, ".hxk")) {
+                hx_kit_copy_file(arena, hx_arena_sprintf(arena, "%s/%s", destino, n), copia);
+                remove(hx_arena_sprintf(arena, "%s/%s", destino, n));
+                break;
+            }
+        }
+    }
+    HxKit k;
+    memset(&k, 0, sizeof(k));
+    k.arena = arena;
+    if (!hx_kit_parse(&k, copia, diags)) return 0;
+    if (installed_dir && installed_cap) snprintf(installed_dir, installed_cap, "%s", destino);
+    diags->ctx_file = ctx_prev;
+    return 1;
 }
