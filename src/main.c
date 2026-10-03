@@ -290,7 +290,11 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
     for (int i = 0; i < s->unit.modules.len; i++) {
         HxModule *m = &s->unit.modules.data[i];
         for (int j = 0; j < m->funcs.len; j++) {
+            /* dos OPERATOR + de tipos distintos no son sobrecarga de funciones:
+               cada uno tiene su nombre cuando se comprueba la firma */
+            if (m->funcs.data[j].is_operator) continue;
             for (int k = j + 1; k < m->funcs.len; k++) {
+                if (m->funcs.data[k].is_operator) continue;
                 if (m->funcs.data[j].name == m->funcs.data[k].name) {
                     hx_error(&s->diags, m->funcs.data[k].name_span, "E0502",
                              hx_arena_sprintf(&s->arena,

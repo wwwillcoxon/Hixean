@@ -143,6 +143,39 @@ static HxSym hx_fold(HxChecker *c, HxSym sym) {
     return hx_intern_fold_ascii(c->intern, s, strlen(s));
 }
 
+/* Los operadores que un programa puede recargar. La palabra es la que aparece en
+   el nombre de C, porque un "+" no puede estar en un identificador. */
+static const char *hx_op_palabra(const char *op) {
+    static const struct {
+        const char *signo;
+        const char *palabra;
+    } ops[] = {{"+", "add"},   {"-", "sub"},  {"*", "mul"}, {"/", "div"}, {"MOD", "mod"},
+               {"++", "cat"},  {"==", "eq"},  {"<>", "ne"}, {"<", "lt"},  {"<=", "le"},
+               {">", "gt"},    {">=", "ge"},  {NULL, NULL}};
+    for (int i = 0; ops[i].signo; i++)
+        if (!strcmp(ops[i].signo, op)) return ops[i].palabra;
+    return NULL;
+}
+
+/* El nombre con el que se busca la sobrecarga: op_<palabra>__<Tipo>. */
+static const char *hx_op_key(HxArena *a, HxBinOp op, HxTy *ty) {
+    const char *signo = hx_binop_spelling(op);
+    const char *palabra = hx_op_palabra(signo);
+    if (!palabra || !ty || ty->kind != TY_NAMED) return NULL;
+    return hx_arena_sprintf(a, "op_%s__%s", palabra, hx_ty_name(ty));
+}
+
+/* una variable se llama como operador si su nombre no es un identificador */
+static int hx_es_operador(HxSym name) {
+    const char *texto = hx_sym_str(name);
+    if (!texto) return 0;
+    for (const char *p = texto; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') ||
+              *p == '_'))
+            return 1;
+    return 0;
+}
+
 /* un nombre ya declarado en ESTE ambito: sombra legitima en uno mas hondo */
 static int hx_declared_here(HxChecker *c, HxSym name) {
     for (int i = 0; i < c->scope->syms.len; i++)
@@ -1159,6 +1192,47 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
             hx_error(c->diags, e->span, "E0307", "AND, OR y XOR requieren operandos BOOL");
         e->ty = hx_ty_builtin(c->arena, TY_BOOL);
         return e;
+    }
+    /* OPERATOR + en un TYPE convierte la expresion binaria en una llamada: el
+       resto del compilador no necesita saber nada de esto */
+    if (op != OP_AND && op != OP_OR && op != OP_XOR && l && r) {
+        const char *key = hx_op_key(c->arena, op, l);
+        if (key) {
+            HxSym folded = hx_intern_fold_ascii(c->intern, key, strlen(key));
+            struct HxFunc *ov = hx_find_func(c, folded);
+            if (ov) {
+                /* los operandos se copian antes de tocar kind: el resto de la
+                   estructura se lee todavia como expresion binaria */
+                HxExpr *lhs = e->bin.lhs, *rhs = e->bin.rhs;
+                e->kind = EX_CALL;
+                e->call.callee = NULL;
+                e->call.args.len = 0;
+                e->call.args.cap = 0;
+                e->call.args.data = NULL;
+                HxArg a1, a2;
+                memset(&a1, 0, sizeof(a1));
+                memset(&a2, 0, sizeof(a2));
+                a1.value = lhs;
+                a2.value = rhs;
+                a1.span = lhs->span;
+                a2.span = rhs->span;
+                HX_VEC_PUSH(e->call.args, a1);
+                HX_VEC_PUSH(e->call.args, a2);
+                e->fn = ov;
+                if (ov->params.len != 2) {
+                    hx_error(c->diags, e->span, "E0214",
+                             "OPERATOR %s necesita exactamente 2 parametros",
+                             hx_binop_spelling(op));
+                } else {
+                    hx_coerce_to(c, &a1.value, ov->params.data[0].ty, a1.span,
+                                 hx_sym_str(ov->name));
+                    hx_coerce_to(c, &a2.value, ov->params.data[1].ty, a2.span,
+                                 hx_sym_str(ov->name));
+                }
+                e->ty = ov->ret ? ov->ret : hx_ty_builtin(c->arena, TY_UNKNOWN);
+                return e;
+            }
+        }
     }
     if (op == OP_CONCAT) {
         if ((l && l->kind != TY_STRING) || (r && r->kind != TY_STRING))
@@ -2333,6 +2407,28 @@ int hx_check_unit(HxUnit *unit) {
                 continue; /* la firma se resuelve por instancia */
             }
             hx_resolve_signature(&c, fn);
+            /* `OPERATOR +` no puede llamarse "+" en C: se renombra con la
+               palabra del operador y el tipo del primer parametro */
+            if (hx_es_operador(fn->name)) {
+                const char *signo = hx_sym_str(fn->name);
+                const char *palabra = hx_op_palabra(signo);
+                HxTy *pt = fn->params.len ? fn->params.data[0].ty : NULL;
+                if (!palabra) {
+                    /* "%s" explicito: un nombre de operador puede ser "%" y
+                       pasarlo como formato hace que vsprintf se coma */
+                    hx_error(c.diags, fn->span, "E0213", "'%s' no se puede sobrecargar", signo);
+                } else if (!pt || pt->kind != TY_NAMED) {
+                    hx_error(c.diags, fn->span, "E0215",
+                             "OPERATOR %s necesita un primer parametro de un TYPE declarado "
+                             "(no %s)",
+                             signo, hx_ty_name(pt));
+                } else {
+                    char *nombre = hx_arena_sprintf(c.arena, "op_%s__%s", palabra,
+                                                    hx_ty_name(pt));
+                    fn->name = hx_intern_cstr(c.intern, nombre);
+                    hx_define(&c, hx_fold(&c, fn->name), fn->ret, SK_FUNC, fn->span);
+                }
+            }
         }
         hx_scope_pop(&c);
     }
@@ -2345,6 +2441,11 @@ int hx_check_unit(HxUnit *unit) {
         hx_scope_push(&c);
         hx_define_module_scope(&c, mod);
         hx_collect_names(&c, mod);
+        for (int f = 0; f < mod->funcs.len; f++) {
+            struct HxFunc *ovf = &mod->funcs.data[f];
+            if (!ovf->is_operator || !ovf->is_generic) continue;
+            hx_define(&c, hx_fold(&c, ovf->name), ovf->ret, SK_FUNC, ovf->span);
+        }
         for (int f = 0; f < mod->funcs.len; f++)
             if (!mod->funcs.data[f].n_tparams) hx_check_func(&c, &mod->funcs.data[f]);
         for (int i = 0; i < mod->impls.len; i++) {

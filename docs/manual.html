@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>23/23</b><span>pruebas del corpus</span></li>
+        <li><b>24/24</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -871,6 +871,41 @@ PRINT Compara.Nombre(7)</code></pre>
 alfa
 int</pre></div>
       </figure>
+      <h3>Operadores propios</h3>
+      <p>Un programa puede definir cómo se suma su propio tipo. Es la forma más
+      corta de que un <code>TYPE</code> sea cómodo sin pedirle nada al
+      compilador:</p>
+      <figure class="ej">
+        <figcaption><span>operadores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">TYPE Fraccion
+  num AS INT
+  den AS INT
+END TYPE
+
+FUNCTION OPERATOR + (a AS Fraccion, b AS Fraccion) AS Fraccion
+  DIM r AS Fraccion
+  r.num = a.num * b.den + b.num * a.den
+  r.den = a.den * b.den
+  RETURN r
+END FUNCTION
+
+DIM media AS Fraccion
+media.num = 1
+media.den = 2
+DIM tercio AS Fraccion
+tercio.num = 1
+tercio.den = 3
+DIM suma AS Fraccion = media + tercio
+PRINT suma.num
+PRINT suma.den</code></pre>
+        <div class="salida"><span>salida</span><pre>5
+6</pre></div>
+      </figure>
+      <p>Admiten <code>+ - * / MOD ++ == &lt;&gt; &lt; &lt;= &gt; &gt;=</code>.
+      El tipo del primer parámetro es el que decide, así que <code>f * 6</code>
+      puede llamar a una sobrecarga cuyo segundo parámetro es <code>INT</code>.
+      Y <code>+</code> sobre <code>INT</code> no se toca: sigue siendo la suma
+      verificada.</p>
       <p><code>SELF</code> sólo existe dentro de una implementación
       (<code>E0706</code>). Un tipo que no implementa el trait que se le exige
       es <code>E0707</code>/<code>E0716</code> en el punto de uso, con el
@@ -1436,7 +1471,7 @@ PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
     <footer>
       <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
       <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
-      <code>make test</code> ejecuta los 23 programas del corpus, y
+      <code>make test</code> ejecuta los 24 programas del corpus, y
       <code>make size</code> la puerta de 12 KiB.</p>
       <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
       para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del

@@ -1173,6 +1173,7 @@ static void hx_parse_func(HxParser *p, struct HxFunc *f, int is_export) {
     hx_bump(p);
     if (hx_eat_kw(p, TK_KW_OPERATOR)) {
         HxToken *op = hx_cur(p);
+        f->is_operator = 1;
         f->name_span = op->span;
         f->name = hx_intern(p->intern, op->str_raw ? op->str_raw : "operator",
                             op->str_raw ? (size_t)op->str_len : 8);

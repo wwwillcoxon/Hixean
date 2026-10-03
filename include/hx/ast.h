@@ -228,6 +228,7 @@ struct HxFunc {
     int n_constraints;
     int module;
     int is_generic;
+    int is_operator; /* `OPERATOR +`: se renombra al resolver la firma */
     int is_instance;
     int is_placeholder;
     int is_comptime_only;

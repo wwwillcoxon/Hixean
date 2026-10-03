@@ -1,0 +1,98 @@
+"OPERATOR: un programa define como se suma su propio tipo"
+TYPE Fraccion
+  num AS INT
+  den AS INT
+END TYPE
+
+FUNCTION OPERATOR + (a AS Fraccion, b AS Fraccion) AS Fraccion
+  DIM r AS Fraccion
+  r.num = a.num * b.den + b.num * a.den
+  r.den = a.den * b.den
+  RETURN r
+END FUNCTION
+
+FUNCTION OPERATOR * (a AS Fraccion, b AS INT) AS Fraccion
+  DIM r AS Fraccion
+  r.num = a.num * b
+  r.den = a.den
+  RETURN r
+END FUNCTION
+
+FUNCTION OPERATOR == (a AS Fraccion, b AS Fraccion) AS BOOL
+  RETURN a.num * b.den == b.num * a.den
+END FUNCTION
+
+FUNCTION OPERATOR < (a AS Fraccion, b AS Fraccion) AS BOOL
+  RETURN a.num * b.den < b.num * a.den
+END FUNCTION
+
+DIM media AS Fraccion
+media.num = 1
+media.den = 2
+
+DIM tercio AS Fraccion
+tercio.num = 1
+tercio.den = 3
+
+DIM suma AS Fraccion = media + tercio
+PRINT suma.num
+PRINT suma.den
+
+"el overload tambien funciona con un operando escalar"
+DIM por6 AS Fraccion = media * 6
+PRINT por6.num
+PRINT por6.den
+
+"comparar y ordenar con los propios operadores"
+DIM igual AS BOOL = media == tercio
+PRINT igual
+IF media < tercio THEN PRINT "1/2 < 1/3"
+
+TYPE Vector
+  x AS FLOAT
+  y AS FLOAT
+END TYPE
+
+FUNCTION OPERATOR + (a AS Vector, b AS Vector) AS Vector
+  DIM r AS Vector
+  r.x = a.x + b.x
+  r.y = a.y + b.y
+  RETURN r
+END FUNCTION
+
+FUNCTION OPERATOR ++ (a AS Vector, b AS STRING) AS STRING
+  RETURN "v" ++ b
+END FUNCTION
+
+DIM u AS Vector
+u.x = 1.0
+u.y = 2.0
+DIM v AS Vector
+v.x = 3.0
+v.y = 4.0
+DIM w AS Vector = u + v
+PRINT w.x
+PRINT w.y
+PRINT u ++ "!"
+
+"el tipo generico tambien se puede sobrecargar con tipos concretos"
+TYPE Caja<T>
+  valor AS T
+END TYPE
+
+FUNCTION OPERATOR + (a AS Caja<INT>, b AS Caja<INT>) AS Caja<INT>
+  DIM r AS Caja<INT>
+  r.valor = a.valor + b.valor
+  RETURN r
+END FUNCTION
+
+DIM c1 AS Caja<INT>
+c1.valor = 20
+DIM c2 AS Caja<INT>
+c2.valor = 22
+DIM c3 AS Caja<INT> = c1 + c2
+PRINT c3.valor
+
+"+ sobre INT sigue siendo la suma verificada de siempre"
+DIM n AS INT = 2
+PRINT n + 3

@@ -474,10 +474,48 @@ Un rango en un índice (`a[1..3]`) todavía **no** está implementado: se acepta
 el parser, pero el emisor solo leería el primer elemento, así que da `E0210` en
 lugar de fingir.
 
-Tres palabras clave están reservadas y **no** hacen nada todavía, y en vez de
-callar lo dicen: `NIL` (`E0211`), `UNIQUE` en un campo (`E0212`) y `OPERATOR`
-en una función (hoy se parsea y la sobrecarga no existe, así que el uso da
-`E0307` como si el operador no estuviera).
+Dos palabras clave están reservadas y **no** hacen nada todavía, y en vez de
+callar lo dicen: `NIL` (`E0211`) y `UNIQUE` en un campo (`E0212`).
+
+### Sobrecarga de operadores
+
+`OPERATOR <signo>` declara cómo se comporta un `TYPE` con un operador del
+lenguaje. Se admiten `+` `-` `*` `/` `MOD` `++` `==` `<>` `<` `<=` `>` `>=`;
+cualquier otro signo da `E0213`.
+
+```
+TYPE Fraccion
+  num AS INT
+  den AS INT
+END TYPE
+
+FUNCTION OPERATOR + (a AS Fraccion, b AS Fraccion) AS Fraccion
+  DIM r AS Fraccion
+  r.num = a.num * b.den + b.num * a.den
+  r.den = a.den * b.den
+  RETURN r
+END FUNCTION
+
+DIM media AS Fraccion
+media.num = 1
+media.den = 2
+DIM tercio AS Fraccion
+tercio.num = 1
+tercio.den = 3
+DIM suma AS Fraccion = media + tercio   ' 5/6
+```
+
+Tres cosas que conviene saber:
+
+- **El tipo del primer parámetro es el que manda.** `a * 6` con
+  `OPERATOR * (a AS Fraccion, b AS INT)` funciona; dos sobrecargas del mismo
+  signo conviven porque cada una se renombra a `op_add__Fraccion`.
+- **`+` sobre `INT` no cambia.** La aritmética entera sigue verificada: la
+  sobrecarga solo se busca cuando el operando izquierdo es un `TYPE`.
+- **No hay resolución por tipos de retorno.** El primer parámetro decide; el
+  segundo recibe lo que le llegue, con la conversión de siempre. Un parámetro
+  que no sea de un `TYPE` declarado da `E0215`, y una sobrecarga con un número
+  distinto de dos parámetros da `E0214`.
 
 Funciones de `net` (perfil `freestanding`: syscalls directas, sin libc):
 
