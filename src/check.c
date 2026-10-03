@@ -35,6 +35,7 @@ typedef struct {
        tipo como Caja<T> se deja sin resolver hasta la instancia */
     HxSym cur_tparams[HX_MAX_TPARAMS];
     int n_cur_tparams;
+    int body_hoisted; /* el cuerpo actual ya fue declarado por hx_decl_locals */
     const char *caps[16]; /* capacidades activadas con --capability */
     int n_caps;
     int uses_net;
@@ -132,6 +133,15 @@ static void hx_scope_push(HxChecker *c) {
 }
 
 static void hx_scope_pop(HxChecker *c) { c->scope = c->scope->parent; }
+
+/* un nombre ya declarado en ESTE ambito: sombra legitima en uno mas hondo */
+static int hx_declared_here(HxChecker *c, HxSym name) {
+    for (int i = 0; i < c->scope->syms.len; i++)
+        if (c->scope->syms.data[i].name == name &&
+            (c->scope->syms.data[i].kind == SK_VAR || c->scope->syms.data[i].kind == SK_CONST))
+            return 1;
+    return 0;
+}
 
 static void hx_define(HxChecker *c, HxSym name, HxTy *ty, int kind, HxSpan span) {
     HxSymEntry e = {name, ty, kind, span, 0, 0};
@@ -299,13 +309,14 @@ typedef struct {
     int nargs;
     HxTyKind ret;
     int vec_arg;
+    int vec_len; /* componentes exigidos; 0 significa cualquiera */
 } HxVecIntrin;
 
 static const HxVecIntrin hx_vec_intrins[] = {
-    {"DOT", 2, TY_FLOAT, 1},       {"CROSS", 2, TY_VEC3, 1},
-    {"NORMALIZED", 1, 0, 1},        {"LEN", 1, TY_FLOAT, 1},
-    {"NORMALIZE", 1, TY_VEC3, 1},   {"SWIZZLE", 1, TY_VEC4, 1},
-    {NULL, 0, TY_UNKNOWN, 0},
+    {"DOT", 2, TY_FLOAT, 1, 3},       {"CROSS", 2, TY_VEC3, 1, 3},
+    {"NORMALIZED", 1, 0, 1, 3},        {"LEN", 1, TY_FLOAT, 1, 0},
+    {"NORMALIZE", 1, TY_VEC3, 1, 3},   {"SWIZZLE", 1, TY_VEC4, 1, 0},
+    {NULL, 0, TY_UNKNOWN, 0, 0},
 };
 
 static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
@@ -632,9 +643,15 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
                 HxTy *at = e->call.args.data[i].value->ty;
                 if (i < vi->vec_arg) {
-                    if (at && !hx_vec_len(at))
+                    int largo = hx_vec_len(at);
+                    if (at && !largo)
                         hx_error(c->diags, e->call.args.data[i].span, "E0402",
                                  hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
+                    else if (largo && vi->vec_len && largo != vi->vec_len)
+                        hx_error(c->diags, e->call.args.data[i].span, "E0402",
+                                 hx_arena_sprintf(c->arena,
+                                                  "'%s' espera un vector de %d componentes",
+                                                  fname, vi->vec_len));
                 }
             }
             e->method = raw_callee->path.parts.data[0].name;
@@ -1619,6 +1636,9 @@ static void hx_decl_locals(HxChecker *c, HxStmtVec *body) {
             s->dim.ty = t;
             HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->dim.name),
                                                  strlen(hx_sym_str(s->dim.name)));
+            if (hx_declared_here(c, folded))
+                hx_error(c->diags, s->dim.name_span, "E0315",
+                         "'%s' ya está declarado en este ámbito", hx_sym_str(s->dim.name));
             hx_define(c, folded, t ? t : hx_ty_builtin(c->arena, TY_INT), SK_VAR,
                       s->dim.name_span);
         }
@@ -1731,6 +1751,11 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             s->dim.ty = t;
             HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->dim.name),
                                                  strlen(hx_sym_str(s->dim.name)));
+            if (!c->body_hoisted && hx_declared_here(c, folded)) {
+                hx_error(c->diags, s->dim.name_span, "E0315",
+                         "'%s' ya está declarado en este ámbito", hx_sym_str(s->dim.name));
+                break;
+            }
             hx_define(c, folded, t, SK_VAR, s->dim.name_span);
             if (c->arena_depth && t && t->kind == TY_ARRAY) c->scope->syms.data[c->scope->syms.len - 1].arena_depth = c->arena_depth;
             break;
@@ -1749,6 +1774,11 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             s->konst.ty = s->konst.value ? s->konst.value->ty : NULL;
             HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->konst.name),
                                                  strlen(hx_sym_str(s->konst.name)));
+            if (!c->body_hoisted && hx_declared_here(c, folded)) {
+                hx_error(c->diags, s->konst.name_span, "E0315",
+                         "'%s' ya está declarado en este ámbito", hx_sym_str(s->konst.name));
+                break;
+            }
             hx_define(c, folded, s->konst.ty, SK_CONST, s->konst.name_span);
             break;
         }
@@ -2236,7 +2266,9 @@ int hx_check_unit(HxUnit *unit) {
         }
         hx_scope_push(&c);
         hx_decl_locals(&c, &mod->top);
+        c.body_hoisted = 1;
         hx_check_body(&c, &mod->top);
+        c.body_hoisted = 0;
         hx_scope_pop(&c);
         hx_scope_pop(&c);
     }

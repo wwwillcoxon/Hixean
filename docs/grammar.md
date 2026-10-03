@@ -450,6 +450,10 @@ revisión puede exigir que una capacidad esté autorizada sin leer el código.
 | `E0902` | un argumento de la capacidad no es `INT`, `I64` ni `STRING` |
 | `E0306` | número de argumentos incorrecto |
 
+Un nombre no puede declararse dos veces en el mismo ámbito: `E0315` lo dice el
+verificador, no el compilador de C. En un ámbito más hondo sí se puede
+sombrear, como en cualquier lenguaje con alcance léxico.
+
 Funciones de `net` (perfil `freestanding`: syscalls directas, sin libc):
 
 | llamada | hace |
@@ -467,6 +471,10 @@ Funciones de `net` (perfil `freestanding`: syscalls directas, sin libc):
 El texto recibido se copia en una arena, así que vive hasta que termina el
 bloque. En plataformas que no son Linux x86_64, las llamadas devuelven `-1` en
 lugar de romper el binario.
+
+Los intrínsecos de vector exigen la anchura que el runtime implementa: `DOT`,
+`CROSS`, `NORMALIZED` y `NORMALIZE` son de 3 componentes (`E0402` con un `vec2` o
+un `vec4`), `LEN` sirve con cualquiera.
 
 ## 21. Consultas `.hxq`
 

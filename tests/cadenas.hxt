@@ -16,3 +16,14 @@ PRINT "{a} tiene {a.Len()} caracteres"
 DIM b AS STRING
 PRINT b.Len()
 PRINT b.IsEmpty()
+"comparar cadenas: el igual no es el mismo operador que en los numeros"
+DIM uno AS STRING = "hola"
+DIM otro AS STRING = "hola"
+DIM lejos AS STRING = "mundo"
+IF uno = otro THEN PRINT "iguales"
+IF uno = lejos THEN PRINT "no deberia: iguales"
+IF uno <> lejos THEN PRINT "distintas"
+IF uno = "hola" THEN PRINT "igual al literal"
+IF NOT (uno = lejos) THEN PRINT "negado"
+DIM vacia AS STRING = ""
+IF vacia.IsEmpty() THEN PRINT "vacia"

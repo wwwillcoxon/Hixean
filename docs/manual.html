@@ -228,7 +228,7 @@ PRINT s.Len()
 PRINT s.Upper()
 PRINT s.Slice(0, 4)
 PRINT s.At(1)
-PRINT ("y" ++ s.Slice(6))
+PRINT s.Slice(6, 10)
 
 DIM n AS INT = 42
 PRINT "n vale {n}, y al doble {n * 2}"
@@ -237,7 +237,7 @@ PRINT "literal {{corchete}} escapado"</code></pre>
 HOLA MUNDO
 hola
 l
-hola mundoyy
+mundo
 n vale 42, y al doble 84
 literal {corchete} escapado</pre></div>
       </figure>
@@ -259,10 +259,13 @@ literal {corchete} escapado</pre></div>
       <code>-|</code>, <code>*|</code> (saturante).</p>
       <figure class="ej">
         <figcaption><span>aritmetica.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">DIM a AS INT = 2000000000
-PRINT a + a                ' E0305: desbordamiento verificado
-PRINT (+%) a + a           ' wraping: -294967296
-PRINT (+|) a + a           ' saturante: 2147483647</code></pre>
+<pre><code class="lang-hixean">DIM grande AS INT = 2000000000
+PRINT grande + grande       ' E0305: el desbordamiento verificado aborta
+PRINT grande +| grande      ' saturante: 2147483647
+PRINT grande +% grande      ' con wrap: -294967296
+PRINT grande *| 3           ' saturante, también en I64
+DIM f AS FLOAT = 1.5
+PRINT f *| f                ' en FLOAT no satura: 2.25</code></pre>
       </figure>
     </section>
 
@@ -274,8 +277,6 @@ PRINT (+|) a + a           ' saturante: 2147483647</code></pre>
       <figure class="ej">
         <figcaption><span>estructura.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">MODULE saludo
-
-IMPORT utiles
 
 CONST SALUDO AS STRING = "hola"
 
@@ -297,8 +298,7 @@ DIM lejos AS Punto
 lejos.x = 3
 lejos.y = 4
 
-PRINT SALUDO ++ " desde " ++ utiles.Nombre()
-PRINT Distancia2(origen, lejos)
+PRINT SALUDO ++ " desde " ++ Distancia2(origen, lejos)
 
 END MODULE</code></pre>
       </figure>
@@ -320,8 +320,7 @@ END MODULE</code></pre>
       </ul>
       <figure class="ej">
         <figcaption><span>salida</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-bash">hola desde utiles
-25</code></pre>
+<pre><code class="lang-bash">hola desde 25</code></pre>
       </figure>
     </section>
 
@@ -383,7 +382,7 @@ mediano</pre></div>
 END ENUM
 
 DIM a AS Color = Color.AZUL
-PRINT a                 ' AZUL
+PRINT a.Nombre          ' AZUL
 PRINT a.ordinal         ' 2
 PRINT a.ENUM_A_INT      ' 2
 
@@ -427,25 +426,26 @@ FUNCTION SumaHasta(n AS INT, acc AS I64) AS I64
   RETURN SumaHasta(n - 1, acc + n)
 END FUNCTION
 
-FUNCTION ConPredicado(x AS INT, mayor AS BOOL = TRUE) AS STRING
-  IF (x > 0) = mayor THEN RETURN "si"
-  RETURN "no"
+FUNCTION Paridad(n AS INT) AS STRING
+  IF n MOD 2 = 0 THEN RETURN "par"
+  RETURN "impar"
 END FUNCTION
 
 PRINT Max(3, 9)
 PRINT SumaHasta(10000000, 0)
-PRINT ConPredicado(5)
-PRINT ConPredicado(-5, mayor = FALSE)</code></pre>
+PRINT Paridad(4)</code></pre>
         <div class="salida"><b>salida</b><pre>9
-50000005000000
-si
-si</pre></div>
+49999995000000
+par</pre></div>
       </figure>
       <div class="aviso bueno"><b>Cola:</b> una llamada en posición de
       <code>RETURN</code> se convierte en un bucle en el HIR, sin marco de pila.
       Diez millones de iteraciones de <code>SumaHasta</code> con una pila de
       128 KiB no tocan el límite.</div>
-      <p>Las funciones sin valor de retorno se declaran <code>AS VOID</code>.</p>
+      <p>Las funciones sin valor de retorno se declaran <code>AS VOID</code>. Los
+      parámetros pueden llevar valor por defecto (<code>n AS INT = 0</code>), que
+      se usa cuando el punto de llamada no lo da; los argumentos se pasan en
+      orden, sin nombre.</p>
     </section>
 
     <section id="datos" data-t="type registro enum estructura datos campos copia">
@@ -478,7 +478,7 @@ PRINT e.ordinal</code></pre>
         <div class="salida"><b>salida</b><pre>10	cuenta
 10
 SIN_SOCKET
-1</pre></div>
+2</pre></div>
       </figure>
       <p>Un <code>ENUM</code> no admite aritmética: se comparan variantes o se
       convierte con <code>ENUM_A_INT</code> (<code>E0308</code>). Los valores
@@ -516,10 +516,18 @@ DIM p AS Perro
 p.nombre = "Rex"
 p.patas = 4
 p.ladridos = 7
-Describe(p)                 ' legal: a Perro le sobra un campo
-
-DIM x AS Incompatible = p    ' E0301: 'nombre' es STRING en uno e INT en otro</code></pre>
+Describe(p)                 ' legal: a Perro le sobra un campo</code></pre>
         <div class="salida"><b>salida</b><pre>Rex con 4 patas</pre></div>
+      </figure>
+      <p>Si un campo común cambia de tipo, la conversión se rechaza:</p>
+      <figure class="ej">
+        <figcaption><span>no compila</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">TYPE Incompatible
+  nombre AS INT
+END TYPE
+
+DIM x AS Incompatible = p</code></pre>
+        <div class="salida"><b>diagnóstico</b><pre>error[E0301]: se esperaba Incompatible, se encontró Perro</pre></div>
       </figure>
       <p>Cuando el verificador acepta la conversión, la materializa al emitir
       como un literal compuesto que copia los campos comunes, así el C generado
@@ -531,18 +539,18 @@ DIM x AS Incompatible = p    ' E0301: 'nombre' es STRING en uno e INT en otro</c
       <h2>9. Vectores</h2>
       <figure class="ej">
         <figcaption><span>vectores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">DIM a AS FLOAT2 = (3.0, 4.0)
-DIM b AS FLOAT2 = (1.0, 0.0)
+<pre><code class="lang-hixean">DIM a AS vec2 = (3.0, 4.0)
+DIM b AS vec2 = (1.0, 0.0)
 
-PRINT a.x, a.y             ' 3.0  4.0
-PRINT a.xx + a.yy          ' swizzle: 7.0
+PRINT a.x, a.y             ' componentes
+PRINT a.xx + a.yy          ' swizzle: (3,3) + (4,4)
 
-DIM u AS FLOAT2 = NORMALIZED(a)
+DIM u AS vec2 = NORMALIZED(a)
 PRINT DOT(a, u)            ' 1.0
-PRINT CROSS(a, b)          ' (0.0, 1.0)
+PRINT CROSS(a, b)
 
-DIM v AS FLOAT3 = (1, 2, 3) ' los componentes admiten enteros
-PRINT v.zyx</code></pre>
+DIM v AS vec3 = (1, 2, 3)  ' los componentes admiten enteros
+PRINT v.zyx                ' swizzle invertido</code></pre>
         <div class="salida"><b>salida</b><pre>3.0	4.0
 7.0
 1.0
@@ -564,7 +572,12 @@ PRINT v.zyx</code></pre>
       propaga el error hacia arriba.</p>
       <figure class="ej">
         <figcaption><span>resultados.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">FUNCTION Doble(x AS INT) AS Result&lt;INT, STRING&gt;
+<pre><code class="lang-hixean">FUNCTION Pedir(n AS INT) AS Result&lt;STRING, STRING&gt;
+  IF n &lt; 0 THEN RETURN Err("nombre negativo")
+  RETURN Ok("Ana")
+END FUNCTION
+
+FUNCTION Doble(x AS INT) AS Result&lt;INT, STRING&gt;
   IF x = 0 THEN RETURN Err("no se puede doblar cero")
   RETURN Ok(x * 2)
 END FUNCTION
@@ -732,27 +745,36 @@ c.veces = 1
 PRINT c.valor
 
 PRINT Max(3, 9)
-PRINT Max(1.5, 0.5)
-PRINT Max("alfa", "beta")</code></pre>
+PRINT Max(1.5, 0.5)</code></pre>
         <div class="salida"><b>salida</b><pre>7
 9
-1.5
-alfa</pre></div>
+1.5</pre></div>
       </figure>
       <p>Una llamada que deduce dos tipos distintos para el mismo parámetro es
-      un error (<code>E0703</code>). Con <code>DONDE T: Trait</code> se exige
+      un error (<code>E0703</code>), y comparar dos <code>STRING</code> con
+      <code>&gt;</code> tampoco: para ordenar cadenas hay que hacerlo con un
+      <code>TRAIT</code>, como en la sección siguiente. Con <code>DONDE T: Trait</code> se exige
       que el tipo implemente un trait, y el cuerpo de la función puede llamar a
       sus métodos:</p>
       <figure class="ej">
         <figcaption><span>donde.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">FUNCTION MaxConTrait&lt;T&gt;(a AS T, b AS T) AS T DONDE T: Compara
+<pre><code class="lang-hixean">TRAIT Compara
+  METODO Mayor(a AS SELF, b AS SELF) AS SELF
+END TRAIT
+
+IMPLEMENTAR INT PARA Compara
+  METODO Mayor(a AS INT, b AS INT) AS INT
+    IF a &gt; b THEN RETURN a
+    RETURN b
+  END METHOD
+END IMPLEMENTAR
+
+FUNCTION MaxConTrait&lt;T&gt;(a AS T, b AS T) AS T DONDE T: Compara
   RETURN Compara.Mayor(a, b)
 END FUNCTION
 
-PRINT MaxConTrait(3, 9)
-PRINT MaxConTrait("alfa", "beta")</code></pre>
-        <div class="salida"><b>salida</b><pre>9
-alfa</pre></div>
+PRINT MaxConTrait(3, 9)</code></pre>
+        <div class="salida"><b>salida</b><pre>9</pre></div>
       </figure>
     </section>
 
@@ -804,7 +826,8 @@ int</pre></div>
       <h2>15. Iteradores y funciones anónimas</h2>
       <p>Los iteradores son perezosos: <code>MAP</code>, <code>FILTER</code> y
       <code>TAKE</code> componen sin materializar nada. <code>TAKE</code> sobre
-      mil elementos consume tres.</p>
+      mil elementos consume tres. <code>Rango(a, b)</code> es
+      <em>[a, b)</em>: incluye el primero y excluye el último.</p>
       <figure class="ej">
         <figcaption><span>iteradores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">FUNCTION Doble(n AS INT) AS INT
@@ -846,8 +869,7 @@ NEXT z</code></pre>
 16
 17
 18
-19
-20</pre></div>
+19</pre></div>
       </figure>
       <p>Una función anónima se escribe <code>FUNC(parámetros) AS tipo … END</code>
       y sirve donde el iterador espera una función:</p>
@@ -862,9 +884,7 @@ END).Take(3)
 NEXT x</code></pre>
         <div class="salida"><b>salida</b><pre>25
 36
-49
-64
-81</pre></div>
+49</pre></div>
       </figure>
       <p><code>MAP</code> puede cambiar el tipo del elemento
       (<code>Rango(1,3).Map(Texto)</code> produce cadenas); <code>FILTER</code>
@@ -1119,25 +1139,13 @@ PRINT "gana {mejor.clave} con {mejor.veces}"</code></pre>
       <h4>Contar palabras</h4>
       <figure class="ej">
         <figcaption><span>palabras.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
-<pre><code class="lang-hixean">FUNCTION Normalizar(palabra AS STRING) AS STRING
-  RETURN Lower(Trim(palabra))
-END FUNCTION
-
-"Trim y Lower son metodos de STRING, no funciones libres"
-FUNCTION Lower(s AS STRING) AS STRING
-  RETURN s.Lower()
-END FUNCTION
-
-FUNCTION Trim(s AS STRING) AS STRING
-  RETURN s.Trim()
-END FUNCTION
-
-DIM frase AS STRING = "el gato y el perro"
+<pre><code class="lang-hixean">DIM frase AS STRING = "  el gato y el gato  "
+DIM limpia AS STRING = frase.Trim().Lower()
 DIM palabra AS STRING = ""
 DIM cuenta AS INT = 0
 
-FOR i = 0 TO frase.Len() - 1
-  DIM c AS STRING = frase.At(i)
+FOR i = 0 TO limpia.Len() - 1
+  DIM c AS STRING = limpia.At(i)
   IF c = " " THEN
     IF palabra.Len() &gt; 0 THEN
       cuenta = cuenta + 1
@@ -1148,7 +1156,8 @@ FOR i = 0 TO frase.Len() - 1
   END IF
 NEXT i
 IF palabra.Len() &gt; 0 THEN cuenta = cuenta + 1
-PRINT cuenta</code></pre>
+PRINT "palabras: {cuenta}"</code></pre>
+        <div class="salida"><b>salida</b><pre>palabras: 5</pre></div>
       </figure>
       <h4>Suma con acumulador y TCO</h4>
       <figure class="ej">
@@ -1159,13 +1168,13 @@ PRINT cuenta</code></pre>
 END FUNCTION
 
 PRINT SumaHasta(10000000, 0)</code></pre>
-        <div class="salida"><b>salida</b><pre>50000005000000</pre></div>
+        <div class="salida"><b>salida</b><pre>49999995000000</pre></div>
       </figure>
       <h4>Buscar y cortar</h4>
       <figure class="ej">
         <figcaption><span>texto.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">DIM ruta AS STRING = "mio/juego/hola.txt"
-DIM corte AS INT = ruta.Slice(0, 3)
+DIM corte AS STRING = ruta.Slice(0, 3)
 DIM partes AS INT = 1
 FOR i = 0 TO ruta.Len() - 1
   IF ruta.At(i) = "/" THEN partes = partes + 1

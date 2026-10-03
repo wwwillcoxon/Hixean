@@ -108,3 +108,22 @@ if ./build/hxc build --kit build/sin_net.hxk -o build/red2 >/dev/null 2>&1; then
   exit 1
 fi
 echo "ok     CAPABILITY net exigido por el manifiesto"
+
+echo "== diagnosticos que antes llegaban a cc =="
+printf 'DIM a AS INT = 1\nDIM a AS INT = 2\nPRINT a\n' > build/redeclara.hxe
+if ./build/hxc check build/redeclara.hxe 2>&1 | grep -q "E0315"; then
+  echo "ok     dos DIM del mismo nombre en un ambito con E0315"
+else
+  echo "FALLO: la redeclaracion deberia dar E0315"; exit 1
+fi
+printf 'DIM x AS INT = 1\nIF x = 1 THEN\n  DIM x AS INT = 2\n  PRINT x\nEND IF\nPRINT x\n' > build/sombra.hxe
+./build/hxc run build/sombra.hxe > build/sombra.out 2>/dev/null
+printf '2\n1\n' > build/sombra.expected
+diff -u build/sombra.expected build/sombra.out >/dev/null \
+  && echo "ok     sombrear en un ambito mas hondo si se permite"
+printf 'DIM w AS vec2 = (1.0, 0.0)\nPRINT DOT(w, w)\n' > build/vec2dot.hxe
+if ./build/hxc check build/vec2dot.hxe 2>&1 | grep -q "E0402"; then
+  echo "ok     DOT sobre un vec2 da E0402 y no C invalido"
+else
+  echo "FALLO: DOT con vec2 deberia dar E0402"; exit 1
+fi

@@ -1423,6 +1423,15 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, ")");
                 break;
             }
+            if ((x->bin.op == OP_EQ || x->bin.op == OP_NE) && x->bin.lhs &&
+                x->bin.lhs->ty && x->bin.lhs->ty->kind == TY_STRING) {
+                hx_buf_str(b, "hx_str_eq(");
+                hx_expr_str(e, x->bin.lhs, 0, b);
+                hx_buf_str(b, ", ");
+                hx_expr_str(e, x->bin.rhs, 0, b);
+                hx_buf_str(b, x->bin.op == OP_NE ? ") == 0" : ")");
+                break;
+            }
             const char *cop = o;
             if (x->bin.op == OP_ADDW) cop = "+";
             if (x->bin.op == OP_SUBW) cop = "-";
