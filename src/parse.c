@@ -112,6 +112,20 @@ static void hx_expect_kw(HxParser *p, HxTokKind k, const char *what) {
     p->panicking = 1;
 }
 
+/* Un nombre es un identificador: si no lo hay, se dice con E0202 y se devuelve
+   un nombreAnonimo en vez de NULL. Un NULL aqui llegaba al verificador y lo
+   hacia saltar en strlen: el fuzzer lo encontró con un TYPE sin nombre. */
+static HxSym hx_take_ident(HxParser *p, const char *que) {
+    if (hx_is_kw(p, TK_IDENT) || hx_tok_is_kw(hx_cur(p)->kind)) {
+        HxSym sym = hx_cur(p)->sym;
+        hx_bump(p);
+        return sym ? sym : hx_intern_cstr(p->intern, "_anonimo");
+    }
+    hx_error(p->diags, hx_cur(p)->span, "E0202", "se esperaba %s", que);
+    p->panicking = 1;
+    return hx_intern_cstr(p->intern, "_anonimo");
+}
+
 static void hx_skip_nl(HxParser *p) {
     while (hx_is_kw(p, TK_NL)) hx_bump(p);
 }
@@ -896,11 +910,11 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
                 hx_error(p->diags, s->for_.var_span, "E0206",
                          "se esperaba el nombre de la variable de bucle");
                 p->panicking = 1;
+                s->for_.var = hx_intern_cstr(p->intern, "_anonimo");
                 HX_VEC_PUSH(*out, *s);
                 return;
             }
-            s->for_.var = hx_cur(p)->sym;
-            hx_bump(p);
+            s->for_.var = hx_take_ident(p, "el nombre de la variable de bucle");
             if (hx_eat_type_marker(p)) hx_type(p);
             if (hx_is_kw(p, TK_KW_IN)) {
                 /* FOR x IN expr: recorrido perezoso de un ITER<T> */
@@ -942,8 +956,7 @@ static void hx_stmt_into(HxParser *p, HxStmtVec *out) {
             hx_bump(p);
             HxStmt *s = hx_stmt_new(p, ST_ARENA, sp);
             if (hx_is_kw(p, TK_IDENT)) {
-                s->arena.name = hx_cur(p)->sym;
-                hx_bump(p);
+                s->arena.name = hx_take_ident(p, "el nombre de la arena");
             }
             hx_skip_nl(p);
             hx_block_body(p, &s->arena.body);
@@ -1139,8 +1152,7 @@ static void hx_parse_generic(HxParser *p, HxSym *out, int *n, int max) {
             p->pos = save;
             return;
         }
-        HxSym tname = hx_cur(p)->sym;
-        hx_bump(p);
+        HxSym tname = hx_take_ident(p, "un parametro de tipo");
         if (*n < max) out[(*n)++] = tname;
         if (hx_eat_punct(p, ",")) continue;
         if (hx_is_punct(p, ">")) {
@@ -1238,8 +1250,7 @@ static void hx_parse_type(HxParser *p, HxTypeDecl *t, int is_export) {
     t->is_export = is_export;
     t->span = hx_cur(p)->span;
     hx_bump(p);
-    t->name = hx_cur(p)->sym;
-    hx_bump(p);
+    t->name = hx_take_ident(p, "el nombre del TYPE");
     hx_parse_generic(p, t->tparams, &t->n_tparams, HX_MAX_TPARAMS);
     hx_skip_nl(p);
     while (!hx_is_kw(p, TK_KW_END) && !hx_is_kw(p, TK_EOF)) {
@@ -1251,8 +1262,7 @@ static void hx_parse_type(HxParser *p, HxTypeDecl *t, int is_export) {
         memset(&f, 0, sizeof(f));
         if (hx_eat_kw(p, TK_KW_UNIQUE)) f.is_unique = 1;
         f.span = hx_cur(p)->span;
-        f.name = hx_cur(p)->sym;
-        hx_bump(p);
+        f.name = hx_take_ident(p, "el nombre de un campo");
         if (!hx_eat_type_marker(p)) hx_expect_punct(p, ":");
         f.ty = hx_type(p);
         HX_VEC_PUSH(t->fields, f);

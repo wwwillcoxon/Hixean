@@ -134,6 +134,15 @@ static void hx_scope_push(HxChecker *c) {
 
 static void hx_scope_pop(HxChecker *c) { c->scope = c->scope->parent; }
 
+/* Doblar un nombre nunca debe caer: el parser ya pone un nombreAnonimo cuando
+   no hay identificador, pero una unidad .hxc manipulada tambien puede llegar
+   hasta aqui. */
+static HxSym hx_fold(HxChecker *c, HxSym sym) {
+    const char *s = hx_sym_str(sym);
+    if (!s) s = "_anonimo";
+    return hx_intern_fold_ascii(c->intern, s, strlen(s));
+}
+
 /* un nombre ya declarado en ESTE ambito: sombra legitima en uno mas hondo */
 static int hx_declared_here(HxChecker *c, HxSym name) {
     for (int i = 0; i < c->scope->syms.len; i++)
@@ -164,8 +173,7 @@ static void hx_mark_borrow(HxChecker *c, HxExpr *arg, HxSpan sp) {
                      "si necesitas arithmetic cruda usa PTR", NULL);
         return;
     }
-    HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(arg->path.parts.data[0].name),
-                                         strlen(hx_sym_str(arg->path.parts.data[0].name)));
+    HxSym folded = hx_fold(c, arg->path.parts.data[0].name);
     HxSymEntry *se = hx_lookup_in_scope(c, folded);
     if (!se) return;
     if (se->borrowed) {
@@ -1634,8 +1642,7 @@ static void hx_decl_locals(HxChecker *c, HxStmtVec *body) {
                 t = s->dim.init->ty;
             }
             s->dim.ty = t;
-            HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->dim.name),
-                                                 strlen(hx_sym_str(s->dim.name)));
+            HxSym folded = hx_fold(c, s->dim.name);
             if (hx_declared_here(c, folded))
                 hx_error(c->diags, s->dim.name_span, "E0315",
                          "'%s' ya está declarado en este ámbito", hx_sym_str(s->dim.name));
@@ -1648,7 +1655,7 @@ static void hx_decl_locals(HxChecker *c, HxStmtVec *body) {
 static void hx_check_body(HxChecker *c, HxStmtVec *body);
 
 static void hx_define_pattern_binding(HxChecker *c, HxSym name, HxTy *ty, HxSpan sp) {
-    HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(name), strlen(hx_sym_str(name)));
+    HxSym folded = hx_fold(c, name);
     hx_define(c, folded, ty, SK_VAR, sp);
 }
 
@@ -1749,8 +1756,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             }
             if (!t) t = hx_ty_builtin(c->arena, TY_INT);
             s->dim.ty = t;
-            HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->dim.name),
-                                                 strlen(hx_sym_str(s->dim.name)));
+            HxSym folded = hx_fold(c, s->dim.name);
             if (!c->body_hoisted && hx_declared_here(c, folded)) {
                 hx_error(c->diags, s->dim.name_span, "E0315",
                          "'%s' ya está declarado en este ámbito", hx_sym_str(s->dim.name));
@@ -1772,8 +1778,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                              "CONST sólo admite literales y operaciones constantes");
             }
             s->konst.ty = s->konst.value ? s->konst.value->ty : NULL;
-            HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->konst.name),
-                                                 strlen(hx_sym_str(s->konst.name)));
+            HxSym folded = hx_fold(c, s->konst.name);
             if (!c->body_hoisted && hx_declared_here(c, folded)) {
                 hx_error(c->diags, s->konst.name_span, "E0315",
                          "'%s' ya está declarado en este ámbito", hx_sym_str(s->konst.name));
@@ -1848,8 +1853,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
             if (s->for_.step) s->for_.step = hx_expr_check(c, s->for_.step);
             HxTy *vt = hx_ty_builtin(c->arena, TY_INT);
             if (s->for_.start && s->for_.start->ty) vt = s->for_.start->ty;
-            HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(s->for_.var),
-                                                 strlen(hx_sym_str(s->for_.var)));
+            HxSym folded = hx_fold(c, s->for_.var);
             hx_define(c, folded, vt, SK_VAR, s->for_.var_span);
             c->loop_depth++;
             c->loop_defer_depth = c->defer_depth;
@@ -1885,8 +1889,7 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 hx_error(c->diags, s->span, "E0712",
                          "FOR ... IN espera un iterador construido con Rango");
             if (!elem) elem = hx_ty_builtin(c->arena, TY_UNKNOWN);
-            hx_define(c, hx_intern_fold_ascii(c->intern, hx_sym_str(s->forin_.var),
-                                              strlen(hx_sym_str(s->forin_.var))),
+            hx_define(c, hx_fold(c, s->forin_.var),
                       elem, SK_VAR, s->forin_.var_span);
             int saved_loop = c->loop_depth;
             int saved_defer = c->defer_depth;
@@ -2058,8 +2061,7 @@ static void hx_check_func(HxChecker *c, struct HxFunc *f) {
             t = prm->default_value->ty;
         }
         prm->ty = t ? t : hx_ty_builtin(c->arena, TY_INT);
-        HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(prm->name),
-                                             strlen(hx_sym_str(prm->name)));
+        HxSym folded = hx_fold(c, prm->name);
         hx_define(c, folded, prm->ty, SK_VAR, prm->span);
     }
     c->ret_ty = f->ret;
@@ -2081,7 +2083,7 @@ static void hx_define_module_scope(HxChecker *c, HxModule *mod) {
         const char *dot = strrchr(ip, '.');
         const char *base = dot ? dot + 1 : ip;
         HxSym as = im->alias ? im->alias : hx_intern_cstr(c->intern, base);
-        hx_define(c, hx_intern_fold_ascii(c->intern, hx_sym_str(as), strlen(hx_sym_str(as))),
+        hx_define(c, hx_fold(c, as),
                   hx_ty_builtin(c->arena, TY_VOID), SK_MODULE, im->span);
     }
 }
@@ -2089,18 +2091,15 @@ static void hx_define_module_scope(HxChecker *c, HxModule *mod) {
 static void hx_collect_names(HxChecker *c, HxModule *mod) {
     HxArena *a = c->arena;
     for (int i = 0; i < mod->types.len; i++) {
-        HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(mod->types.data[i].name),
-                                             strlen(hx_sym_str(mod->types.data[i].name)));
+        HxSym folded = hx_fold(c, mod->types.data[i].name);
         hx_define(c, folded, NULL, SK_TYPE, mod->types.data[i].span);
     }
     for (int i = 0; i < mod->funcs.len; i++) {
-        HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(mod->funcs.data[i].name),
-                                             strlen(hx_sym_str(mod->funcs.data[i].name)));
+        HxSym folded = hx_fold(c, mod->funcs.data[i].name);
         hx_define(c, folded, mod->funcs.data[i].ret, SK_FUNC, mod->funcs.data[i].span);
     }
     for (int i = 0; i < mod->consts.len; i++) {
-        HxSym folded = hx_intern_fold_ascii(c->intern, hx_sym_str(mod->consts.data[i].name),
-                                             strlen(hx_sym_str(mod->consts.data[i].name)));
+        HxSym folded = hx_fold(c, mod->consts.data[i].name);
         hx_define(c, folded, mod->consts.data[i].ty, SK_CONST, mod->consts.data[i].span);
     }
     (void)a;

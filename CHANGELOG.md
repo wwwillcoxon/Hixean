@@ -47,7 +47,11 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   `NET_CLOSE`).
 - **Herramientas**: `hxc run`, `build`, `test`, `check`, `size`, `kit`,
   `query`, `version`; perfiles `freestanding` y `libc`; compilación paralela
-  con `--jobs`.
+  con `--jobs`; `hxc check --json` y `hxc version --json` para el editor, el
+  LSP y el CI.
+- **Editores**: extensión de VS Code en `editors/vscode/` con resaltado,
+  quince plantillas, comandos de compilación y prueba, y el panel de problemas
+  alimentado por los diagnósticos de `hxc`.
 - **Documentación**: `docs/grammar.md` (gramática completa con códigos de
   diagnóstico), `docs/manual.html` (manual interactivo con búsqueda, tema
   oscuro y tabla de errores filtrable) y trece ADR en `docs/adr/`.
@@ -73,6 +77,10 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   cascada de errores falsos; ahora es `E0103`.
 - El listado de directorios de `hxc query` usaba `dirent.h`, que no compila
   en Windows; ahora hay dos implementaciones.
+- Un `TYPE` sin nombre (por ejemplo un archivo que empieza con basura y acaba
+  en `END TYPE`) llegaba al verificador con el nombre a NULL y lo hacía saltar
+  en `strlen`. El fuzzer lo encontró; ahora es `E0202` con un nombre anónimo
+  interno. Lo mismo con la variable de un `FOR`, que daba `E0206`.
 
 ### Notas
 

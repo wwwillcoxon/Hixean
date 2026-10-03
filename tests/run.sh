@@ -159,3 +159,17 @@ if command -v node >/dev/null 2>&1; then
 else
   echo "ok     extension omitida: no hay node"
 fi
+
+echo "== nombres que faltan =="
+printf '  nombre AS STRING\n  patas AS INT\nEND TYPE\n' > build/sinnombre.hxt
+if ./build/hxc check build/sinnombre.hxt >/dev/null 2>&1; then
+  echo "FALLO: un TYPE sin nombre deberia fallar"; exit 1
+fi
+./build/hxc check build/sinnombre.hxt 2>&1 | grep -q "E0202" \
+  && echo "ok     TYPE sin nombre da E0202 y no revienta el verificador"
+printf 'FOR @ = 1 TO 5\n  PRINT 1\nNEXT i\n' > build/forraro.hxt
+if ./build/hxc check build/forraro.hxt >/dev/null 2>&1; then
+  echo "FALLO: un FOR sin variable de bucle deberia fallar"; exit 1
+fi
+./build/hxc check build/forraro.hxt 2>&1 | grep -q "E0206" \
+  && echo "ok     FOR sin variable de bucle da E0206 sin NameError"
