@@ -307,8 +307,10 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report);
 static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *what) {
     if (!from || !to) return 1;
     if (from->kind == TY_UNKNOWN || to->kind == TY_UNKNOWN) return 1;
-    /* MAYBE<T> acepta un T: envolver es siempre correcto */
-    if (to->kind == TY_MAYBE && !hx_ty_equal(from, to)) return 1;
+    /* MAYBE<T> acepta un T: envolver es siempre correcto. Pero un MAYBE<U> no
+       es un T, asi que MAYBE<U> -> MAYBE<T> no se acepta: detras de un MAYBE hay
+       que mirar (E0301) */
+    if (to->kind == TY_MAYBE && from->kind != TY_MAYBE) return 1;
     /* un registro con mas campos sirve donde se pide uno con menos */
     if (hx_ty_subtype(from, to)) return 1;
     /* el literal 0 es el puntero nulo */

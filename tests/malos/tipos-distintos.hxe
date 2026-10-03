@@ -1,0 +1,16 @@
+"MAYBE e ITER de tipos distintos no son el mismo tipo: si el verificador los
+  confundiera, aqui pasaria algo"
+DIM a AS MAYBE INT = 1
+DIM b AS MAYBE STRING = "uno"
+
+"MAYBE INT donde se espera MAYBE STRING"
+DIM texto AS MAYBE STRING = a
+PRINT 1
+
+"MAYBE STRING donde se espera MAYBE INT"
+DIM numero AS MAYBE INT = b
+PRINT 2
+
+"Y un MAYBE de MAYBE tampoco: el de dentro no es un T"
+DIM doble AS MAYBE MAYBE INT = a
+PRINT 3

@@ -171,7 +171,8 @@ END FUNCTION
 
 - **Envolver es automático.** Un `T` donde se espera `MAYBE T` se convierte
   solo; lo contrario no: un `MAYBE T` no se desempaqueta por sorpresa, y
-  detrás de un `MAYBE` siempre hay que decidir (`E0301`).
+  detrás de un `MAYBE` siempre hay que decidir (`E0301`). Tampoco vale un
+  `MAYBE U` donde se espera `MAYBE T`: hay que decidir cuál de los dos.
 - **Tres métodos, ningún operador nuevo.** `m.IsNil` es un miembro sin
   paréntesis, `m.Or(x)` devuelve el valor o el reemplazo, y `m.Map(f)` aplica
   `f` sólo si hay valor y devuelve otro `MAYBE`. No hay `??`, no hay `IS`: el

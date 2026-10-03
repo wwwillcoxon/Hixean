@@ -238,6 +238,11 @@ fi
 ./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0212" \
   && echo "ok     UNIQUE da E0212 en vez de ignorarse" \
   || { echo "FALLO: UNIQUE"; exit 1; }
+# dos MAYBE de tipos distintos no son intercambiables
+./build/hxc check tests/malos/tipos-distintos.hxe 2>&1 | grep -q "se esperaba MAYBE STRING, se encontró MAYBE INT" \
+  && ./build/hxc check tests/malos/tipos-distintos.hxe 2>&1 | grep -q "se esperaba MAYBE INT, se encontró MAYBE STRING" \
+  && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
+  || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
 ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0301" \
   && ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0211" \
