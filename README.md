@@ -21,6 +21,50 @@ documento paginado con el diálogo del navegador.
 make manual
 ```
 
+## Distribución
+
+El compilador y los paquetes van por caminos distintos, y conviene no
+confundirlos: el primero se instala, el segundo se consulta.
+
+### El compilador
+
+La fuente de verdad es la **release de GitHub**: `git tag v0.1.0` dispara
+`.github/workflows/release.yml`, que compila y prueba las seis combinaciones
+(linux x64/arm64, macos x64/arm64, windows x64/arm64), adjunta un tarball por
+plataforma y calcula `SHA256SUMS` sobre lo que subió cada runner.
+
+```
+curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
+hxc version
+```
+
+El script verifica el checksum y **aborta sin instalar nada** si no coincide.
+En Windows, `tools\install.ps1` en PowerShell. También hay fórmula de Homebrew
+en `packaging/homebrew/` y manifiesto de winget en `packaging/winget/`; los dos
+dejan el `sha256` marcado para copiarlo de la release en vez de escribirlo a
+mano.
+
+### Los paquetes
+
+```
+$ hxc pack aritmetica.hxk --out registro
+aritmetica 1.0.0  ->  registro/aritmetica/aritmetica.hxk (1 modulos)
+
+$ hxc install aritmetica --registry registro --into ~/.hixean/paquetes
+$ hxc build --kit ~/.hixean/paquetes/aritmetica/aritmetica.hxk \
+      --path ~/.hixean/paquetes -o aritmetica
+```
+
+Un registro es **un directorio**, y por tanto también un repositorio git
+clonado o cualquier servidor estático: no hay servidor central, ni cuentas, ni
+TLS dentro del compilador. La misma consulta `.hxq` con `--path` sirve para
+todos los casos, incluido el de buscar en el directorio del proyecto.
+
+Lo que todavía **no** hay, y conviene decir: firma de paquetes, semver completo
+en las dependencias, resolución automática de conflictos y un índice central.
+El capítulo 22 del manual ([`docs/manual.html`](docs/manual.html)) lo explica con
+los comandos y los códigos de diagnóstico.
+
 ## Editores
 
 `editors/vscode/` es una extensión de VS Code con resaltado, plantillas y los
@@ -50,6 +94,7 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M11 | capacidades: `ENABLE net` con sockets por syscall directa y puerta `CAPABILITY` del manifiesto | ida y vuelta UDP por loopback |
 | M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen; manual HTML interactivo | consulta por `PROVIDES`+`VERSION` acierta y filtra |
 | M13 | 0.1.0: licencia, changelog, política de versiones, `hxc check --json`, extensión de VS Code, `-Werror`, sanitizers y fuzzer | el corpus pasa instrumentado y 3 000 mutaciones no matan al front-end |
+| M14 | distribución: releases con SHA256, `install.sh`/`install.ps1`, Homebrew, winget, y registro de paquetes con `hxc pack`/`hxc install` | el paquete instalado se construye y ejecuta desde el registro |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga

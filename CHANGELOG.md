@@ -52,6 +52,15 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
 - **Editores**: extensión de VS Code en `editors/vscode/` con resaltado,
   quince plantillas, comandos de compilación y prueba, y el panel de problemas
   alimentado por los diagnósticos de `hxc`.
+- **Distribución del compilador**: `make dist` produce
+  `hixean-<versión>-<plataforma>.tar.gz` con su SHA256; la CI publica una
+  release por etiqueta con las seis combinaciones de sistema y arquitectura;
+  `tools/install.sh` y `tools/install.ps1` instalan verificando el checksum;
+  hay fórmula de Homebrew y manifiesto de winget.
+- **Distribución de paquetes**: `hxc pack` publica un paquete en un registro
+  copiando su manifiesto y sus módulos, y `hxc install` lo trae desde el
+  registro. El registro es un directorio, así que puede ser un repositorio git
+  clonado; las consultas `.hxq` lo recorren sin cambiar de formato.
 - **Documentación**: `docs/grammar.md` (gramática completa con códigos de
   diagnóstico), `docs/manual.html` (manual interactivo con búsqueda, tema
   oscuro y tabla de errores filtrable) y trece ADR en `docs/adr/`.

@@ -1079,7 +1079,9 @@ hxc query  &lt;archivo.hxq&gt; [--path DIR]      busca paquetes por lo que ofrec
 hxc test   &lt;archivo.hxt&gt;...               ejecuta el corpus
 hxc check  &lt;archivo.hxe&gt;                   sólo verifica
 hxc size   &lt;binario&gt;                       comprueba la puerta de 12 KiB
-hxc version</code></pre>
+hxc pack   &lt;archivo.hxk&gt; [--out DIR]        publica un paquete en un registro
+hxc install &lt;nombre&gt; [--registry DIR] [--into DIR]
+hxc version [--json]                            la versión, para herramientas</code></pre>
       </figure>
       <p><code>hxc build</code> acepta <code>--jobs N</code> para compilar los
       módulos en paralelo. <code>--keep-c</code> deja el C generado en
@@ -1126,10 +1128,10 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
       <table id="tabla-errores">
         <tr><th>Código</th><th>Qué significa</th></tr>
         <tr class="fila" data-codigo="E0101"><td><code>E0101</code></td><td>literal entero inválido · literal flotante inválido · literal numérico inválido</td></tr>
-        <tr class="fila" data-codigo="E0102"><td><code>E0102</code></td><td>carácter inesperado &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0102"><td><code>E0102</code></td><td>carácter inesperado '…'</td></tr>
         <tr class="fila" data-codigo="E0103"><td><code>E0103</code></td><td>cadena sin cerrar hasta el final del archivo</td></tr>
-        <tr class="fila" data-codigo="E0201"><td><code>E0201</code></td><td>en un TRAIT sólo se admiten METODO · en una implementación sólo se admiten METODO · se esperaba &#x27;…&#x27;se encontró … aquí · se esperaba …se encontró … aquí</td></tr>
-        <tr class="fila" data-codigo="E0202"><td><code>E0202</code></td><td>se esperaba un nombre de tipo</td></tr>
+        <tr class="fila" data-codigo="E0201"><td><code>E0201</code></td><td>en un TRAIT sólo se admiten METODO · en una implementación sólo se admiten METODO · se esperaba '…'se encontró … aquí · se esperaba …se encontró … aquí</td></tr>
+        <tr class="fila" data-codigo="E0202"><td><code>E0202</code></td><td>se esperaba un nombre de tipo · se esperaba …</td></tr>
         <tr class="fila" data-codigo="E0203"><td><code>E0203</code></td><td>ITER necesita un tipo de elemento · se esperaba un tipo</td></tr>
         <tr class="fila" data-codigo="E0204"><td><code>E0204</code></td><td>un literal de vector tiene como máximo 4 componentes</td></tr>
         <tr class="fila" data-codigo="E0205"><td><code>E0205</code></td><td>se esperaba una expresión</td></tr>
@@ -1138,70 +1140,173 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
         <tr class="fila" data-codigo="E0208"><td><code>E0208</code></td><td>en un ENUM sólo se admiten variantes · se esperaba el nombre de la función · se esperaba el nombre del ENUM · se esperaba el nombre del METODO · se esperaba el nombre del TRAIT · se esper…</td></tr>
         <tr class="fila" data-codigo="E0209"><td><code>E0209</code></td><td>expresión no asignable · se esperaba el nombre de un parámetro</td></tr>
         <tr class="fila" data-codigo="E0301"><td><code>E0301</code></td><td>REF … espera un … · se esperaba …, se encontró …</td></tr>
-        <tr class="fila" data-codigo="E0302"><td><code>E0302</code></td><td>&#x27;…&#x27; no está exportado por el módulo &#x27;…&#x27;sólo los elementos EXPORT (funciones, constantes, tipos) son visibles al importar</td></tr>
-        <tr class="fila" data-codigo="E0303"><td><code>E0303</code></td><td>&#x27;…&#x27; no tiene miembrosSTRING tiene: …Len IsEmpty Upper Lower Trim Slice At Repeat · &#x27;…&#x27; no tiene un miembro llamado &#x27;…&#x27; · … no tiene una variante llamada &#x27;…&#x27;</td></tr>
-        <tr class="fila" data-codigo="E0304"><td><code>E0304</code></td><td>no se encontró &#x27;…&#x27;las variables deben declararse con DIM antes de usarseDIM … AS INT</td></tr>
-        <tr class="fila" data-codigo="E0305"><td><code>E0305</code></td><td>el divisor de &#x27;…&#x27; es cero y el programa no puede dividirse · interpolación sin cerrar en la cadena · no se encontró la función &#x27;…&#x27;? · una interpolación debe ser un escalar imprimible</td></tr>
-        <tr class="fila" data-codigo="E0306"><td><code>E0306</code></td><td>&#x27;…&#x27; espera exactamente 1 argumentoOkErr · &#x27;…&#x27; espera … argumento(s), recibió … · &#x27;…&#x27; espera …..… argumentos, recibió …firma: FUNCTION …( · TAKE espera 1 argumento · … espera 1 argumento ·…</td></tr>
-        <tr class="fila" data-codigo="E0307"><td><code>E0307</code></td><td>&#x27;++&#x27; requiere dos operandos STRING · &#x27;…&#x27; no admite operandos … y … · &#x27;…&#x27; no está definido entre … y … · AND, OR y XOR requieren operandos BOOL · NOT requiere un operando BOOL · no se pued…</td></tr>
-        <tr class="fila" data-codigo="E0308"><td><code>E0308</code></td><td>tipo desconocido &#x27;…&#x27;los tipos incorporados son BOOL INT I64 FLOAT STRING DURATION · un ENUM no admite aritmética; compara variantes o conviértelo con ENUM_A_INT</td></tr>
-        <tr class="fila" data-codigo="E0309"><td><code>E0309</code></td><td>&#x27;+&#x27; no concatena cadenas; usa &#x27;++&#x27; para STRING · el error de un Result debe ser STRING en esta versión</td></tr>
+        <tr class="fila" data-codigo="E0302"><td><code>E0302</code></td><td>'…' no está exportado por el módulo '…'sólo los elementos EXPORT (funciones, constantes, tipos) son visibles al importar</td></tr>
+        <tr class="fila" data-codigo="E0303"><td><code>E0303</code></td><td>'…' no tiene miembrosSTRING tiene: …Len IsEmpty Upper Lower Trim Slice At Repeat · '…' no tiene un miembro llamado '…' · … no tiene una variante llamada '…'</td></tr>
+        <tr class="fila" data-codigo="E0304"><td><code>E0304</code></td><td>no se encontró '…'las variables deben declararse con DIM antes de usarseDIM … AS INT</td></tr>
+        <tr class="fila" data-codigo="E0305"><td><code>E0305</code></td><td>el divisor de '…' es cero y el programa no puede dividirse · interpolación sin cerrar en la cadena · no se encontró la función '…'? · una interpolación debe ser un escalar imprimible</td></tr>
+        <tr class="fila" data-codigo="E0306"><td><code>E0306</code></td><td>'…' espera exactamente 1 argumentoOkErr · '…' espera … argumento(s), recibió … · '…' espera …..… argumentos, recibió …firma: FUNCTION …( · TAKE espera 1 argumento · … espera 1 argumento ·…</td></tr>
+        <tr class="fila" data-codigo="E0307"><td><code>E0307</code></td><td>'++' requiere dos operandos STRING · '…' no admite operandos … y … · '…' no está definido entre … y … · AND, OR y XOR requieren operandos BOOL · NOT requiere un operando BOOL · no se pued…</td></tr>
+        <tr class="fila" data-codigo="E0308"><td><code>E0308</code></td><td>tipo desconocido '…'los tipos incorporados son BOOL INT I64 FLOAT STRING DURATION · un ENUM no admite aritmética; compara variantes o conviértelo con ENUM_A_INT</td></tr>
+        <tr class="fila" data-codigo="E0309"><td><code>E0309</code></td><td>'+' no concatena cadenas; usa '++' para STRING · el error de un Result debe ser STRING en esta versión</td></tr>
         <tr class="fila" data-codigo="E0310"><td><code>E0310</code></td><td>CONST requiere un valor inicial · CONST sólo admite literales y operaciones constantes · un CONST de cadena tiene que ser un literal o una concatenacion de literales</td></tr>
         <tr class="fila" data-codigo="E0311"><td><code>E0311</code></td><td>PRINT no admite valores de ese tipo</td></tr>
         <tr class="fila" data-codigo="E0312"><td><code>E0312</code></td><td>la condición de IF debe ser BOOL · la condición de WHILE debe ser BOOL</td></tr>
         <tr class="fila" data-codigo="E0313"><td><code>E0313</code></td><td>BREAK y CONTINUE sólo pueden aparecer dentro de un bucle</td></tr>
         <tr class="fila" data-codigo="E0314"><td><code>E0314</code></td><td>el código de salida debe ser INT</td></tr>
-        <tr class="fila" data-codigo="E0315"><td><code>E0315</code></td><td>&#x27;…&#x27; ya está declarado en este ámbito</td></tr>
+        <tr class="fila" data-codigo="E0315"><td><code>E0315</code></td><td>'…' ya está declarado en este ámbito</td></tr>
         <tr class="fila" data-codigo="E0401"><td><code>E0401</code></td><td>DEFER requiere una sentencia</td></tr>
-        <tr class="fila" data-codigo="E0402"><td><code>E0402</code></td><td>&#x27;…&#x27; espera un vector · &#x27;…&#x27; espera un vector de … componentes · &#x27;…&#x27; no es un componente o swizzle válido aquí · &#x27;…&#x27; no está definido entre … y … · un literal de vector sólo admite FLOAT o INT</td></tr>
-        <tr class="fila" data-codigo="E0403"><td><code>E0403</code></td><td>&#x27;?&#x27; sólo puede aparecer como valor completo de una asignación, DIM o RETURN · &#x27;?&#x27; sólo puede ser el valor completo de una asignación, DIM o RETURN</td></tr>
-        <tr class="fila" data-codigo="E0404"><td><code>E0404</code></td><td>&#x27;?&#x27; sólo se aplica a un valor de tipo Result</td></tr>
+        <tr class="fila" data-codigo="E0402"><td><code>E0402</code></td><td>'…' espera un vector · '…' espera un vector de … componentes · '…' no es un componente o swizzle válido aquí · '…' no está definido entre … y … · un literal de vector sólo admite FLOAT o INT</td></tr>
+        <tr class="fila" data-codigo="E0403"><td><code>E0403</code></td><td>'?' sólo puede aparecer como valor completo de una asignación, DIM o RETURN · '?' sólo puede ser el valor completo de una asignación, DIM o RETURN</td></tr>
+        <tr class="fila" data-codigo="E0404"><td><code>E0404</code></td><td>'?' sólo se aplica a un valor de tipo Result</td></tr>
         <tr class="fila" data-codigo="E0405"><td><code>E0405</code></td><td>MATCH exige CASE ELSE o cubrir todos los casos de Ok y Err</td></tr>
         <tr class="fila" data-codigo="E0406"><td><code>E0406</code></td><td>el patrón no puede ser … aquí</td></tr>
-        <tr class="fila" data-codigo="E0407"><td><code>E0407</code></td><td>&#x27;…&#x27; pertenece a una arena que ya terminóla memoria de una ARENA se libera al salir del bloquecopia el valor fuera del bloque o devuelve un Result · BREAK o CONTINUE no puede saltar por en…</td></tr>
-        <tr class="fila" data-codigo="E0408"><td><code>E0408</code></td><td>&#x27;…&#x27; ya está prestadouna variable se presta a lo sumo una vez por ambito (unicidad) · un REF sólo puede tomar prestada una variable con nombresi necesitas arithmetic cruda usa PTR</td></tr>
-        <tr class="fila" data-codigo="E0501"><td><code>E0501</code></td><td>no hay fuente ni unidad .hxc para &#x27;…&#x27;publica la biblioteca con --emit-hxc DIR · no se encontró el módulo &#x27;…&#x27; (busqué ….hxs y ….hxf)las rutas de IMPORT se resuelven relativas al archivo de…</td></tr>
-        <tr class="fila" data-codigo="E0502"><td><code>E0502</code></td><td>&#x27;…&#x27; está declarado más de una vez en &#x27;…&#x27;Hixean no admite sobrecarga de funciones</td></tr>
+        <tr class="fila" data-codigo="E0407"><td><code>E0407</code></td><td>'…' pertenece a una arena que ya terminóla memoria de una ARENA se libera al salir del bloquecopia el valor fuera del bloque o devuelve un Result · BREAK o CONTINUE no puede saltar por en…</td></tr>
+        <tr class="fila" data-codigo="E0408"><td><code>E0408</code></td><td>'…' ya está prestadouna variable se presta a lo sumo una vez por ambito (unicidad) · un REF sólo puede tomar prestada una variable con nombresi necesitas arithmetic cruda usa PTR</td></tr>
+        <tr class="fila" data-codigo="E0501"><td><code>E0501</code></td><td>no hay fuente ni unidad .hxc para '…'publica la biblioteca con --emit-hxc DIR · no se encontró el módulo '…' (busqué ….hxs y ….hxf)las rutas de IMPORT se resuelven relativas al archivo de…</td></tr>
+        <tr class="fila" data-codigo="E0502"><td><code>E0502</code></td><td>'…' está declarado más de una vez en '…'Hixean no admite sobrecarga de funciones</td></tr>
         <tr class="fila" data-codigo="E0601"><td><code>E0601</code></td><td>… no es una unidad .hxc</td></tr>
         <tr class="fila" data-codigo="E0602"><td><code>E0602</code></td><td>tipo demasiado anidado en … · … declara demasiados tipos · … está dañada o truncada · … está dañada: el hash del cuerpo no coincide · … está truncada: el cuerpo declara …lu bytes y el arc…</td></tr>
         <tr class="fila" data-codigo="E0603"><td><code>E0603</code></td><td>… usa formato …/abi … y esta versión entiende …/…</td></tr>
-        <tr class="fila" data-codigo="E0701"><td><code>E0701</code></td><td>&#x27;…&#x27; espera … parametro(s) de tipo, recibió …</td></tr>
-        <tr class="fila" data-codigo="E0702"><td><code>E0702</code></td><td>no se pudo inferir el tipo de &#x27;…&#x27; en &#x27;…&#x27;</td></tr>
-        <tr class="fila" data-codigo="E0703"><td><code>E0703</code></td><td>&#x27;…&#x27; deduce … y … en la misma llamada</td></tr>
+        <tr class="fila" data-codigo="E0701"><td><code>E0701</code></td><td>'…' espera … parametro(s) de tipo, recibió …</td></tr>
+        <tr class="fila" data-codigo="E0702"><td><code>E0702</code></td><td>no se pudo inferir el tipo de '…' en '…'</td></tr>
+        <tr class="fila" data-codigo="E0703"><td><code>E0703</code></td><td>'…' deduce … y … en la misma llamada</td></tr>
         <tr class="fila" data-codigo="E0704"><td><code>E0704</code></td><td>al instanciar … para …una funcion generica se comprueba una vez por cada combinacion de argumentos de tipo que aparece en el programa</td></tr>
-        <tr class="fila" data-codigo="E0705"><td><code>E0705</code></td><td>&#x27;…&#x27; espera … argumento(s) de tipo</td></tr>
+        <tr class="fila" data-codigo="E0705"><td><code>E0705</code></td><td>'…' espera … argumento(s) de tipo</td></tr>
         <tr class="fila" data-codigo="E0706"><td><code>E0706</code></td><td>SELF sólo se puede usar dentro de una implementación de TRAIT</td></tr>
         <tr class="fila" data-codigo="E0707"><td><code>E0707</code></td><td>… no implementa el METODO ….… · … no implementa ….…</td></tr>
         <tr class="fila" data-codigo="E0710"><td><code>E0710</code></td><td>el metodo … del TRAIT … espera un receptor</td></tr>
-        <tr class="fila" data-codigo="E0711"><td><code>E0711</code></td><td>no existe el TRAIT &#x27;…&#x27;</td></tr>
+        <tr class="fila" data-codigo="E0711"><td><code>E0711</code></td><td>no existe el TRAIT '…'</td></tr>
         <tr class="fila" data-codigo="E0712"><td><code>E0712</code></td><td>FOR ... IN espera un iterador construido con Rango</td></tr>
         <tr class="fila" data-codigo="E0713"><td><code>E0713</code></td><td>… sólo se puede aplicar a un iterador</td></tr>
         <tr class="fila" data-codigo="E0714"><td><code>E0714</code></td><td>… espera el nombre de una funcion</td></tr>
         <tr class="fila" data-codigo="E0715"><td><code>E0715</code></td><td>FILTER espera una funcion de … a BOOL · MAP espera una funcion de un argumento · MAP espera una funcion de …, … toma …</td></tr>
-        <tr class="fila" data-codigo="E0716"><td><code>E0716</code></td><td>&#x27;…&#x27; no es un parametro de tipo de &#x27;…&#x27; · … no implementa el TRAIT … que exige &#x27;…&#x27;</td></tr>
-        <tr class="fila" data-codigo="E0720"><td><code>E0720</code></td><td>&#x27;&amp;&#x27; sólo se puede aplicar a una variable con nombre</td></tr>
-        <tr class="fila" data-codigo="E0721"><td><code>E0721</code></td><td>&#x27;&amp;&#x27; sobre una variable de ARENA: el puntexto quedaria colgado al salir del bloque</td></tr>
-        <tr class="fila" data-codigo="E0722"><td><code>E0722</code></td><td>&#x27;^&#x27; sólo se puede aplicar a un PTR</td></tr>
+        <tr class="fila" data-codigo="E0716"><td><code>E0716</code></td><td>'…' no es un parametro de tipo de '…' · … no implementa el TRAIT … que exige '…'</td></tr>
+        <tr class="fila" data-codigo="E0720"><td><code>E0720</code></td><td>'&amp;' sólo se puede aplicar a una variable con nombre</td></tr>
+        <tr class="fila" data-codigo="E0721"><td><code>E0721</code></td><td>'&amp;' sobre una variable de ARENA: el puntexto quedaria colgado al salir del bloque</td></tr>
+        <tr class="fila" data-codigo="E0722"><td><code>E0722</code></td><td>'^' sólo se puede aplicar a un PTR</td></tr>
         <tr class="fila" data-codigo="E0723"><td><code>E0723</code></td><td>no se puede asignar a un miembro de un valor temporal</td></tr>
         <tr class="fila" data-codigo="E0801"><td><code>E0801</code></td><td>no se encontró el manifiesto …</td></tr>
         <tr class="fila" data-codigo="E0802"><td><code>E0802</code></td><td>falta el nombre del KIT · se esperaba END KIT · un manifiesto empieza con KIT · …: falta END KIT</td></tr>
         <tr class="fila" data-codigo="E0803"><td><code>E0803</code></td><td>falta ENTRY</td></tr>
-        <tr class="fila" data-codigo="E0804"><td><code>E0804</code></td><td>línea …: instrucción desconocida &#x27;…&#x27;</td></tr>
-        <tr class="fila" data-codigo="E0805"><td><code>E0805</code></td><td>cadena de dependencias demasiado profunda en &#x27;…&#x27;</td></tr>
-        <tr class="fila" data-codigo="E0806"><td><code>E0806</code></td><td>…: se pidió &#x27;… …&#x27; pero el manifiesto encontrado es …</td></tr>
-        <tr class="fila" data-codigo="E0807"><td><code>E0807</code></td><td>no se encontró el paquete &#x27;…&#x27; en … ruta(s)</td></tr>
-        <tr class="fila" data-codigo="E0808"><td><code>E0808</code></td><td>&#x27;…&#x27; requiere la capacidad &#x27;…&#x27; y no hay FEATURE que la proporcione</td></tr>
+        <tr class="fila" data-codigo="E0804"><td><code>E0804</code></td><td>línea …: instrucción desconocida '…'</td></tr>
+        <tr class="fila" data-codigo="E0805"><td><code>E0805</code></td><td>cadena de dependencias demasiado profunda en '…'</td></tr>
+        <tr class="fila" data-codigo="E0806"><td><code>E0806</code></td><td>…: se pidió '… …' pero el manifiesto encontrado es …</td></tr>
+        <tr class="fila" data-codigo="E0807"><td><code>E0807</code></td><td>no se encontró el paquete '…' en … ruta(s)</td></tr>
+        <tr class="fila" data-codigo="E0808"><td><code>E0808</code></td><td>'…' requiere la capacidad '…' y no hay FEATURE que la proporcione</td></tr>
         <tr class="fila" data-codigo="E0811"><td><code>E0811</code></td><td>no se encontró la consulta …</td></tr>
         <tr class="fila" data-codigo="E0812"><td><code>E0812</code></td><td>falta END QUERY · se esperaba END QUERY · una consulta empieza con QUERY</td></tr>
         <tr class="fila" data-codigo="E0813"><td><code>E0813</code></td><td>la consulta no pide nada</td></tr>
-        <tr class="fila" data-codigo="E0814"><td><code>E0814</code></td><td>línea …: falta el valor de … · línea …: falta la version · línea …: falta la version tras &#x27;…&#x27; · línea …: predicado desconocido &#x27;…&#x27; (usa PROVIDES, FEATURE, CAPABILITY, DEP o VERSION) · lín…</td></tr>
+        <tr class="fila" data-codigo="E0814"><td><code>E0814</code></td><td>línea …: falta el valor de … · línea …: falta la version · línea …: falta la version tras '…' · línea …: predicado desconocido '…' (usa PROVIDES, FEATURE, CAPABILITY, DEP o VERSION) · lín…</td></tr>
+        <tr class="fila" data-codigo="E0815"><td><code>E0815</code></td><td>el registro ya tiene '…': borra … o publica otra version</td></tr>
+        <tr class="fila" data-codigo="E0816"><td><code>E0816</code></td><td>no se pudo escribir … · no se pudo leer el modulo …</td></tr>
+        <tr class="fila" data-codigo="E0817"><td><code>E0817</code></td><td>'…' no esta en el registro … (busque … y …)</td></tr>
+        <tr class="fila" data-codigo="E0818"><td><code>E0818</code></td><td>'…' ya esta instalado en …: borra ese directorio antes de reinstalar</td></tr>
+        <tr class="fila" data-codigo="E0819"><td><code>E0819</code></td><td>el ENTRY … no existe; un paquete sin su fuente no se puede publicar</td></tr>
         <tr class="fila" data-codigo="E0902"><td><code>E0902</code></td><td>…: el argumento … debe ser INT, I64 o STRING</td></tr>
-        <tr class="fila" data-codigo="familias"><td><code>familia</code></td><td><code>E01</code> léxico, <code>E02</code> sintaxis, <code>E03</code> tipos y nombres, <code>E04</code> semántica, <code>E05</code> módulos, <code>E06</code> unidades .hxc, <code>E07</code> genéricos y traits, <code>E08</code> paquetes y consultas, <code>E09</code> capacidades</td></tr>
       </table>
     </section>
 
+    <section id="distribucion" data-t="distribución instalar releases homebrew winget registro paquetes publicar pack install sha256 checksum">
+      <h2>22. Cómo se distribuye Hixean</h2>
+      <p>Un lenguaje se distribuye en dos cosas distintas, y conviene no
+      confundirlas: el <strong>compilador</strong>, que es un programa, y los
+      <strong>paquetes</strong>, que son código de otra gente. La primera se
+      instala; la segunda se consulta.</p>
+
+      <h3>El compilador</h3>
+      <p>La fuente de verdad es la <strong>release de GitHub</strong>: una
+      etiqueta <code>v0.1.0</code> produce un artefacto por plataforma con su
+      SHA256, y todo lo demás baja de ahí.</p>
+      <figure class="ej">
+        <figcaption><span>instalar sin root</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
+hxc version
+# hxc 0.1.0</code></pre>
+      </figure>
+      <p>El script detecta plataforma, descarga
+      <code>hixean-&lt;version&gt;-&lt;plataforma&gt;.tar.gz</code>, compara el
+      checksum con <code>SHA256SUMS</code> y <strong>aborta sin instalar nada</strong>
+      si no coincide. En Windows el equivalente es
+      <code>tools\install.ps1</code> en PowerShell.</p>
+      <table>
+        <tr><th>Canal</th><th>Para quién</th><th>Cómo se publica</th></tr>
+        <tr><td>Releases de GitHub</td><td>cualquiera, siempre</td><td><code>git tag v0.1.0 &amp;&amp; git push --tags</code>; la CI construye y adjunta</td></tr>
+        <tr><td><code>install.sh</code> / <code>install.ps1</code></td><td>Linux, macOS, Windows sin gestor</td><td>van dentro del propio tarball</td></tr>
+        <tr><td>Homebrew</td><td>macOS y Linux</td><td>fórmula en <code>packaging/homebrew/</code>, con el sha256 de la release</td></tr>
+        <tr><td>winget</td><td>Windows</td><td>manifiesto en <code>packaging/winget/</code>, con <code>InstallerSha256</code></td></tr>
+        <tr><td>Desde fuente</td><td>quien quiera tocar el compilador</td><td><code>make test &amp;&amp; make size</code>; cero dependencias</td></tr>
+      </table>
+      <div class="aviso">Los <code>sha256</code> de Homebrew y winget se dejan
+      marcados como <code>REEMPLAZAR_CON_EL_SHA256…</code> a propósito: un checksum
+      escrito a mano y no copiado de la release es peor que no ponerlo. La CI
+      publica los valores reales en <code>SHA256SUMS</code>.</div>
+
+      <h3>Los paquetes</h3>
+      <p>Un paquete es un directorio con el manifiesto <code>&lt;nombre&gt;.hxk</code>
+      al lado de sus fuentes. Ese layout es el que ya entienden
+      <code>hxc query</code>, <code>hxc kit</code> y <code>hxc install</code>, así
+      que el registro no es un formato nuevo: es un árbol de directorios.</p>
+      <figure class="ej">
+        <figcaption><span>publicar</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">$ hxc pack aritmetica.hxk --out registro
+aritmetica 1.0.0  -&gt;  registro/aritmetica/aritmetica.hxk (1 modulos)</code></pre>
+        <div class="salida"><b>qué copia</b><pre>registro/aritmetica/aritmetica.hxk
+registro/aritmetica/aritmetica.hxe</pre></div>
+      </figure>
+      <p><code>pack</code> copia el manifiesto y los módulos que el paquete
+      importa, nada más: lo que no pertenece al paquete no acaba en el
+      registro. Publicar dos veces el mismo nombre se rechaza
+      (<code>E0815</code>) en vez de sobrescribir, y un <code>ENTRY</code> que
+      no existe da <code>E0819</code>: un paquete sin su fuente no sirve para
+      publicarse.</p>
+      <figure class="ej">
+        <figcaption><span>instalar y usar</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">$ hxc install aritmetica --registry registro --into ~/.hixean/paquetes
+aritmetica 1.0.0 instalado en ~/.hixean/paquetes/aritmetica
+añade esa ruta a tus comandos:
+  --path ~/.hixean/paquetes
+
+$ hxc build --kit ~/.hixean/paquetes/aritmetica/aritmetica.hxk \
+      --path ~/.hixean/paquetes -o aritmetica
+$ ./aritmetica
+32</code></pre>
+      </figure>
+      <p>Si no se pasan <code>--registry</code> ni <code>--into</code>, los
+      valores por defecto son <code>~/.hixean/registro</code> y
+      <code>~/.hixean/paquetes</code>. Un paquete que no existe da
+      <code>E0817</code>; uno que ya está instalado da <code>E0818</code>.</p>
+      <h4>Consultar sin instalar</h4>
+      <figure class="ej">
+        <figcaption><span>qué hay en el registro</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-bash">$ hxc query lo_que_hay.hxq --path registro
+aritmetica 1.0.0  registro/aritmetica/aritmetica.hxk
+base 0.2.0  registro/base/base.hxk</code></pre>
+      </figure>
+      <h3>Por qué el registro es un directorio</h3>
+      <p>Un registro de verdad (un servidor, una API, cuentas, tokens, TLS dentro
+      del compilador) es la respuesta habitual y aquí sería premature. Un
+      directorio funciona con lo que ya está instalado:</p>
+      <ul>
+        <li>Un <strong>repositorio git</strong> clonado es un registro: se versiona,
+        se audita con <code>git log</code> y se sirve por HTTPS estático.</li>
+        <li>Un <strong>directorio local</strong> es un registro: suficiente para
+        probar y para proyectos cerrados.</li>
+        <li>La misma <strong>consulta</strong> (<code>.hxq</code> con
+        <code>--path</code>) sirve para los dos casos, y también para lo que
+        haya en el <code>PATH</code> del proyecto.</li>
+      </ul>
+      <p>Cuando haga falta un servidor de verdad, encaja detrás de esta misma
+      forma: <code>--path</code> puede apuntar a un checkout de git y el
+      <code>hxq</code> sigue siendo el mismo.</p>
+      <div class="aviso malo"><b>Lo que todavía no hay:</b> firma de paquetes
+      (el checksum protege del transporte, no del editor), semver completo en
+      las dependencias, resolución automática de conflictos de versiones, y un
+      índice central. Decirlo aquí es más útil que un <code>install</code> que
+      finge resolverlo.</div>
+    </section>
+
     <section id="limites" data-t="límites no existe pendiente futuro audio gpu comptime honesto">
-      <h2>22. Lo que Hixean todavía no tiene</h2>
+      <h2>23. Lo que Hixean todavía no tiene</h2>
       <p>Lista corta y sin adornos, porque un manual que promete lo que no
       existe es peor que uno que no lo menciona:</p>
       <ul>
@@ -1220,7 +1325,7 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
     </section>
 
     <section id="recetas" data-t="recetas ejemplos programas completos referencia rápida">
-      <h2>23. Recetas</h2>
+      <h2>24. Recetas</h2>
       <h4>Un registro que se pasa por valor</h4>
       <figure class="ej">
         <figcaption><span>tabla.hxe</span><button class="copiar" type="button">copiar</button></figcaption>

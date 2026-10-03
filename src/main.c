@@ -605,18 +605,18 @@ static int hx_cmd_pack(const char *manifest, const char *out) {
     }
     const char *nombre = hx_sym_str(kit.name);
     char *destino = hx_arena_sprintf(&s->arena, "%s/%s", out, nombre);
+    s->diags.ctx_file = manifest;
     if (hx_path_exists(destino)) {
-        fprintf(stderr,
-                "hx: el registro ya tiene '%s': borra %s o publica otra version\n", nombre,
-                destino);
+        hx_error(&s->diags, (HxSpan){0, 0}, "E0815",
+                 "el registro ya tiene '%s': borra %s o publica otra version", nombre, destino);
+        hx_render(&s->diags, NULL);
         return 1;
     }
     char *entry = hx_kit_entry_path(&s->arena, &kit, manifest);
     if (!hx_file_exists(entry)) {
-        fprintf(stderr,
-                "hx: el ENTRY %s del manifiesto no existe; un paquete sin su fuente no se "
-                "puede publicar\n",
-                entry);
+        hx_error(&s->diags, (HxSpan){0, 0}, "E0819",
+                 "el ENTRY %s no existe; un paquete sin su fuente no se puede publicar", entry);
+        hx_render(&s->diags, NULL);
         return 1;
     }
     hx_collect_modules2(s, entry, NULL);
@@ -630,12 +630,14 @@ static int hx_cmd_pack(const char *manifest, const char *out) {
         size_t len = 0;
         char *data = hx_read_file(&s->arena, m->file, &len);
         if (!data) {
-            fprintf(stderr, "hx: no se pudo leer %s\n", m->file);
+            hx_error(&s->diags, (HxSpan){0, 0}, "E0816", "no se pudo leer el modulo %s", m->file);
+            hx_render(&s->diags, NULL);
             return 1;
         }
         char *dest = hx_arena_sprintf(&s->arena, "%s/%s", destino, hx_path_basename(&s->arena, m->file));
         if (hx_write_file(dest, data, len) != 0) {
-            fprintf(stderr, "hx: no se pudo escribir %s\n", dest);
+            hx_error(&s->diags, (HxSpan){0, 0}, "E0816", "no se pudo escribir %s", dest);
+            hx_render(&s->diags, NULL);
             return 1;
         }
         n++;
@@ -646,7 +648,8 @@ static int hx_cmd_pack(const char *manifest, const char *out) {
         size_t elen = 0;
         char *edata = hx_read_file(&s->arena, entry, &elen);
         if (!edata || hx_write_file(entrada_dest, edata, elen) != 0) {
-            fprintf(stderr, "hx: no se pudo escribir %s\n", entrada_dest);
+            hx_error(&s->diags, (HxSpan){0, 0}, "E0816", "no se pudo escribir %s", entrada_dest);
+            hx_render(&s->diags, NULL);
             return 1;
         }
         n++;
@@ -655,7 +658,8 @@ static int hx_cmd_pack(const char *manifest, const char *out) {
     char *mtext = hx_read_file(&s->arena, manifest, &mlen);
     char *mkit = hx_arena_sprintf(&s->arena, "%s/%s.hxk", destino, nombre);
     if (!mtext || hx_write_file(mkit, mtext, mlen) != 0) {
-        fprintf(stderr, "hx: no se pudo escribir %s\n", mkit);
+        hx_error(&s->diags, (HxSpan){0, 0}, "E0816", "no se pudo escribir %s", mkit);
+        hx_render(&s->diags, NULL);
         return 1;
     }
     printf("%s %s  ->  %s (%d modulos)\n", nombre, kit.version, mkit, n);
