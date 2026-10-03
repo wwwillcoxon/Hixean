@@ -63,8 +63,9 @@ provisional de escribirlo rápido: es lo que permite que el mismo registro sea
 
 Un servidor de verdad (API, cuentas, tokens, semver completo) no está excluido:
 encaja detrás de esta misma forma cuando haga falta. Lo que sí exige es una
-decisión que no se puede deshacer fácil — quién publica, con qué credenciales,
-cómo se retira un paquete malicioso— y hoy no hay nadie más que el autor.
+decisión que no se puede deshacer fácil —quién publica, con qué
+credenciales, cómo se retira un paquete malicioso— y hoy no hay nadie más que
+el autor.
 
 ## Alternativas
 
@@ -97,5 +98,5 @@ cómo se retira un paquete malicioso— y hoy no hay nadie más que el autor.
 - **No hay firma.** El checksum protege del transporte corrupto o manipulado en
   tránsito; no protege de que alguien con acceso al repositorio suba un paquete
   con código malicioso. Eso es una decisión de futuro, no un olvido.
-- `E0815`–`E0819` pasan a ser parte de la API de diagnósticos (ADR 0013), con la
-  misma lectura: un código significa siempre lo mismo.
+- `E0815`–`E0819` pasan a ser parte de la API de diagnósticos (ADR 0013), con
+  la misma lectura: un código significa siempre lo mismo.
