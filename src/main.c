@@ -802,10 +802,41 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
 
 static int hx_exec(const char *bin, const char *out_path) {
 #ifdef _WIN32
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "%s > \"%s\" 2>&1", bin, out_path);
-    int rc = system(cmd);
-    return rc == 0 ? 0 : 1;
+    /* Ejecutar y mandar stdout y stderr a un fichero. La via corta era system() con
+       una redireccion, pero el shell de Windows se traga el codigo de salida y no
+       hay forma de saber si el programa fallo: `salida > fichero 2>&1` deja el
+       codigo de cmd, no el del programa, asi que hxc test comparaba un fichero
+       vacio y daba FALLO en todo el corpus. Con CreateProcess el codigo de salida
+       es el del proceso, y la redireccion va en STARTUPINFO. */
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE salida = CreateFileA(out_path, GENERIC_WRITE, FILE_SHARE_READ, &sa,
+                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (salida == INVALID_HANDLE_VALUE) return 1;
+    STARTUPINFOA si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = salida;
+    si.hStdError = salida;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    PROCESS_INFORMATION pi;
+    memset(&pi, 0, sizeof(pi));
+    char linea[2048];
+    snprintf(linea, sizeof(linea), "\"%s\"", bin);
+    if (!CreateProcessA(NULL, linea, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(salida);
+        return 1;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD rc = 0;
+    GetExitCodeProcess(pi.hProcess, &rc);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    CloseHandle(salida);
+    return (int)rc;
 #else
     const char *argv[3];
     argv[0] = bin;
