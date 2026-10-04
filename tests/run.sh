@@ -247,6 +247,26 @@ fi
   && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
   || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+# -I, HX_LIB y el fallo que las lista
+rm -rf build/busqueda && mkdir -p build/busqueda/libdir
+printf 'EXPORT FUNCTION Quien() AS STRING\n  RETURN "de la busqueda"\nEND FUNCTION\n' \
+  > build/busqueda/libdir/mimodulo.hxs
+printf 'IMPORT mimodulo\nPRINT mimodulo.Quien()\n' > build/busqueda/usa.hxe
+./build/hxc run build/busqueda/usa.hxe -I build/busqueda/libdir > build/busqueda/i.out 2>&1
+grep -q "de la busqueda" build/busqueda/i.out \
+  && echo "ok     -I encuentra un modulo fuera del directorio del archivo" \
+  || { echo "FALLO: -I no busca"; exit 1; }
+HX_LIB=build/busqueda/libdir ./build/hxc run build/busqueda/usa.hxe > build/busqueda/env.out 2>&1
+grep -q "de la busqueda" build/busqueda/env.out \
+  && echo "ok     HX_LIB encuentra un modulo fuera del directorio del archivo" \
+  || { echo "FALLO: HX_LIB no busca"; exit 1; }
+if ./build/hxc run build/busqueda/usa.hxe > build/busqueda/nada.out 2>&1; then
+  echo "FALLO: deberia fallar sin -I ni HX_LIB"; exit 1
+fi
+grep -q "E0501" build/busqueda/nada.out \
+  && grep -q "HX_LIB" build/busqueda/nada.out \
+  && echo "ok     sin -I ni HX_LIB el modulo no se encuentra y el mensaje lo dice" \
+  || { echo "FALLO: el fallo no explica donde se busco"; exit 1; }
 # un modulo con punto: std.texto.hxs se llama std.texto y se llama texto.Doble
 ./build/hxc run tests/modulos_con_punto/usa.hxe > build/punto.out 2>&1
 diff -u tests/modulos_con_punto/usa.hxe.out build/punto.out \

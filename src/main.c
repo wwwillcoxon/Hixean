@@ -50,6 +50,9 @@ typedef struct {
     int n_opts;
     const char *mod_dirs[HX_KIT_MAX];
     int n_mod_dirs;
+    /* -I: directorios donde buscar IMPORT, antes que los del manifiesto */
+    const char *include[HX_KIT_MAX];
+    int n_include;
     HxProfile profile;
     int emit_only;
     int verbose;
@@ -180,15 +183,38 @@ static int o_verbose;
    viejo se reutiliza, produciendo un binario roto sin avisar. Se hashea el
    ejecutable una vez por sesion; son ~900 KB y se lee una vez. */
 static const char *g_hxc_build_id;
+static const char *g_hxc_self;
+
+/* Dónde está este ejecutable. Con eso se sabe de dos cosas que antes no se
+   sabían: qué biblioteca estándar viene con el compilador, y qué binario hay
+   que hashear para invalidar la caché de objetos. Antes ponía "build/hxc" a pelo
+   y, si no encontraba el archivo, caía a la versión: invocar hxc desde otro
+   directorio invalidaba la caché por versión y no por binario. */
+static const char *g_argv0 = "hxc";
+
+static void hx_calc_self(HxSession *s) {
+    char buf[1024];
+    ssize_t n = 0;
+#ifndef _WIN32
+    n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+#endif
+    if (n > 0) {
+        buf[n] = 0;
+        g_hxc_self = hx_arena_strdup(&s->arena, buf);
+    } else if (g_argv0 && *g_argv0) {
+        g_hxc_self = hx_arena_strdup(&s->arena, g_argv0);
+    } else {
+        g_hxc_self = NULL;
+    }
+}
 
 static void hx_calc_build_id(HxSession *s) {
     HxHash h;
     hx_fnv_init(&h);
-    const char *self = "build/hxc";
     size_t n = 0;
-    char *data = hx_read_file(&s->arena, self, &n);
+    char *data = g_hxc_self ? hx_read_file(&s->arena, g_hxc_self, &n) : NULL;
     if (!data) {
-        /* se invoca con otra ruta: se usa la version y ya */
+        /* no se puede leer el ejecutable: se usa la version y ya */
         hx_fnv_str(&h, HX_VERSION);
     } else {
         hx_fnv_bytes(&h, data, (size_t)n);
@@ -200,6 +226,26 @@ static void hx_calc_build_id(HxSession *s) {
 
 static const char **g_extra_mod_dirs;
 static int g_n_extra_mod_dirs;
+static int g_cap_extra_mod_dirs;
+
+/* La lista de directorios donde se buscan los IMPORT. No es el array fijo de
+   HX_KIT_MAX que usan las dependencias de un manifiesto: aqui caben tambien los
+   -I, HX_LIB y la biblioteca del compilador, y su número no tiene un tope
+   razonable. */
+static void hx_busqueda_add(HxSession *s, const char *dir) {
+    if (!dir || !*dir) return;
+    for (int i = 0; i < g_n_extra_mod_dirs; i++)
+        if (!strcmp(g_extra_mod_dirs[i], dir)) return;
+    if (g_n_extra_mod_dirs >= g_cap_extra_mod_dirs) {
+        int cap = g_cap_extra_mod_dirs ? g_cap_extra_mod_dirs * 2 : 8;
+        const char **nuevo = (const char **)hx_arena_alloc(
+            &s->arena, sizeof(const char *) * (size_t)cap);
+        for (int i = 0; i < g_n_extra_mod_dirs; i++) nuevo[i] = g_extra_mod_dirs[i];
+        g_extra_mod_dirs = nuevo;
+        g_cap_extra_mod_dirs = cap;
+    }
+    g_extra_mod_dirs[g_n_extra_mod_dirs++] = hx_arena_strdup(&s->arena, dir);
+}
 
 /* Un IMPORT puede venir con puntos: "std.texto". Se prueban las dos formas, y
    la primera que exista gana. El orden es el de siempre (el nombre corto antes
@@ -222,6 +268,7 @@ static const char *hx_modulo_en(HxArena *a, const char *dir, const char *sp,
 static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
+    (void)0;
     HX_VEC(pending, const char *);
     /* el nombre que pedia el IMPORT de cada archivo pendiente y donde estaba
        escrito: sin esto se carga cualquier hxs que coincida con el nombre
@@ -329,10 +376,13 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                     char *hxc = hx_arena_sprintf(&s->arena, "%s/%s.hxc", use_hxc, sp);
                     HxModule *um = hx_hxc_read(&s->arena, s->intern, &s->diags, hxc);
                     if (!um) {
-                        hx_error(&s->diags, im->path_span, "E0501",
-                                 hx_arena_sprintf(&s->arena,
-                                                  "no hay fuente ni unidad .hxc para '%s'", sp),
-                                 "publica la biblioteca con --emit-hxc DIR", NULL);
+                        /* hx_diag_note y no hx_error: hx_error es variadica y se
+                           comia la ayuda sin imprimirla */
+                        hx_diag_note(&s->diags, im->path_span, "E0501",
+                                     hx_arena_sprintf(&s->arena,
+                                                      "no hay fuente ni unidad .hxc para '%s'",
+                                                      sp),
+                                     "publica la biblioteca con --emit-hxc DIR", NULL);
                     } else {
                         HxModule *slot =
                             (HxModule *)hx_arena_calloc(&s->arena, sizeof(HxModule));
@@ -344,15 +394,15 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                                 hx_sym_str(um->name), stem);
                     }
                 } else {
-                    hx_error(&s->diags, im->path_span, "E0501",
-                             hx_arena_sprintf(&s->arena,
-                                              "no se encontró el módulo '%s' (busqué %s.hxs y "
-                                              "%s.hxf)",
-                                              sp, stem, stem),
-                             "las rutas de IMPORT son el directorio del archivo de entrada y "
-                             "los que aporta --kit; con -I, HX_LIB o la biblioteca del "
-                             "compilador se añaden más",
-                             NULL);
+                    hx_diag_note(&s->diags, im->path_span, "E0501",
+                                 hx_arena_sprintf(&s->arena,
+                                                  "no se encontró el módulo '%s' (busqué %s.hxs y "
+                                                  "%s.hxf)",
+                                                  sp, stem, stem),
+                                 "las rutas de IMPORT son el directorio del archivo de entrada, "
+                                 "los -I, lo que diga HX_LIB, los que aporta --kit y la "
+                                 "biblioteca que vino con este hxc",
+                                 NULL);
                 }
             }
         }
@@ -570,7 +620,10 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
         HxHash hx;
         hx_fnv_init(&hx);
         hx_fnv_str(&hx, HX_VERSION);
-        if (!g_hxc_build_id) hx_calc_build_id(s);
+        if (!g_hxc_build_id) {
+            hx_calc_self(s);
+            hx_calc_build_id(s);
+        }
         hx_fnv_str(&hx, g_hxc_build_id);
         hx_fnv_u64(&hx, (uint64_t)o->profile);
         hx_fnv_u64(&hx, (uint64_t)o->optimize);
@@ -827,6 +880,7 @@ static int kit_gates_n;
 static int kit_gates_set;
 
 int main(int argc, char **argv) {
+    if (argc > 0 && argv[0]) g_argv0 = argv[0];
     hx_arena_init(&g_arena_scratch);
     if (argc < 2) {
         hx_usage();
@@ -1051,6 +1105,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--jobs") && i + 1 < argc) o.jobs = atoi(argv[++i]);
         else if (!strcmp(a, "--kit") && i + 1 < argc) { o.kit_file = argv[++i]; if (!entry) entry = ""; }
         else if (!strcmp(a, "--path") && i + 1 < argc) ++i; /* se lee antes */
+        else if (!strcmp(a, "-I") && i + 1 < argc) {
+            if (o.n_include >= HX_KIT_MAX) {
+                fprintf(stderr, "hx: como mucho %d directorios con -I\n", HX_KIT_MAX);
+                return 2;
+            }
+            o.include[o.n_include++] = argv[++i];
+        }
         else if (!strcmp(a, "--json")) g_json = 1;
         else if (a[0] == '-') {
             fprintf(stderr, "hx: opción desconocida '%s'\n", a);
@@ -1137,8 +1198,40 @@ int main(int argc, char **argv) {
         bin_path = hx_arena_sprintf(&s->arena, "build/%s.bin", stem);
     }
 
-    g_extra_mod_dirs = o.mod_dirs;
-    g_n_extra_mod_dirs = o.n_mod_dirs;
+    /* El orden es lo explicito primero y lo que viene con el compilador al
+       final: directorio de la entrada (lo busca hx_collect_modules2), -I,
+       HX_LIB, los directorios del manifiesto y por ultimo la biblioteca que
+       vino con este hxc. */
+    g_extra_mod_dirs = NULL;
+    g_n_extra_mod_dirs = 0;
+    g_cap_extra_mod_dirs = 0;
+    if (!g_hxc_self) hx_calc_self(s);
+    for (int i = 0; i < o.n_include; i++) hx_busqueda_add(s, o.include[i]);
+    {
+        const char *env = getenv("HX_LIB");
+        if (env && *env) {
+            char *copia = hx_arena_strdup(&s->arena, env);
+            for (char *p = copia;;) {
+                char *sep = p;
+                while (*sep && *sep != ':' && *sep != ';') sep++;
+                int fin = *sep == 0;
+                if (!fin) *sep = 0;
+                if (*p) hx_busqueda_add(s, p);
+                if (fin) break;
+                p = sep + 1;
+            }
+        }
+    }
+    for (int i = 0; i < o.n_mod_dirs; i++) hx_busqueda_add(s, o.mod_dirs[i]);
+    if (g_hxc_self) {
+        char *self_dir = hx_path_dirname(&s->arena, g_hxc_self);
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/lib", self_dir));
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib/hixean", self_dir));
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib", self_dir));
+    }
+    if (o.verbose)
+        for (int i = 0; i < g_n_extra_mod_dirs; i++)
+            fprintf(stderr, "hx:   busqueda %s\n", g_extra_mod_dirs[i]);
     double ms = 0;
     if (hx_build_main(s, entry, &o, bin_path, &ms) != 0) {
         const char *src = NULL;
