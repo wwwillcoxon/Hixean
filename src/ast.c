@@ -223,7 +223,10 @@ const char *hx_binop_spelling(HxBinOp op) {
         case OP_SUB: return "-";
         case OP_MUL: return "*";
         case OP_DIV: return "/";
-        case OP_MOD: return "%";
+        case OP_MOD: return "MOD";
+        /* MOD, no "%": el % no es un token del lexer, asi que nadie puede
+           escribirlo. Decirlo "%" hacia que el nombre de la sobrecarga y la clave
+           de busqueda no coincidieran nunca. */
         case OP_CONCAT: return "++";
         case OP_ADDW: return "+%";
         case OP_SUBW: return "-%";

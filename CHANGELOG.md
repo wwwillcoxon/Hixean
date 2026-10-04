@@ -116,6 +116,23 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **Se pueden sobrecargar los operadores que faltaban.** Se anunciaban
+  `+ - * / MOD ++ == <> < <= > >=`, y de ellos solo funcionaban `+ - * / == <`:
+  - `<>` y `!=` no se sobrecargaban. El parser acepta las dos grafías pero el
+    emisor escribe siempre `<>`, así que la clave de búsqueda y el nombre de la
+    función no coincidían.
+  - `<= > >=` no se sobrecargaban porque `hx_binop_spelling` devolvía `"%"` para
+    `MOD` y no tenía grafía para ellos.
+  - **`MOD` no se sobrecargaba, en dos sitios a la vez**: el verificador
+    preguntaba si el nombre de la función era un operador buscando caracteres
+    raros, y `OPERATOR MOD` se llamaba `mod`, que es un nombre corriente. Ahora
+    se usa `is_operator`, que es lo que el parser ya sabe. También el parser
+    ignoraba el signo cuando venía como palabra clave, y se quedaba con el
+    nombre literal `operator`.
+  - `+%` `-%` `+|` `-|` `*|` ahora se pueden sobrecargar: estaban en la tabla del parser
+    y no en el documento.
+  - Sobrecargar `!=` y `<>` a la vez da `E0213` diciendo que son el mismo
+    operador, en vez de dos definiciones con el mismo nombre en el C.
 - **Los vectores se pueden escribir.** `VEC2`, `VEC3` y `VEC4` estaban en el
   AST, el verificador, el emisor, el runtime generado y el `.hxc`, y no había
   forma de declarar una variable de ese tipo: no estaban en la lista de tipos

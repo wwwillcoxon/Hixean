@@ -1224,10 +1224,15 @@ static void hx_parse_func(HxParser *p, struct HxFunc *f, int is_export) {
     hx_bump(p);
     if (hx_eat_kw(p, TK_KW_OPERATOR)) {
         HxToken *op = hx_cur(p);
+        /* el signo puede venir como puntuacion (<, <=, +, ...) o como palabra
+           clave (MOD): una palabra clave no tiene str_raw, y sin esto el nombre
+           de la funcion era literalmente "operator", que no es un operador y no
+           se sobrecargaba nada */
+        const char *signo = op->str_raw ? op->str_raw : hx_tok_text(op->kind);
+        size_t largo = op->str_raw ? (size_t)op->str_len : (signo ? strlen(signo) : 8);
         f->is_operator = 1;
         f->name_span = op->span;
-        f->name = hx_intern(p->intern, op->str_raw ? op->str_raw : "operator",
-                            op->str_raw ? (size_t)op->str_len : 8);
+        f->name = hx_intern(p->intern, signo ? signo : "operator", largo);
         hx_bump(p);
     } else {
         if (!hx_is_kw(p, TK_IDENT)) {

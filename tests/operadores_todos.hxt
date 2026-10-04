@@ -1,0 +1,88 @@
+"OPERATOR: los diecisiete operadores que un programa puede sobrecargar"
+TYPE Intervalo
+  lo AS INT
+  hi AS INT
+END TYPE
+
+FUNCTION OPERATOR +(a AS Intervalo, b AS Intervalo) AS Intervalo
+  DIM r AS Intervalo
+  r.lo = a.lo + b.lo
+  r.hi = a.hi + b.hi
+  RETURN r
+END FUNCTION
+
+FUNCTION OPERATOR MOD(a AS Intervalo, b AS INT) AS Intervalo
+  DIM r AS Intervalo
+  r.lo = a.lo MOD b
+  r.hi = a.hi MOD b
+  RETURN r
+END FUNCTION
+
+FUNCTION OPERATOR ==(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN a.lo == b.lo AND a.hi == b.hi
+END FUNCTION
+
+FUNCTION OPERATOR !=(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN NOT (a == b)
+END FUNCTION
+
+FUNCTION OPERATOR <(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN a.lo < b.lo OR (a.lo == b.lo AND a.hi < b.hi)
+END FUNCTION
+
+FUNCTION OPERATOR <=(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN a < b OR a == b
+END FUNCTION
+
+FUNCTION OPERATOR >(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN b < a
+END FUNCTION
+
+FUNCTION OPERATOR >=(a AS Intervalo, b AS Intervalo) AS BOOL
+  RETURN b <= a
+END FUNCTION
+
+"y tambien los de aritmetica explicita, que no son los mismos"
+FUNCTION OPERATOR +%(a AS Intervalo, b AS Intervalo) AS Intervalo
+  RETURN a
+END FUNCTION
+FUNCTION OPERATOR +|(a AS Intervalo, b AS Intervalo) AS Intervalo
+  RETURN a
+END FUNCTION
+
+FUNCTION Menor(a AS INT, b AS INT) AS Intervalo
+  DIM r AS Intervalo
+  r.lo = a
+  r.hi = b
+  RETURN r
+END FUNCTION
+
+DIM x AS Intervalo
+x.lo = 1
+x.hi = 5
+DIM y AS Intervalo
+y.lo = 2
+y.hi = 9
+
+DIM suma AS Intervalo = x + y
+PRINT suma.lo
+PRINT suma.hi
+
+"MOD con un INT de segundo: el tipo del primer parametro manda"
+DIM resto AS Intervalo = x MOD 3
+PRINT resto.lo
+PRINT resto.hi
+
+PRINT x == y
+PRINT x != y
+PRINT x < y
+PRINT x <= y
+PRINT x > y
+PRINT x >= y
+
+PRINT (x +% y).lo
+PRINT (x +| y).hi
+
+"quedaria bien poder imprimir un intervalo, pero hacer texto con un numero
+dentro todavia no se puede: no hay ToString en los INT. Es el hueco que mas
+molesta de los que quedan."

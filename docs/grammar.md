@@ -666,8 +666,12 @@ vez de prometer un análisis de aliasing que no hay.
 ### Sobrecarga de operadores
 
 `OPERATOR <signo>` declara cómo se comporta un `TYPE` con un operador del
-lenguaje. Se admiten `+` `-` `*` `/` `MOD` `++` `==` `<>` `<` `<=` `>` `>=`;
-cualquier otro signo da `E0213`.
+lenguaje. Se admiten `+` `-` `*` `/` `MOD` `++` `==` `<>` `<` `<=` `>` `>=` y los
+que llevan aritmética explícita: `+%` `-%` `+|` `-|` `*|`. Cualquier otro signo
+da `E0213`.
+
+`!=` es otra forma de `<>`: los dos se renombran al mismo `op_ne__<Tipo>`, así que
+sobrecargar los dos es `E0213` con la explicación, no dos definiciones en el C.
 
 ```
 TYPE Fraccion

@@ -162,36 +162,37 @@ static int hx_es_maybe(HxTy *t) { return t && t->kind == TY_MAYBE; }
 
 /* Los operadores que un programa puede recargar. La palabra es la que aparece en
    el nombre de C, porque un "+" no puede estar en un identificador. */
-static const char *hx_op_palabra(const char *op) {
+/* El signo con el que se escribe el operador, tal cual lo escribe la persona.
+   MOD tiene dos grafias: el parser acepta `mod` (como palabra clave, sin
+  灵敏度) y `%` (que es como lo escribe hx_binop_spelling). Sin esta tabla el
+   nombre de la sobrecarga y la clave de busqueda no coinciden nunca, y una
+   sobrecarga de `mod` no se encuentra. Lo mismo con `!=`, que el parser acepta
+   por `==` y el emisor escribe `<>`. */
+static const char *hx_op_signo_asi(const char *op) {
     static const struct {
         const char *signo;
         const char *palabra;
-    } ops[] = {{"+", "add"},   {"-", "sub"},  {"*", "mul"}, {"/", "div"}, {"MOD", "mod"},
-               {"++", "cat"},  {"==", "eq"},  {"<>", "ne"}, {"<", "lt"},  {"<=", "le"},
-               {">", "gt"},    {">=", "ge"},  {NULL, NULL}};
+    } ops[] = {{"+", "add"},   {"-", "sub"},  {"*", "mul"}, {"/", "div"},
+               {"%", "mod"},   {"mod", "mod"},
+               {"++", "cat"},  {"==", "eq"},  {"<>", "ne"},  {"!=", "ne"},
+               {"<", "lt"},    {"<=", "le"},  {">", "gt"},   {">=", "ge"},
+               {"+%", "addw"}, {"-%", "subw"},
+               {"+|", "adds"}, {"-|", "subs"}, {"*|", "muls"},
+               {NULL, NULL}};
     for (int i = 0; ops[i].signo; i++)
-        if (!strcmp(ops[i].signo, op)) return ops[i].palabra;
+        if (!hx_ascii_casecmp(ops[i].signo, op)) return ops[i].palabra;
     return NULL;
 }
+
 
 /* El nombre con el que se busca la sobrecarga: op_<palabra>__<Tipo>. */
 static const char *hx_op_key(HxArena *a, HxBinOp op, HxTy *ty) {
     const char *signo = hx_binop_spelling(op);
-    const char *palabra = hx_op_palabra(signo);
+    const char *palabra = hx_op_signo_asi(signo);
     if (!palabra || !ty || ty->kind != TY_NAMED) return NULL;
     return hx_arena_sprintf(a, "op_%s__%s", palabra, hx_ty_name(ty));
 }
 
-/* una variable se llama como operador si su nombre no es un identificador */
-static int hx_es_operador(HxSym name) {
-    const char *texto = hx_sym_str(name);
-    if (!texto) return 0;
-    for (const char *p = texto; *p; p++)
-        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') ||
-              *p == '_'))
-            return 1;
-    return 0;
-}
 
 /* un nombre ya declarado en ESTE ambito: sombra legitima en uno mas hondo */
 static int hx_declared_here(HxChecker *c, HxSym name) {
@@ -2922,9 +2923,14 @@ int hx_check_unit(HxUnit *unit) {
             hx_resolve_signature(&c, fn);
             /* `OPERATOR +` no puede llamarse "+" en C: se renombra con la
                palabra del operador y el tipo del primer parametro */
-            if (hx_es_operador(fn->name)) {
+            /* is_operator lo pone el parser en cuanto ve OPERATOR. Antes se
+               preguntaba por el nombre buscando caracteres raros, y eso falla
+               justo con los operadores que son palabra clave: `OPERATOR MOD` se
+               llamaba "mod", que es un nombre corriente, asi que la sobrecarga no
+               se declaraba y la funcion desaparecia del binario. */
+            if (fn->is_operator) {
                 const char *signo = hx_sym_str(fn->name);
-                const char *palabra = hx_op_palabra(signo);
+                const char *palabra = hx_op_signo_asi(signo);
                 HxTy *pt = fn->params.len ? fn->params.data[0].ty : NULL;
                 if (!palabra) {
                     /* "%s" explicito: un nombre de operador puede ser "%" y
@@ -2938,6 +2944,19 @@ int hx_check_unit(HxUnit *unit) {
                 } else {
                     char *nombre = hx_arena_sprintf(c.arena, "op_%s__%s", palabra,
                                                     hx_ty_name(pt));
+                    /* `!=` y `<>` son el mismo operador, asi que sobrecargar los
+                       dos produce el mismo nombre y el C sale con dos
+                       definiciones. Aqui se dice, que es lo que hace el
+                       verificador. */
+                    if (hx_find_func(&c, hx_intern_fold_ascii(c.intern, nombre, strlen(nombre)))) {
+                        hx_diag_note(c.diags, fn->span, "E0213",
+                                     hx_arena_sprintf(c.arena,
+                                                      "'%s' ya está sobrecargado para '%s'",
+                                                      signo, hx_ty_name(pt)),
+                                     "una misma pareja (operador, tipo) solo se sobrecarga "
+                                     "una vez: '!=' y '<>' son el mismo operador", NULL);
+                        continue;
+                    }
                     fn->name = hx_intern_cstr(c.intern, nombre);
                     hx_define(&c, hx_fold(&c, fn->name), fn->ret, SK_FUNC, fn->span);
                 }
