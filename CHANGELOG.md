@@ -27,6 +27,12 @@ dice qué formato y qué abi entiende este `hxc`.
   de la lista. Los módulos con punto (`std.texto` → `std.texto.hxs`) se
   resuelven probando el nombre corto y el largo. El nombre del módulo importado
   se comprueba contra la ruta del `IMPORT`.
+- **Quince palabras clave que existían sin uso ya no están reservadas**:
+  `IMPL`, `COMPTIME`, `DYN`, `PUBLIC`, `SHADER`, `VERTEX`, `FRAGMENT`,
+  `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y `ENTRY`.
+  No hacían nada y reservaban nombres que un programa debería poder usar. La
+  entrada `ENTRY` de los manifiestos `.hxk` no es esta palabra clave: la lee
+  `kit.c` como texto.
 - **`ARRAY[T]`: el arreglo dinámico**, con `Len`, `At(i)`, `Set(i, v)` y
   `Push(v)`. Crece por duplicación y sin `realloc`: se reserva el bloque nuevo
   desde la arena y se copia, así que el viejo se queda hasta que la arena se

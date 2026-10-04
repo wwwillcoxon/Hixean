@@ -177,7 +177,7 @@
           },
           {
             "name": "keyword.other.hixean",
-            "match": "\\b(RETURN|GOTO|DEFER|ARENA|DIM|CONST|PRINT|IMPORT|MODULE|EXPORT|PUBLIC|AS|DONDE|PARA|METODO|METHOD|IMPLEMENTAR|SELF|EXTIENDE)\\b"
+            "match": "\\b(RETURN|GOTO|DEFER|ARENA|DIM|CONST|PRINT|IMPORT|MODULE|EXPORT|AS|DONDE|PARA|METODO|METHOD|IMPLEMENTAR|SELF)\\b"
           }
         ]
       }

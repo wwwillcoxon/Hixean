@@ -1,0 +1,20 @@
+"quince nombres que estaban reservados sin uso y ya son normales"
+DIM input AS INT = 1
+DIM output AS STRING = "dos"
+DIM dyn AS INT = 3
+DIM public AS INT = 4
+DIM shadow AS INT = 5
+DIM uniform AS INT = 6
+DIM assert AS INT = 7
+DIM pure AS INT = 8
+DIM comptime AS INT = 9
+DIM impl AS INT = 10
+DIM shader AS INT = 11
+DIM vertex AS INT = 12
+DIM fragment AS INT = 13
+DIM compute AS INT = 14
+DIM entry AS STRING = "quince"
+
+PRINT input + output.Len() + dyn + public + shadow + uniform + assert
+PRINT pure + comptime + impl + shader + vertex + fragment + compute
+PRINT entry
