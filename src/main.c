@@ -513,7 +513,11 @@ static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
     }
     argv[n++] = "-o";
     argv[n++] = hx_arg(&s->arena, bin_path);
+    /* --gc-sections es de GNU ld: el ld64 de macOS no lo conoce y falla el
+       enlace entero con «unknown option», que es como se manifestaba. */
+#ifndef _WIN32
     argv[n++] = "-Wl,--gc-sections";
+#endif
     if (o->profile == HX_PROFILE_FREESTANDING) {
         argv[n++] = "-nostdlib";
         argv[n++] = "-static";

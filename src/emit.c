@@ -146,6 +146,7 @@ static const char *HX_NET_PRE =
     "  r.addr = (a1 << 24) | (a2 << 16) | (a3 << 8) | a4; return r;\n"
     "}\n";
 
+#ifndef _WIN32
 static const char *HX_RT_NET_FREESTANDING =
     "#if defined(__linux__) && defined(__x86_64__)\n"
     "typedef struct { uint16_t f; uint16_t puerto; uint32_t addr; uint64_t pad; } hx_sockaddr;\n"
@@ -220,6 +221,8 @@ static const char *HX_RT_NET_FREESTANDING =
     "}\n";
 
 /* los stubs van aparte: ISO C99 obliga a soportar literales de 4095 bytes */
+#endif /* _WIN32: en Windows el net es siempre el de stubs */
+
 static const char *HX_RT_NET_STUBS =
     "#else\n"
     "static inline int64_t hx_socket(int64_t t) { return -1; }\n"
@@ -239,6 +242,7 @@ static const char *HX_RT_NET_STUBS =
     "}\n"
     "#endif\n";
 
+#ifndef _WIN32
 static const char *HX_RT_NET_LIBC =
     "#include <sys/socket.h>\n"
     "#include <netinet/in.h>\n"
@@ -310,6 +314,7 @@ static const char *HX_RT_NET_LIBC =
    (size_t contra unsigned long) y el C no compila. La solucion no es renombrar los
    nuestros, que entonces no serian los de libc, sino declarar el prototipo con
    el mismo tipo que usa el resto del runtime al llamarlos. */
+#endif /* _WIN32 */
 static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, size_t);\n"
     "void *memset(void *, int, size_t);\n";
 
