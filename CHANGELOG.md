@@ -13,6 +13,10 @@ dice qué formato y qué abi entiende este `hxc`.
 
 ### Añadido
 
+- **`lib/` viaja en el paquete y `install.sh` lo instala** en
+  `<prefijo>/lib/hixean`, que es donde el binario lo mira. `install.sh` además
+  acepta un `.tar.gz` local como argumento, para instalar sin red y para poder
+  probar el paquete antes de publicar la release.
 - **`std.texto`, la primera biblioteca estándar**: `StartsWith`, `EndsWith`,
   `Contains`, `Replace`, `Split`, `Join`, `PadLeft` y `PadRight`, escritas en
   Hixean en `lib/hixean/std.texto.hxs`. El compilador la busca sola junto a su
@@ -75,6 +79,11 @@ dice qué formato y qué abi entiende este `hxc`.
 
 ### Corregido
 
+- **`install.sh` no copiaba la biblioteca**: en POSIX no hay expansión de nombres
+  de fichero en una asignación, así que `LIB="$TMP"/hixean-*/lib/hixean` se
+  quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
+  haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
+  aparece `bin/hxc` se dice con un error.
 - **Los `switch` por tipo, expresión, sentencia y patrón ya no admiten
   `default`**, así que añadir un `TY_*`, `EX_*` o `ST_*` rompe la compilación en
   vez de colarse por un retorno por defecto. El que moría en silencio era

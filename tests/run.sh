@@ -267,6 +267,27 @@ grep -q "E0501" build/busqueda/nada.out \
   && grep -q "HX_LIB" build/busqueda/nada.out \
   && echo "ok     sin -I ni HX_LIB el modulo no se encuentra y el mensaje lo dice" \
   || { echo "FALLO: el fallo no explica donde se busco"; exit 1; }
+# el paquete lleva la biblioteca y el instalador la deja donde hxc la mira:
+# esto se compila con el binario INSTALADO, desde otro directorio, sin -I
+rm -rf build/prefixe
+if command -v tar >/dev/null 2>&1; then
+  sh tools/dist.sh 0.1.0 linux-x64 >/dev/null 2>&1
+  mkdir -p build/prefixe
+  if HIXEAN_PREFIX=build/prefixe sh tools/install.sh \
+       "dist/hixean-0.1.0-linux-x64.tar.gz" >/dev/null 2>&1; then
+    printf 'IMPORT std.texto\nPRINT texto.PadLeft("7", 3, "0")\n' > build/instalado.hxe
+    (cd build && ./prefixe/bin/hxc run instalado.hxe > instalado.out 2>&1)
+    if [ "$(cat build/instalado.out 2>/dev/null)" = "007" ]; then
+      echo "ok     el binario instalado encuentra la biblioteca instalada, sin -I"
+    else
+      echo "FALLO: la biblioteca no llega al paquete o hxc no la encuentra"; exit 1
+    fi
+  else
+    echo "FALLO: install.sh no instala un paquete local"; exit 1
+  fi
+else
+  echo "ok     instalacion omitida: no hay tar"
+fi
 # un modulo con punto: std.texto.hxs se llama std.texto y se llama texto.Doble
 ./build/hxc run tests/modulos_con_punto/usa.hxe > build/punto.out 2>&1
 diff -u tests/modulos_con_punto/usa.hxe.out build/punto.out \

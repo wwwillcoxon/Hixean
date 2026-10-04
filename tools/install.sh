@@ -5,6 +5,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
 #
+# Si el argumento es un .tar.gz que ya existe en disco, se instala ese y no se
+# descarga nada: sirve para instalar sin red y para probar el paquete antes de
+# publicar una release.
+#
 # Variables: HIXEAN_VERSION (por defecto, la última), HIXEAN_PREFIX, HIXEAN_PLAT.
 set -e
 
@@ -59,9 +63,46 @@ case "$HIXEAN_PLAT" in
   *) die "plataforma no soportada: $HIXEAN_PLAT" ;;
 esac
 
-CURL=$(comando curl) || die "hace falta curl o wget"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+
+LOCAL=0
+case "${1:-}" in
+  *.tar.gz|*.tgz)
+    if [ -f "$1" ]; then LOCAL=1; TAR_LOCAL="$1"; fi
+    ;;
+esac
+
+if [ "$LOCAL" = 1 ]; then
+  VERSION="${HIXEAN_VERSION:-$(basename "$TAR_LOCAL" | sed -n 's/^hixean-\([^-]*\)-.*/\1/p')}"
+  [ -n "$VERSION" ] || VERSION="local"
+  say "Hixean $VERSION (paquete local: $TAR_LOCAL)"
+  cp "$TAR_LOCAL" "$TMP/hixean.tar.gz"
+  tar -xzf "$TMP/hixean.tar.gz" -C "$TMP"
+  PREFIX="${HIXEAN_PREFIX:-$HOME/.local}"
+  mkdir -p "$PREFIX/bin"
+  # en una asignacion no hay expansion de nombres de fichero (POSIX), asi que el
+  # directorio se recorre con un for y no con un LIB=$TMP/hixean-*
+  COPIADO=0
+  for d in "$TMP"/hixean-*/; do
+    [ -d "$d" ] || continue
+    [ -f "$d/bin/hxc" ] || continue
+    cp "$d/bin/hxc" "$PREFIX/bin/hxc"
+    chmod +x "$PREFIX/bin/hxc"
+    COPIADO=1
+    if [ -d "$d/lib/hixean" ]; then
+      mkdir -p "$PREFIX/lib/hixean"
+      cp "$d"/lib/hixean/*.hxs "$PREFIX/lib/hixean/" 2>/dev/null || true
+      say "biblioteca en $PREFIX/lib/hixean"
+    fi
+  done
+  [ "$COPIADO" = 1 ] || die "el paquete no trae bin/hxc"
+  say "instalado en $PREFIX/bin/hxc"
+  "$PREFIX/bin/hxc" version
+  exit 0
+fi
+
+CURL=$(comando curl) || die "hace falta curl o wget"
 
 if [ -n "$HIXEAN_VERSION" ]; then
   ETIQUETA="v$HIXEAN_VERSION"
@@ -107,6 +148,15 @@ cp "$ORIGEN" "$PREFIX/bin/hxc"
 chmod +x "$PREFIX/bin/hxc"
 [ -f "$TMP/hixean-$VERSION-$HIXEAN_PLAT/bin/install.sh" ] &&
   cp "$TMP/hixean-$VERSION-$HIXEAN_PLAT/bin/install.sh" "$PREFIX/bin/hixean-install.sh"
+
+# La biblioteca va a <prefijo>/lib/hixean, que es donde hxc la mira: esta en
+# bin/lib si se copia al lado del binario.
+BIBLIO="$TMP/hixean-$VERSION-$HIXEAN_PLAT/lib/hixean"
+if [ -d "$BIBLIO" ]; then
+  mkdir -p "$PREFIX/lib/hixean"
+  cp "$BIBLIO"/*.hxs "$PREFIX/lib/hixean/" 2>/dev/null || true
+  say "biblioteca en $PREFIX/lib/hixean"
+fi
 
 say "instalado en $PREFIX/bin/hxc"
 "$PREFIX/bin/hxc" version

@@ -458,6 +458,11 @@ PRINT texto.Join("|", partes)
 PRINT texto.PadLeft("7", 3, "0")
 ```
 
+El paquete (`make dist`) lleva `lib/hixean/` y `install.sh` lo deja en
+`<prefijo>/lib/hixean`. La puerta lo comprueba de verdad: instala el paquete en
+un prefijo temporal y compila un programa que importa `std.texto` con **ese**
+binario, desde otro directorio y sin `-I`.
+
 `std.texto` está escrito en Hixean, en `lib/hixean/std.texto.hxs`, sobre los
 métodos de `STRING` que ya tenía el lenguaje: `StartsWith`, `EndsWith`,
 `Contains`, `Replace`, `Split`, `Join`, `PadLeft` y `PadRight`. Los métodos

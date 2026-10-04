@@ -23,13 +23,17 @@ fi
 NOMBRE="hixean-$VERSION-$PLAT"
 ESCENARIO="build/dist/$NOMBRE"
 rm -rf "$ESCENARIO"
-mkdir -p "$ESCENARIO/bin" "$ESCENARIO/docs" "$ESCENARIO/examples"
+mkdir -p "$ESCENARIO/bin" "$ESCENARIO/docs" "$ESCENARIO/examples" \
+         "$ESCENARIO/lib/hixean"
 
 cp build/hxc "$ESCENARIO/bin/hxc"
 cp LICENSE README.md CHANGELOG.md "$ESCENARIO/"
 cp docs/grammar.md docs/manual.html "$ESCENARIO/docs/"
 cp examples/*.hxe "$ESCENARIO/examples/"
 cp tools/install.sh "$ESCENARIO/bin/install.sh"
+# la biblioteca viene con el compilador: sin esto, IMPORT std.texto no funciona
+# en una instalacion
+cp lib/hixean/*.hxs "$ESCENARIO/lib/hixean/"
 
 mkdir -p dist
 if command -v tar >/dev/null 2>&1; then
