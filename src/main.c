@@ -20,17 +20,19 @@
 #include <sys/wait.h>
 #endif
 
+/* execvp y execv piden char *const argv[] y la arena devuelve const char *:
+   copiar el puntero una vez es mas barato que mentir sobre el const. Y el scratch
+   de los valores por defecto lo usan los dos caminos, asi que va fuera del
+   condicional: estaba dentro del de POSIX y en Windows no existia. */
+static char *hx_arg(HxArena *a, const char *s);
+static HxArena g_arena_scratch;
+
 #ifdef _WIN32
 #include <process.h>
 #define HX_EXEC(p, a) _spawnvp(_P_WAIT, p, a)
 #define HX_STRCPY_STRDUP(d, s) ((d) = _strdup(s))
 #else
 #include <unistd.h>
-/* execvp y execv piden char *const argv[] y la arena devuelve const char *.
-   Copiar el puntero una vez es mas barato que mentir sobre el const. */
-static char *hx_arg(HxArena *a, const char *s);
-static HxArena g_arena_scratch;
-
 #define HX_EXEC(p, a) execvp(p, a)
 #define HX_STRCPY_STRDUP(d, s) ((d) = strdup(s))
 #endif
