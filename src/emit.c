@@ -368,6 +368,21 @@ static const char *HX_RT_FREESTANDING =
 
 static const char *HX_RT_LIBC =
     "#include <unistd.h>\n"
+    /* En Windows la salida estandar esta en modo texto, y el CRT cambia cada \n por
+       \r\n. Un lenguaje que compara la salida de un programa byte a byte no puede
+       permitir eso: el mismo programa da ficheros distintos en cada sistema, y un
+       `diff` entre la salida y la esperada falla por un byte que no es del
+       programa. Se pone en modo binario antes de escribir nada. */
+    "#ifdef _WIN32\n"
+    "#include <fcntl.h>\n"
+    "#include <io.h>\n"
+    "static inline void hx_modo_binario(void) {\n"
+    "  _setmode(_fileno(stdout), _O_BINARY);\n"
+    "  _setmode(_fileno(stderr), _O_BINARY);\n"
+    "}\n"
+    "#else\n"
+    "static inline void hx_modo_binario(void) { }\n"
+    "#endif\n"
     "typedef int hx_bool;\n"
     "static long hx_sys_write(int fd, const void *p, int64_t n) {\n"
     "  long r;\n"
@@ -3682,7 +3697,8 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
                    "  __asm__ volatile(\"andq $-16, %rsp\");\n"
                    "  hx_exit((int)hx_main());\n  __builtin_unreachable();\n}\n");
     else
-        hx_buf_str(&main_b, "int main(void) { return (int)hx_main(); }\n");
+        hx_buf_str(&main_b,
+                   "int main(void) { hx_modo_binario(); return (int)hx_main(); }\n");
     char *mp = hx_arena_sprintf(arena, "%s/_entry.c", opt->dir_gen);
     if (hx_write_file(mp, main_b.data, main_b.len) != 0) return 1;
     free(main_b.data);

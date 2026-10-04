@@ -350,9 +350,14 @@ make test</code></pre>
 hxc version</code></pre>
     <p>El instalador descarga el tarball de la última release para tu plataforma,
     comprueba el <code>SHA256</code> contra <code>SHA256SUMS</code> y <strong>aborta
-    si no coincide</strong>. Sin ese <code>SHASUM</code> no instala nada. Para
+    si no coincide</strong>. Sin ese <code>SHA256</code> no instala nada. Para
     instalar una versión concreta: <code>sh tools/install.sh 0.2.0</code>. Y para
     instalar sin red, un tarball local: <code>sh tools/install.sh ./hixean-0.2.0-linux-x64.tar.gz</code>.</p>
+    <p><strong>Ojo:</strong> la release 0.2.0 publica <strong>un solo</strong>
+    artefacto, el de <code>linux-x64</code>. En macOS y Windows este comando no
+    encuentra su plataforma: compilar el código funciona en los dos, pero para
+    tener un binario hay que usar el camino del sistema. Las otras plataformas
+    entran en la release cuando su puerta de CI esté verde.</p>
 
     <h3>3 · Homebrew</h3>
     <pre class="copiable"><code>brew install --formula=packaging/homebrew/hixean.rb</code></pre>

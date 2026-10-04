@@ -3,6 +3,12 @@
 #
 # winget exige InstallerSha256: hay que copiarlo de dist/SHA256SUMS de la
 # release correspondiente.
+#
+# NO PUBLICABLE EN LA 0.2.0, y no por un detalle de forma: los zip de Windows los
+# genera el workflow de la release para los targets de windows, y la 0.2.0
+# publica solo linux-x64. Las dos InstallerUrl de abajo darian 404. El manifiesto
+# se queda escrito y con la version puesta, para que cuando windows entre en la
+# matriz (el corpus ya pasa ahi entero) solo haya que copiar el sha256.
 PackageIdentifier: wwwillcoxon.Hixean
 PackageVersion: 0.2.0
 DefaultLocale: en-US
@@ -31,6 +37,7 @@ ReleaseDate: 2026-10-03
 Installers:
   - Architecture: x64
     InstallerType: zip
+    # sin artefacto de windows en la 0.2.0: la release solo publica linux-x64
     InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-windows-x64.zip
     InstallerSha256: REEMPLAZAR_CON_EL_SHA256_DE_windows-x64
     NestedInstallerType: portable

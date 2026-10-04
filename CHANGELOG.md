@@ -43,6 +43,20 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   las celdas eran un `hx_span` con el puntero a `NULL`, y escribir en
   `t.celdas[0]` escribía en el vacío.
 
+- **La release publica un artefacto, el de `linux-x64`.** Es el único camino de
+  extremo a extremo que está verde: el perfil `freestanding` es de Linux, y la
+  puerta de 12 KiB solo se mide ahí. En `release.yml` está escrito qué falta para
+  cada una de las otras cinco. La fórmula de Homebrew dice en voz alta que no hay
+  artefacto para macOS y arm64 en vez de apuntar a un 404, y el manifiesto de
+  winget se marca como no publicable porque sus dos zip no existen.
+  - Windows: el corpus pasa entero (33 pruebas; la de sockets se omite porque el
+    net del runtime son stubs). Lo que impedía comparar era el fin de línea: el
+    CRT de Windows pasa `
+` a `
+`, y un lenguaje que compara la salida byte a
+    byte no puede tolerarlo. Ahora el punto de entrada del perfil `libc` pone la
+    salida en modo binario antes de escribir nada.
+
 ### Añadido
 
 - **`lib/` viaja en el paquete y `install.sh` lo instala** en

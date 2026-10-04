@@ -22,6 +22,26 @@ jobs:
 
   # Un artefacto por plataforma. El nombre sale de la etiqueta, asi que la
   # release y tools/dist.sh no pueden discrepar.
+  #
+  # Solo linux-x64, y no por pereza: es el unico camino de extremo a extremo que
+  # esta verde. El perfil freestanding emite _start y syscalls de Linux, asi que
+  # sus programas no arrancan fuera de Linux, y la puerta de 12 KiB solo se mide
+  # ahi. Los otros cinco targets se anaden cuando su puerta este verde:
+  #
+  #   linux-arm64   falta el compilador cruzado en la puerta; el resto del camino
+  #                 es identico a linux-x64.
+  #   macos-*       tests/genericos.hxt falla: la interpolacion de un entero en
+  #                 una funcion generica imprime bytes que no son el numero. El
+  #                 C generado es identico al de Linux, asi que la causa esta en el
+  #                 runtime o en el enlazado, y hace falta un macOS para mirarlo.
+  #   windows-*     el compilador construye y el corpus pasa entero (la prueba de
+  #                 sockets se omite porque el net del runtime son stubs: no hay
+  #                 Winsock). Falta por ahi un camino de instalacion probado y el
+  #                 tarball es un zip.
+  #
+  # Lo que no se hace es publicar los seis y decir en la pagina que cinco no
+  # funcionan del todo: un binario que se descarga y no arranca es peor que un
+  # binario que todavia no existe.
   artefactos:
     needs: comprobar
     strategy:
@@ -29,11 +49,6 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, plat: linux-x64, cc: gcc }
-          - { os: ubuntu-latest, plat: linux-arm64, cc: gcc, cross: aarch64-linux-gnu-gcc }
-          - { os: macos-latest, plat: macos-x64, cc: clang }
-          - { os: macos-latest, plat: macos-arm64, cc: clang }
-          - { os: windows-latest, plat: windows-x64, cc: clang }
-          - { os: windows-latest, plat: windows-arm64, cc: clang }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
