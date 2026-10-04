@@ -116,6 +116,14 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **El PDF tenía 3792 fragmentos de texto invisibles.** El fondo de los bloques
+  de código y de los avisos fija el color de relleno, y en PDF ese color es el que
+  usan también las letras: sin devolverlo a negro, todo el texto posterior salía en
+  gris claro sobre blanco. Se dibujaba y no se veía, que es la peor forma de
+  fallar. Ahora el color se restablece y `tools/verificar-pdf.py` recorre los
+  flujos como los ve el visor y falla si algún texto sale con un relleno claro
+  encima, o si se sale de la caja. También se quitan las comillas del código en
+  línea que el índice imprimía y el cuerpo no.
 - **La CI ha encontrado doce fallos de portabilidad** que llevaban ahí desde el
   primer día, porque el repositorio tenía un solo commit en el remoto y nunca se
   había ejecutado sobre este código. Ninguno es de la lógica del lenguaje:

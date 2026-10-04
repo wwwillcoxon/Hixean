@@ -104,7 +104,15 @@ class Pagina:
                         % (gris, gris, gris, grosor, MIZQ, y, ANCHO_PAG - MDER, y))
 
     def caja(self, x, y, w, h, gris=0.965):
+        """Un rectángulo de fondo, y el relleno vuelve a negro.
+
+        Sin ese rg negro, el color se queda puesto: en PDF `rg` fija el color de
+        relleno, que es el que usa tambien el texto, asi que todo lo que se
+        dibuja despues sale en gris claro sobre blanco, es decir invisible. Le
+        pasaba a los bloques de codigo y a los avisos: 3792 fragmentos de texto
+        del documento, que se dibujaban pero no se veian."""
         self.ops.append("%.3f %.3f %.3f rg %.2f %.2f %.2f %.2f re f" % (gris, gris, gris, x, y, w, h))
+        self.ops.append("0 0 0 rg")
 
 
 class Doc:
@@ -446,7 +454,9 @@ class Manual:
             if not d.sitio(INTERL):
                 p = d.nueva()
             p.y -= INTERL
-            p.texto(MIZQ + sangria, p.y + 3, txt, fuente, tam)
+            # sin las comillas del codigo en linea: el cuerpo del documento ya no
+            # las pone, y el indice las ensefia («Result y `?`»)
+            p.texto(MIZQ + sangria, p.y + 3, re.sub(r"`([^`]+)`", r"\1", txt), fuente, tam)
             etiqueta = str(numeros.get(txt, ""))
             p.texto(ANCHO_PAG - MDER - ancho_de(etiqueta, "F1") * 9.8 / 1000.0,
                     p.y + 3, etiqueta, "F1", 9.8)

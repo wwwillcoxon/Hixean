@@ -233,6 +233,7 @@ if command -v python3 >/dev/null 2>&1; then
   python3 tools/verificar-cifras.py
   python3 tools/verificar-tabla-errores.py
   python3 tools/verificar-guia.py docs/guia-programar.md
+  python3 tools/verificar-pdf.py site/guia-programar.pdf
   # el PDF se regenera y se compara: un PDF commiteado que no corresponde al
   # markdown es un documento que ya no explica lo que dice explicar
   python3 tools/generar-pdf.py docs/guia-programar.md build/guia.pdf >/dev/null
