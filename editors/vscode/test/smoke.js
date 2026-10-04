@@ -13,7 +13,11 @@ const assert = require("assert");
 const fs = require("fs");
 
 const RAIZ = path.resolve(__dirname, "..", "..", "..");
-const HXC = path.join(RAIZ, "build", "hxc");
+// En Windows el enlazador anade .exe, igual que en hxc size. El binario se
+// busca por los dos nombres y el error dice los dos, para que no parezca que
+// falta la compilacion cuando lo que falta es la extension.
+const HXC = ["hxc", "hxc.exe"].map((n) => path.join(RAIZ, "build", n)).find((p) => fs.existsSync(p))
+  || path.join(RAIZ, "build", "hxc");
 
 const puestos = [];
 const tareas = [];
@@ -127,7 +131,7 @@ assert.ok(comandos["hixean.build"], "debe registrar el comando hixean.build");
 assert.ok(comandos["hixean.test"], "debe registrar el comando hixean.test");
 
 (async () => {
-  assert.ok(fs.existsSync(HXC), "hxc tiene que estar compilado: make");
+  assert.ok(fs.existsSync(HXC), `hxc tiene que estar compilado (make); no hay ni ${HXC} ni build/hxc.exe`);
 
   const p = new Promise((r) => setTimeout(r, 1200));
   guardarCallback(documento);
