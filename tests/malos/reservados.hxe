@@ -1,4 +1,4 @@
-"palabras clave reservadas que todavia no hacen nada"
+"UNIQUE ya no esta reservado, y PRINT NIL no imprime un cero"
 TYPE T
   UNIQUE x AS INT
 END TYPE
