@@ -370,6 +370,8 @@ typedef struct {
     HxTyKind ret;
 } HxIntrin;
 
+static const HxIntrin hx_tostring_intrin = {"ToString", "to_string", 0, TY_STRING};
+
 static const HxIntrin hx_string_intrins[] = {
     {"Len", "len_str", 0, TY_I64},
     {"IsEmpty", "is_empty_str", 0, TY_BOOL},
@@ -507,9 +509,26 @@ static int hx_es_direccionable(HxExpr *x) {
 }
 
 static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
-    if (!recv || recv->kind != TY_STRING) return NULL;
-    for (int i = 0; hx_string_intrins[i].name; i++)
-        if (!hx_ascii_casecmp(hx_string_intrins[i].name, name)) return &hx_string_intrins[i];
+    if (!recv) return NULL;
+    if (recv->kind == TY_STRING) {
+        for (int i = 0; hx_string_intrins[i].name; i++)
+            if (!hx_ascii_casecmp(hx_string_intrins[i].name, name))
+                return &hx_string_intrins[i];
+        return NULL;
+    }
+    /* ToString es el unico metodo de los escalares: sin el no hay forma de
+       poner un numero dentro de un texto, y sin eso no se puede escribir un
+       programa que arme cadena con nada */
+    if (!hx_ascii_casecmp(name, "ToString")) {
+        switch (recv->kind) {
+            case TY_INT:
+            case TY_I64:
+            case TY_FLOAT:
+            case TY_BOOL:
+            case TY_DURATION: return &hx_tostring_intrin;
+            default: break;
+        }
+    }
     return NULL;
 }
 
@@ -951,7 +970,9 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                                               mn, in->nargs, dado));
                 for (int i = 0; i < dado; i++)
                     e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
-                e->is_intrin = in->nargs == 0 ? 2 : 1;
+                /* ToString necesita su propia marca: el nombre del ayudante sale
+                   del tipo del receptor, no de una tabla de nombres */
+                e->is_intrin = (in == &hx_tostring_intrin) ? 8 : (in->nargs == 0 ? 2 : 1);
                 e->method = raw_callee->member.name;
                 e->recv = irecv;
                 e->ty = hx_ty_builtin(c->arena, in->ret);
@@ -1075,8 +1096,10 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         const char *mn = hx_sym_str(raw_callee->path.parts.data[np - 1].name);
         int vec_name = 0;
         hx_find_vec_intrin(mn, &vec_name);
+        /* El nombre del metodo no dice si existe: el receptor lo dice. `n.ToString()`
+           y `v.DOT(w)` llegan aqui como caminos de dos partes, igual que `s.Len()`. */
         if (hx_find_array_intrin(mn) || vec_name || !hx_ascii_casecmp(mn, "Or") ||
-            !hx_ascii_casecmp(mn, "Map")) {
+            !hx_ascii_casecmp(mn, "Map") || !hx_ascii_casecmp(mn, "ToString")) {
             HxExpr *recv_e = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
             recv_e->kind = EX_PATH;
             recv_e->span = raw_callee->span;
@@ -1087,6 +1110,22 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 hx_array_method_check(c, e, recv, mn))
                 return e;
             if (hx_es_maybe(recv->ty) && hx_maybe_call_check(c, e, recv, mn)) return e;
+            if (hx_find_intrin(recv->ty, mn)) {
+                HxExpr *irecv = recv;
+                const HxIntrin *in = hx_find_intrin(irecv->ty, mn);
+                int dado = e->call.args.len;
+                if (dado != in->nargs)
+                    hx_error(c->diags, e->span, "E0306",
+                             hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                                              mn, in->nargs, dado));
+                for (int i = 0; i < dado; i++)
+                    e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+                e->is_intrin = (in == &hx_tostring_intrin) ? 8 : (in->nargs == 0 ? 2 : 1);
+                e->method = raw_callee->path.parts.data[np - 1].name;
+                e->recv = irecv;
+                e->ty = hx_ty_builtin(c->arena, in->ret);
+                return e;
+            }
             /* los vectores llegan aqui como `v.DOT(w)`: el parser hace un
                camino de dos partes, igual que `a.Len()` */
             if (hx_vec_len(recv->ty)) {

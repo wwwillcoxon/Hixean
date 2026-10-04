@@ -116,6 +116,15 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **`ToString()` en los números.** `PRINT 42` funciona desde el principio, pero no
+  había forma de *convertir* un número en texto, así que no se podía escribir
+  `"n = " ++ n.ToString()`: no había ningún camino de número a cadena. Ahora `INT`,
+  `I64`, `FLOAT`, `BOOL` y `DURATION` tienen `ToString()`, con el texto en memoria
+  propia (el runtime ya tenía el formateo para `PRINT`, pero devolvía un puntero a
+  la pila, que solo servía mientras duraba la llamada).
+  - El texto no se libera. Hixean no tiene recolector y no va a fingir uno; quien
+    llame mucho en un bucle debe encerrarlo en un `ARENA`.
+  - El camino de vuelta (`s.ToInt()`) sigue sin existir: es lo siguiente.
 - **Operadores de bits.** No había ninguno: `AND` `OR` `XOR` eran `BOOL` a secas
   (`E0307`), `&` es dirección de, `|` es alternancia de patrón y `^` es
   desreferencia. Sin una forma de calcular un hash, una bandera o un protocolo con

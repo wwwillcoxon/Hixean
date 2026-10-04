@@ -43,7 +43,7 @@ def largo(literal):
 
 # El recuento no puede bajar sin que alguien haya cambiado un literal por otro y el
 # patron ya no case. Cuando se anada una comprobacion se sube este numero.
-MINIMOS = 16
+MINIMOS = 19
 
 
 def main():

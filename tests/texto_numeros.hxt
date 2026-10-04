@@ -1,0 +1,36 @@
+"texto a partir de un numero: ToString, que sin el no se puede hacer casi nada"
+DIM n AS INT = 42
+DIM grande AS I64 = 9000000000
+DIM x AS FLOAT = 2.5
+DIM entero AS FLOAT = 7.0
+DIM b AS BOOL = TRUE
+DIM falso AS BOOL = FALSE
+
+PRINT n.ToString()
+PRINT grande.ToString()
+PRINT x.ToString()
+PRINT entero.ToString()
+PRINT b.ToString()
+PRINT falso.ToString()
+
+"y lo que de verdad lo hacia falta: un numero dentro de un texto"
+PRINT "n = " ++ n.ToString()
+PRINT "[" ++ n.ToString() ++ ", " ++ x.ToString() ++ "]"
+
+"un negativo, que es donde se ve si el signo se pierde"
+DIM menos AS INT = -1234
+PRINT menos.ToString()
+
+FUNCTION Etiqueta(clave AS STRING, valor AS INT) AS STRING
+  RETURN clave ++ "=" ++ valor.ToString()
+END FUNCTION
+
+PRINT Etiqueta("ancho", 80)
+PRINT Etiqueta("alto", -1)
+
+"el texto vive en memoria propia y no se libera: quien llama mucho en un bucle
+deberia meter un ARENA alrededor. Hixean no tiene recolector, y no va a fingir
+uno: lo que se puede liberar se libera a mano con un ARENA."
+
+"y todavia no hay tipos de funcion, asi que no se puede pasar una FUNC
+como parametro: eso es lo que dice ADR 0008 y lo que falta por hacer."

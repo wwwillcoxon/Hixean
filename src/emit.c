@@ -42,6 +42,7 @@ typedef struct {
     int uses_result;
     int uses_vec;
     int uses_shift;
+    int uses_tostring;
     int ret_is_result;
     int epilogue;
     const char *ret_field;
@@ -894,6 +895,61 @@ static const char *HX_RT_ZERO =
     "static hx_str hx_zero_str(void) { return hx_lit(\"\", 0); }\n"
     "static hx_span hx_zero_span(void) { return hx_span_make(NULL, 0); }\n";
 
+/* Texto a partir de un numero, y al reves. El runtime ya tenia hx_str_of_i64 y
+   hx_str_of_f64 para PRINT, pero devuelven un puntero a un buffer de la pila, que
+   solo sirve mientras dura la llamada: para ToString() el texto tiene que vivir
+   mas alla, asi que se copia a memoria propia. */
+static const char *HX_RT_TOSTRING =
+    /* El formateo se hace en un buffer local y la copia se pide despues.
+       Al reves, hx_str_of_i64 devuelve un puntero a la pila de la funcion que
+       llama, y la llamada a hx_raw_alloc pisa justo ese sitio: el signo de un
+       negativo salia como un espacio en lugar de un guion. */
+    "static hx_str hx_i64_str(int64_t v) {\n"
+    "  char buf[24];\n"
+    "  int n = 0;\n"
+    "  uint64_t u;\n"
+    "  char *p;\n"
+    "  hx_str s;\n"
+    "  if (v < 0) { buf[n++] = '-'; u = (uint64_t)(-(v + 1)) + 1u; }\n"
+    "  else u = (uint64_t)v;\n"
+    "  hx_u64_to_dec(u, buf, &n);\n"
+    "  p = (char *)hx_raw_alloc(n + 1);\n"
+    "  if (!p) hx_panic(\"sin memoria para un texto\", sizeof(\"sin memoria para un texto\") - 1);\n"
+    "  memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  s.p = p; s.n = n;\n"
+    "  return s;\n"
+    "}\n"
+    "static hx_str hx_f64_str(double d) {\n"
+    "  hx_str t = hx_str_of_f64(d);\n"
+    "  char buf[64];\n"
+    "  int64_t n = t.n;\n"
+    "  char *p;\n"
+    "  hx_str s;\n"
+    "  if (n > 63) n = 63;\n"
+    "  memcpy(buf, t.p, (size_t)n);\n"
+    "  p = (char *)hx_raw_alloc(n + 1);\n"
+    "  if (!p) hx_panic(\"sin memoria para un texto\", sizeof(\"sin memoria para un texto\") - 1);\n"
+    "  memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  s.p = p; s.n = n;\n"
+    "  return s;\n"
+    "}\n"
+    "static hx_str hx_bool_str(hx_bool v) {\n"
+    "  const char *t = v ? \"true\" : \"false\";\n"
+    "  int64_t n = v ? 4 : 5;\n"
+    "  char buf[8];\n"
+    "  char *p;\n"
+    "  hx_str s;\n"
+    "  memcpy(buf, t, (size_t)n);\n"
+    "  p = (char *)hx_raw_alloc(n + 1);\n"
+    "  if (!p) hx_panic(\"sin memoria para un texto\", sizeof(\"sin memoria para un texto\") - 1);\n"
+    "  memcpy(p, buf, (size_t)n);\n"
+    "  p[n] = 0;\n"
+    "  s.p = p; s.n = n;\n"
+    "  return s;\n"
+    "}\n";
+
 static const char *HX_RT_STRING =
     "static char hx_cbuf[65536];\n"
     "static inline int64_t hx_clen;\n"
@@ -963,6 +1019,20 @@ static const char *hx_intrin_cname(const char *name) {
     for (int i = 0; hx_intrin_names[i].name; i++)
         if (!hx_ascii_casecmp(hx_intrin_names[i].name, name)) return hx_intrin_names[i].cname;
     return "unknown_intrinsic";
+}
+
+/* ToString depende del tipo del receptor, asi que el nombre del ayudante sale de
+   ahi y no de una tabla de nombres: `hx_i64_str`, `hx_f64_str`, `hx_bool_str`. */
+static const char *hx_tostring_cname(HxTy *t) {
+    if (!t) return "i64_str";
+    switch (t->kind) {
+        case TY_INT:
+        case TY_I64:
+        case TY_DURATION: return "i64_str";
+        case TY_FLOAT: return "f64_str";
+        case TY_BOOL: return "bool_str";
+        default: return NULL;
+    }
 }
 
 static const char *hx_zero_fn(HxEmit *e, HxTy *t) {
@@ -1091,6 +1161,10 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 hx_darr_note_push(e, x->recv->ty->elem);
             }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
+            if (x->is_intrin == 8) {
+                e->uses_tostring = 1;
+                e->uses_string = 1;
+            }
             hx_scan_expr(e, x->call.callee);
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
             break;
@@ -1757,6 +1831,15 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             if (x->is_intrin == 6) {
                 hx_emit_net(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 8) {
+                /* ToString: el texto vive en memoria propia, no en la pila */
+                e->uses_tostring = 1;
+                e->uses_string = 1;
+                hx_buf_printf(b, "hx_%s(", hx_tostring_cname(x->recv ? x->recv->ty : NULL));
+                hx_expr_str(e, x->recv, 0, b);
+                hx_buf_str(b, ")");
                 break;
             }
             if (x->is_intrin) {
@@ -3134,6 +3217,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     }
     if (e->uses_shift) hx_buf_str(b, HX_RT_SHIFT);
     if (e->uses_string) hx_buf_str(b, HX_RT_STRING);
+    if (e->uses_tostring) hx_buf_str(b, HX_RT_TOSTRING);
     hx_buf_str(b, HX_RT_ZERO);
     if (e->uses_result) hx_buf_str(b, HX_RT_RESULT);
     hx_buf_str(b, HX_RT_CHECKED);

@@ -174,6 +174,23 @@ nombre en mayúsculas nunca se convierte silenciosamente en un binding.
 `BOOL INT I64 FLOAT STRING DURATION VEC2 VEC3 VEC4` más `REF T`, `PTR T`,
 `MAYBE T`, `ARRAY[T]` y los tipos declarados con `TYPE`.
 
+### `ToString()`
+
+`INT`, `I64`, `FLOAT`, `BOOL` y `DURATION` tienen un método: `n.ToString()`. Sin
+él no hay forma de poner un número dentro de un texto, y sin eso no se puede
+escribir casi nada.
+
+```
+PRINT "n = " ++ n.ToString()
+```
+
+El texto que devuelve vive en memoria propia y **no se libera**: Hixean no tiene
+recolector y no va a fingir uno. Quien llame a `ToString` muchas veces en un bucle
+debe encerrarlo en un `ARENA` (que se aligeran al salir del bloque).
+
+Lo que **no** existe todavía es el camino de vuelta: `s.ToInt()` y `s.ToFloat()`
+para leer un número de un texto.
+
 ### Vectores
 
 `VEC2`, `VEC3` y `VEC4` son `FLOAT` agrupados: un `VEC3` son tres `FLOAT` en la
