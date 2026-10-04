@@ -9,7 +9,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <direct.h>   /* _mkdir: en Windows el modo lo pone el padre */
 #else
 #include <dirent.h>
 #endif
@@ -576,14 +575,6 @@ static int hx_kit_copy_file(HxArena *arena, const char *from, const char *to) {
     return hx_write_file(to, data, n) == 0 ? 0 : 1;
 }
 
-/* Crear un directorio. En POSIX el modo se pasa como segundo argumento y en
-   Windows no existe: el permiso lo pone el padre, no quien crea. */
-#ifdef _WIN32
-#define hx_kit_mkdir(ruta, modo) _mkdir(ruta)
-#else
-#define hx_kit_mkdir(ruta, modo) mkdir((ruta), (modo))
-#endif
-
 /* Copia recursivamente un directorio. El registro es un arbol de archivos
    pequenos y no lleva enlaces, asi que con stat basta.
 
@@ -594,7 +585,7 @@ static int hx_kit_copy_file(HxArena *arena, const char *from, const char *to) {
    en windows fallaba. */
 #ifdef _WIN32
 static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
-    hx_kit_mkdir(to, 0755);
+    HX_MKDIR(to);
     char *patron = hx_arena_sprintf(arena, "%s/*", from);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(patron, &fd);
@@ -612,7 +603,7 @@ static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
 }
 #else
 static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
-    hx_kit_mkdir(to, 0755);
+    HX_MKDIR(to);
     DIR *d = opendir(from);
     if (!d) return;
     struct dirent *ent;
@@ -655,7 +646,7 @@ int hx_kit_install(HxArena *arena, const char *name, const char *registry, const
         diags->ctx_file = ctx_prev;
         return 0;
     }
-    mkdir(into, 0755);
+    HX_MKDIR(into);
     hx_kit_copy_dir(arena, origen, destino);
     char *copia = hx_arena_sprintf(arena, "%s/%s.hxk", destino, name);
     if (!hx_file_exists(copia)) {

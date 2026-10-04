@@ -5,6 +5,20 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/types.h>
+
+/* Crear un directorio. En POSIX el modo va como segundo argumento; en Windows
+   no existe tal funcion: es _mkdir, de un argumento, porque el permiso lo pone
+   el padre. Esta macro estaba duplicada en common.c y en kit.c, y solo una de
+   las dos copias estaba bien condicionada: por eso la compilacion en Windows
+   fallaba justo en la que no lo estaba. */
+#ifdef _WIN32
+#include <direct.h>
+#define HX_MKDIR(p) _mkdir(p)
+#else
+#include <unistd.h>
+#define HX_MKDIR(p) mkdir((p), 0777)
+#endif
 
 typedef struct HxArenaBlock HxArenaBlock;
 

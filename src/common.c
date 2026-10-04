@@ -5,15 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-
 #ifdef _WIN32
-#include <direct.h>
 #include <io.h>
-#define HX_MKDIR(p) _mkdir(p)
-#else
-#include <unistd.h>
-#define HX_MKDIR(p) mkdir((p), 0777)
 #endif
 
 const char *HX_VERSION = "0.2.0";
