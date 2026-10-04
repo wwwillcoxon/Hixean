@@ -413,6 +413,24 @@ NEXT i</code></pre>
     <a href="guia-programar.pdf">guía</a>, en el mismo sitio donde se explica qué
     perfil hace cada cosa.</p>
 
+    <h3>Qué está verificado, y dónde</h3>
+    <p>La CI corre en Linux, macOS y Windows. Lo que está verde ahora mismo:</p>
+    <ul class="faltan">
+      <li><strong>Linux:</strong> las siete puertas. Es donde se mide el perfil
+      <code>freestanding</code> y donde corre el perfil de red con sockets
+      reales.</li>
+      <li><strong>macOS y Windows:</strong> el compilador se construye y el corpus
+      pasa <strong>33 de 34</strong>. La que falla es
+      <code>tests/genericos.hxt</code>, y solo en la interpolación de un entero
+      dentro de una función genérica: donde Linux imprime <code>777</code>, macOS
+      imprime tres bytes que no son <code>7</code>. La prueba que sale verde es la
+      que importa; esta está en rojo y a la vista.</li>
+    </ul>
+    <p>El fallo aún no está explicado. El código que genera el compilador es el
+    mismo en los dos sistemas, así que la causa está en el runtime o en el
+    enlazado de macOS, y hace falta una máquina con macOS para mirarlo. Mientras
+    tanto, la release no se publica para esas plataformas.</p>
+
     <h3>Dónde queda instalado, y cómo se quita</h3>
     <pre class="copiable"><code>prefijo/
   bin/hxc          el compilador

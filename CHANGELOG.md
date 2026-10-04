@@ -116,6 +116,30 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **La CI ha encontrado doce fallos de portabilidad** que llevaban ahí desde el
+  primer día, porque el repositorio tenía un solo commit en el remoto y nunca se
+  había ejecutado sobre este código. Ninguno es de la lógica del lenguaje:
+  - `kit.c` usaba `dirent` y `mkdir(ruta, modo)` sin condicionar a la plataforma.
+  - La decisión de `mkdir`/`_mkdir` estaba duplicada en dos ficheros, y solo una
+    estaba bien condicionada.
+  - `hx_wait` usaba `waitpid` y `WIFEXITED`, que no existen en Windows.
+  - `main.c` declaraba `hx_arg` y el scratch de los valores por defecto dentro del
+    `#else` de POSIX.
+  - Los envoltorios de `printf` no declarados como tales: clang se quejaba de
+    `-Wformat-nonliteral`, y al anotarlos aparecieron 40 llamadas que pasaban un
+    mensaje ya formateado como formato, más dos bugs de verdad (una bandera `NULL`
+    en el `CASE ELSE` de un `MATCH` y un `%.*s` con `size_t` donde toca `int`).
+  - `%z` en el `printf` de mingw, `_SC_NPROCESSORS_ONLN` en macOS, `end_col` puesto
+    y sin usar, y `--gc-sections`, que es de GNU ld.
+  - En el código generado: `static inline` en una variable, `memcpy`/`memset`
+    redeclarados (en macOS `memcpy` es una macro) y los stubs de `net`, que
+    dejaban un `#endif` sin su `#if`.
+  - **Queda uno abierto:** en macOS, `tests/genericos.hxt` imprime ``
+    donde debe imprimir `777`. Es la interpolación de un entero en una función
+    genérica, y solo falla ahí; el C generado es idéntico en los dos sistemas, así
+    que la causa está en el runtime o en el enlazado de macOS y hace falta esa
+    máquina para mirarlo. La CI lo deja en rojo a la vista en vez de marcarlo como
+    permitido.
 - **El perfil `freestanding` solo genera programas de Linux x86-64**, y hasta
   ahora no lo decía nadie en ninguna parte. Emite su propio `_start` y sus
   syscalls con `asm` en línea, así que el binario no arranca en macOS ni en
