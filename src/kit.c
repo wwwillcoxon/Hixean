@@ -331,8 +331,16 @@ static int hx_kit_has(HxKit *k, const char *key, const char *value) {
 
 /* --- consultas ----------------------------------------------------------- */
 
-/* Listado de un directorio: mismo comportamiento en POSIX y Windows. */
-static int hx_dir_entries(HxArena *arena, const char *dir, HxPathList *out) {
+/* Listado de un directorio: mismo comportamiento en POSIX y Windows.
+ *
+ * incluir_directorios importa mas de lo que parece. readdir devuelve ficheros y
+ * directorios mezclados; FindFirstFile hay que filtrarlos a mano, y filtrarlos
+ * siempre rompio las consultas .hxq en Windows: el manifiesto se busca en
+ * <ruta>/<nombre>/<nombre>.hxk, o sea que hay que conocer el nombre del
+ * directorio para poder entrar en el. Sin el nombre, la consulta no encontraba
+ * nada y decia «sin resultados» sin decir por que. */
+static int hx_dir_entries(HxArena *arena, const char *dir, HxPathList *out,
+                          int incluir_directorios) {
     out->len = 0;
 #ifdef _WIN32
     char patron[MAX_PATH];
@@ -341,7 +349,8 @@ static int hx_dir_entries(HxArena *arena, const char *dir, HxPathList *out) {
     HANDLE h = FindFirstFileA(patron, &fd);
     if (h == INVALID_HANDLE_VALUE) return 0;
     do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (!incluir_directorios && (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
         if (fd.cFileName[0] == '.') continue;
         if (out->len < (int)(sizeof(out->data) / sizeof(out->data[0])))
             out->data[out->len++] = hx_arena_strdup(arena, fd.cFileName);
@@ -523,7 +532,7 @@ int hx_query_parse(HxArena *arena, const char *file, HxDiagBag *diags, HxQuery *
 /* Recorre <ruta>/<nombre>/<nombre>.hxk y <ruta>/<nombre>.hxk una vez. */
 static int hx_query_visit(HxQuery *q, const char *dir, int *cuenta) {
     HxPathList entradas;
-    if (!hx_dir_entries(q->arena, dir, &entradas)) return 0;
+    if (!hx_dir_entries(q->arena, dir, &entradas, 1)) return 0;
     for (int i = 0; i < entradas.len; i++) {
         const char *name = entradas.data[i];
         size_t ln = strlen(name);
@@ -652,7 +661,7 @@ int hx_kit_install(HxArena *arena, const char *name, const char *registry, const
     if (!hx_file_exists(copia)) {
         /* el manifiesto puede tener otro nombre: se renombra al del paquete */
         HxPathList entradas;
-        hx_dir_entries(arena, destino, &entradas);
+        hx_dir_entries(arena, destino, &entradas, 0);
         for (int i = 0; i < entradas.len; i++) {
             const char *n = entradas.data[i];
             size_t ln = strlen(n);
