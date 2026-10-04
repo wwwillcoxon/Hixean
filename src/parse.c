@@ -286,9 +286,21 @@ static HxTy *hx_ty_mk(HxArena *a, HxTyKind kind) {
 
 /* ---------------- types ---------------- */
 
-static const char *hx_builtin_type_names[] = {"BOOL", "INT", "I64", "FLOAT", "STRING", "DURATION"};
-static const int hx_builtin_type_kinds[] = {TY_BOOL, TY_INT, TY_I64, TY_FLOAT, TY_STRING,
-                                          TY_DURATION};
+/* Los vectores llegaron al compilador antes que a la lista: el AST, el
+   verificador, el emisor, el runtime emitido y el .hxc los tienen todos, pero
+   sin un nombre que escribir no se podia declarar ni devolver un VEC3. Aqui se
+   les da el nombre, que es lo unico que faltaba.
+
+   MAT4 y QUAT se quedan sin nombre a proposito: estan en el runtime y no hay
+   manera de construir uno (un literal de cuatro componentes es un VEC4, no una
+   matriz), y dar el nombre sin constructor seria una promesa que el lenguaje no
+   puede cumplir. Cuando haya constructor entran aqui. */
+static const char *hx_builtin_type_names[] = {
+    "BOOL", "INT", "I64", "FLOAT", "STRING", "DURATION",
+    "VEC2", "VEC3", "VEC4"};
+static const int hx_builtin_type_kinds[] = {
+    TY_BOOL, TY_INT, TY_I64, TY_FLOAT, TY_STRING, TY_DURATION,
+    TY_VEC2, TY_VEC3, TY_VEC4};
 
 static HxTy *hx_resolve_builtin_ty(HxArena *a, HxIntern *in, HxTy *t) {
     if (!t) return NULL;

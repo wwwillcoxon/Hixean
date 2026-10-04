@@ -1,52 +1,41 @@
-"vectores: literales, componentes, swizzle y algebra"
-DIM a AS vec3 = (1.0, 2.0, 3.0)
-DIM b AS vec3 = (0.0, 1.0, 0.0)
+"VEC2, VEC3 y VEC4: los tres vectores que se pueden escribir"
+DIM a AS VEC3 = (1.0, 2.0, 3.0)
+DIM b AS VEC3 = (4.0, 5.0, 6.0)
+DIM c AS VEC2 = (1.0, 2.0)
+DIM v AS VEC4 = (1.0, 2.0, 3.0, 4.0)
 
+"un vector sin valor inicial es el vector cero"
+DIM cero AS VEC3
+PRINT cero
+
+"se imprimen como sus componentes"
 PRINT a
-PRINT a.x
-PRINT a.y
-PRINT a.z
-PRINT a.zyx
-PRINT a.xx
-
-"algebra: suma, resta, escala y punto"
-PRINT a + b
-PRINT a - b
-PRINT a * 2.0
-PRINT DOT(a, b)
-PRINT CROSS(a, b)
-
-"normalizacion"
-DIM n AS vec3 = (3.0, 4.0, 0.0)
-PRINT NORMALIZED(n)
-PRINT DOT(NORMALIZED(n), NORMALIZED(n))
-
-DIM p AS vec2 = (1.5, -2.5)
-PRINT p
-PRINT p.y
-
-"los componentes admiten enteros"
-DIM c AS vec3 = (1, 2, 3)
 PRINT c
+PRINT v
 
-"matrices y quaternions llegan con el perfil gpu; el literal de 4 componentes
- con el ultimo flotante es un quat"
-DIM q AS quat = (0.0, 0.0, 0.0, 1.0)
-PRINT q
-PRINT q.w
+"producto escalar: 1*4 + 2*5 + 3*6"
+PRINT a.DOT(b)
+"producto vectorial, que no es conmutativo"
+PRINT a.CROSS(b)
+"la longitud de verdad, no la longitud al cuadrado"
+PRINT a.LEN()
+"y el mismo numero en la forma libre, que es la de la tabla"
+PRINT DOT(a, b)
+PRINT LEN(a)
 
-"los vectores viajan a funciones por valor"
-FUNCTION Desplazar(p AS vec3, d AS vec3) AS vec3
-  RETURN p + d
-END FUNCTION
-PRINT Desplazar((1.0, 0.0, 0.0), (0.0, 2.0, 0.0))
-PRINT Desplazar((1.0, 0.0, 0.0), (0.0, 2.0, 0.0)).y
+"suma, resta y escala"
+PRINT a.ADD(b)
+PRINT a.SUB(b)
+PRINT a.SCALE(2.0)
 
-"un ARRAY de vectores en una arena"
-ARENA puntos
-  DIM ps AS vec3[4]
-  ps[0] = (1.0, 2.0, 3.0)
-  ps[1] = NORMALIZED(ps[0])
-  PRINT ps[0]
-  PRINT ps[1]
-END ARENA
+"unidad: normalizar divide por la longitud, que da 1"
+PRINT a.NORMALIZED().LEN()
+
+"componentes con nombre y swizzle: a.zy es (a.z, a.y)"
+PRINT a.x
+PRINT a.zy
+PRINT v.w
+
+"los vectores son valores, no punteros: copian"
+DIM copia AS VEC3 = a
+PRINT copia

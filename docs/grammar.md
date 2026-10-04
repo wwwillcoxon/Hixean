@@ -171,8 +171,46 @@ nombre en mayúsculas nunca se convierte silenciosamente en un binding.
 
 ## 6. Tipos incorporados
 
-`BOOL INT I64 FLOAT STRING DURATION` más `REF T`, `PTR T`, `MAYBE T`,
-`ARRAY[T]` y los tipos declarados con `TYPE`.
+`BOOL INT I64 FLOAT STRING DURATION VEC2 VEC3 VEC4` más `REF T`, `PTR T`,
+`MAYBE T`, `ARRAY[T]` y los tipos declarados con `TYPE`.
+
+### Vectores
+
+`VEC2`, `VEC3` y `VEC4` son `FLOAT` agrupados: un `VEC3` son tres `FLOAT` en la
+pila, sin puntero ni indirección. Se escriben con un literal de componentes y se
+imprimen como sus componentes.
+
+```
+DIM a AS VEC3 = (1.0, 2.0, 3.0)
+DIM b AS VEC3 = (4.0, 5.0, 6.0)
+DIM c AS VEC2 = (1.0, 2.0)
+DIM v AS VEC4 = (1.0, 2.0, 3.0, 4.0)
+
+PRINT a                 "(1, 2, 3)"
+PRINT a.DOT(b)          32
+PRINT a.CROSS(b)        "(-3, 6, -3)"
+PRINT a.LEN()           "la longitud, no la longitud al cuadrado"
+PRINT a.ADD(b)          "(5, 7, 9)"
+PRINT a.SUB(b)
+PRINT a.SCALE(2.0)
+PRINT a.NORMALIZED()    "unitario: su LEN da 1"
+PRINT a.x               "un componente"
+PRINT a.zy              "un swizzle: (a.z, a.y)"
+```
+
+Cada verbo existe en dos formas, la de método y la de función: `a.DOT(b)` y
+`DOT(a, b)` son lo mismo. Los componentes se nombran `x`, `y`, `z`, `w` (también
+`r`, `g`, `b`, `a`), y un nombre de dos a cuatro letras es un *swizzle*: `a.zy`
+es un `VEC2` con los componentes en el orden escrito.
+
+Un `DIM v AS VEC3` sin valor inicial es el vector cero. Los vectores son
+**valores**: `DIM copia AS VEC3 = a` copia, no apunta.
+
+`MAT4` y `QUAT` existen en el runtime pero **no tienen nombre**: no hay manera de
+construirlos (un literal de cuatro componentes es un `VEC4`, no una matriz), y dar
+el nombre sin constructor sería una promesa que el lenguaje no puede cumplir.
+Cuando haya constructor, entran en la lista de arriba.
+
 
 ### `MAYBE T`
 

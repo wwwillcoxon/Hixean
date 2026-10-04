@@ -9,7 +9,7 @@ static const struct {
     {"VOID", TY_VOID},       {"BOOL", TY_BOOL},       {"INT", TY_INT},
     {"I64", TY_I64},         {"FLOAT", TY_FLOAT},     {"STRING", TY_STRING},
     {"DURATION", TY_DURATION}, {"VEC2", TY_VEC2},     {"VEC3", TY_VEC3},
-    {"VEC4", TY_VEC4},       {"MAT4", TY_MAT4},       {"QUAT", TY_QUAT},
+    {"VEC4", TY_VEC4},
     {"UNKNOWN", TY_UNKNOWN},
     {"ITER", TY_ITER},
     {NULL, TY_UNKNOWN},
@@ -39,11 +39,13 @@ const char *hx_ty_name(const HxTy *t) {
         }
         case TY_REF: return "REF";
         case TY_PTR: return "PTR";
-        case TY_VEC2: return "vec2";
-        case TY_VEC3: return "vec3";
-        case TY_VEC4: return "vec4";
-        case TY_MAT4: return "mat4";
-        case TY_QUAT: return "quat";
+        /* en mayusculas como el resto: asi un E0301 dice "se esperaba VEC3" y
+           no parece un nombre de funcion */
+        case TY_VEC2: return "VEC2";
+        case TY_VEC3: return "VEC3";
+        case TY_VEC4: return "VEC4";
+        case TY_MAT4: return "MAT4";
+        case TY_QUAT: return "QUAT";
         case TY_ITER: return "ITER";
         case TY_MAYBE: {
             /* sin arena en HxTy: un buffer en anillo para los diagnosticos */

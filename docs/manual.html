@@ -581,9 +581,16 @@ PRINT v.yx</code></pre>
 (2, 1)</pre></div>
       </figure>
       <p>Los literales de vector llegan hasta 4 componentes; <code>(a,b)</code> es
-      <code>vec2</code>, <code>(a,b,c)</code> <code>vec3</code> y
-      <code>(a,b,c,d)</code> <code>vec4</code>. No hay tuplas de Hixean: eso es
+      <code>VEC2</code>, <code>(a,b,c)</code> <code>VEC3</code> y
+      <code>(a,b,c,d)</code> <code>VEC4</code>. No hay tuplas de Hixean: eso es
       exactamente lo que significan esos paréntesis.</p>
+      <p>Cada verbo va en dos formas, la de método y la de función, y son la misma
+      cosa: <code>a.DOT(b)</code> es <code>DOT(a, b)</code>. Los vectores son
+      valores, no punteros: <code>DIM copia AS VEC3 = a</code> copia, y un
+      <code>DIM v AS VEC3</code> sin valor inicial es el vector cero.</p>
+      <p><code>MAT4</code> y <code>QUAT</code> están en el runtime pero
+      <strong>no tienen nombre</strong>: no hay manera de construirlos, y dar el
+      nombre sin constructor sería una promesa que el lenguaje no puede cumplir.</p>
       <h4>Arreglos de tamaño fijo</h4>
       <p>Un arreglo tiene su tamaño en el tipo, y por eso <code>a.Len()</code> es
       una constante: no cuesta código. <code>a.At(i)</code> comprueba el índice y

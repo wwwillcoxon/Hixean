@@ -390,11 +390,17 @@ typedef struct {
 } HxVecIntrin;
 
 static const HxVecIntrin hx_vec_intrins[] = {
-    {"DOT", 2, TY_FLOAT, 1, 3},       {"CROSS", 2, TY_VEC3, 1, 3},
-    {"NORMALIZED", 1, 0, 1, 3},        {"LEN", 1, TY_FLOAT, 1, 0},
-    {"NORMALIZE", 1, TY_VEC3, 1, 3},   {"SWIZZLE", 1, TY_VEC4, 1, 0},
+    /* nombre, argumentos, lo que devuelve, cuantos argumentos-leading tienen
+       que ser vectores, y de cuantos componentes (0 = cualquiera) */
+    {"DOT", 2, TY_FLOAT, 2, 3},        {"CROSS", 2, TY_VEC3, 2, 3},
+    {"ADD", 2, TY_VEC3, 2, 3},         {"SUB", 2, TY_VEC3, 2, 3},
+    {"SCALE", 2, TY_VEC3, 1, 3},       {"NORMALIZED", 1, TY_VEC3, 1, 3},
+    {"NORMALIZE", 1, TY_VEC3, 1, 3},   {"LEN", 1, TY_FLOAT, 1, 0},
+    {"SWIZZLE", 1, TY_VEC4, 1, 0},
     {NULL, 0, TY_UNKNOWN, 0, 0},
 };
+
+static int hx_vec_len(HxTy *t);
 
 static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
     for (int i = 0; hx_vec_intrins[i].name; i++)
@@ -404,6 +410,63 @@ static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
         }
     return NULL;
 }
+
+/* Comprueba los argumentos de un intrinseco de vector. `vrecv` es el receptor
+   cuando la llamada tiene forma de metodo (a.DOT(b)), y NULL cuando es la
+   forma libre (DOT(a, b)). Las dos existen: la libre es la de la tabla y el
+   metodo es lo que escribe cualquiera primero. */
+static int hx_vec_call_check(HxChecker *c, HxExpr *e, const HxVecIntrin *vi,
+                             const char *fname, HxExpr *vrecv) {
+    int dados = e->call.args.len + (vrecv ? 1 : 0);
+    if (dados != vi->nargs) {
+        hx_error(c->diags, e->span, "E0306",
+                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", fname,
+                                  vi->nargs, dados));
+        return 0;
+    }
+    for (int i = 0; i < vi->vec_arg; i++) {
+        /* el receptor llega ya comprobado desde quien llama: volver a pasarlo
+           por hx_expr_check lo revisa dos veces, y la segunda ve los
+           argumentos ya reordenados y cuenta un operando de mas */
+        HxExpr *a;
+        if (i == 0 && vrecv) {
+            a = vrecv;
+        } else {
+            a = e->call.args.data[i - (vrecv ? 1 : 0)].value;
+            if (a) a = hx_expr_check(c, a);
+        }
+        HxTy *at = a ? a->ty : NULL;
+        int largo = hx_vec_len(at);
+        if (at && !largo)
+            hx_error(c->diags, a ? a->span : e->span, "E0402",
+                     hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
+        else if (largo && vi->vec_len && largo != vi->vec_len)
+            hx_error(c->diags, a ? a->span : e->span, "E0402",
+                     hx_arena_sprintf(c->arena, "'%s' espera un vector de %d componentes", fname,
+                                      vi->vec_len));
+    }
+    for (int i = 0; i < e->call.args.len; i++)
+        e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+    /* el emisor lee los operandos por posicion, asi que en la forma de metodo
+       el receptor pasa a ser el primero: a.ADD(b) se emite como add3(a, b) */
+    if (vrecv) {
+        int n = e->call.args.len;
+        HxArg *nuevos = (HxArg *)hx_arena_calloc(c->arena, sizeof(HxArg) * (n + 1));
+        /* con cero argumentos data es NULL y memcpy(..., NULL, 0) no es valido
+           aunque no lea nada: lo dice la firma, no el comportamiento */
+        if (n > 0) memcpy(nuevos + 1, e->call.args.data, sizeof(HxArg) * n);
+        nuevos[0].value = vrecv;
+        nuevos[0].span = vrecv->span;
+        e->call.args.data = nuevos;
+        e->call.args.len = n + 1;
+        e->call.args.cap = n + 1;
+    }
+    e->method = hx_intern_cstr(c->intern, fname);
+    e->is_intrin = 3;
+    e->ty = hx_ty_builtin(c->arena, vi->ret == 0 ? TY_VEC3 : vi->ret);
+    return 1;
+}
+
 
 /* Metodos de ARRAY[T]. El tamaño del arreglo vive en el tipo, asi que Len es
    una constante y At es un indice con la comprobacion puesta: en el perfil
@@ -869,6 +932,15 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                una llamada y no un camino, y los metodos de ARRAY[T] y de
                STRING solo se resolvian sobre caminos. */
             HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
+            if (hx_vec_len(irecv->ty)) {
+                int needs_vec = 0;
+                const HxVecIntrin *vi = hx_find_vec_intrin(mn, &needs_vec);
+                if (vi) {
+                    hx_vec_call_check(c, e, vi, mn, irecv);
+                    e->recv = irecv;
+                    return e;
+                }
+            }
             const HxIntrin *in = hx_find_intrin(irecv->ty, mn);
             if (in) {
                 int dado = e->call.args.len;
@@ -901,28 +973,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         int needs_vec = 0;
         const HxVecIntrin *vi = hx_find_vec_intrin(fname, &needs_vec);
         if (vi) {
-            if (e->call.args.len != vi->nargs)
-                hx_error(c->diags, e->span, "E0306",
-                         hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
-                                          fname, vi->nargs, e->call.args.len));
-            for (int i = 0; i < e->call.args.len; i++) {
-                e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
-                HxTy *at = e->call.args.data[i].value->ty;
-                if (i < vi->vec_arg) {
-                    int largo = hx_vec_len(at);
-                    if (at && !largo)
-                        hx_error(c->diags, e->call.args.data[i].span, "E0402",
-                                 hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
-                    else if (largo && vi->vec_len && largo != vi->vec_len)
-                        hx_error(c->diags, e->call.args.data[i].span, "E0402",
-                                 hx_arena_sprintf(c->arena,
-                                                  "'%s' espera un vector de %d componentes",
-                                                  fname, vi->vec_len));
-                }
-            }
-            e->method = raw_callee->path.parts.data[0].name;
-            e->is_intrin = 3;
-            e->ty = hx_ty_builtin(c->arena, vi->ret == 0 ? TY_VEC3 : vi->ret);
+            hx_vec_call_check(c, e, vi, fname, NULL);
             return e;
         }
     }
@@ -1021,8 +1072,10 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len >= 2) {
         int np = raw_callee->path.parts.len;
         const char *mn = hx_sym_str(raw_callee->path.parts.data[np - 1].name);
-        if (hx_find_array_intrin(mn) || (!hx_ascii_casecmp(mn, "Or") ||
-                                         !hx_ascii_casecmp(mn, "Map"))) {
+        int vec_name = 0;
+        hx_find_vec_intrin(mn, &vec_name);
+        if (hx_find_array_intrin(mn) || vec_name || !hx_ascii_casecmp(mn, "Or") ||
+            !hx_ascii_casecmp(mn, "Map")) {
             HxExpr *recv_e = (HxExpr *)hx_arena_calloc(c->arena, sizeof(HxExpr));
             recv_e->kind = EX_PATH;
             recv_e->span = raw_callee->span;
@@ -1033,6 +1086,17 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 hx_array_method_check(c, e, recv, mn))
                 return e;
             if (hx_es_maybe(recv->ty) && hx_maybe_call_check(c, e, recv, mn)) return e;
+            /* los vectores llegan aqui como `v.DOT(w)`: el parser hace un
+               camino de dos partes, igual que `a.Len()` */
+            if (hx_vec_len(recv->ty)) {
+                int needs_vec = 0;
+                const HxVecIntrin *vi = hx_find_vec_intrin(mn, &needs_vec);
+                if (vi) {
+                    hx_vec_call_check(c, e, vi, mn, recv);
+                    e->recv = recv;
+                    return e;
+                }
+            }
         }
     }
     HxExpr *callee = hx_expr_check(c, raw_callee);
@@ -1910,9 +1974,10 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                                   : e->vec.len == 3 ? TY_VEC3
                                   : e->vec.len == 4 ? TY_VEC4
                                                    : TY_UNKNOWN);
-            if (e->vec.len == 4 && e->vec.items[3]->ty &&
-                e->vec.items[3]->ty->kind == TY_FLOAT)
-                e->ty = hx_ty_builtin(c->arena, TY_QUAT);
+            /* antes cuatro FLOAT adivinaban "esto es un QUAT". Adivinar el
+               tipo de un literal es peor que no adivinar: `DIM q AS VEC4 =
+               (1.0, 2.0, 3.0, 4.0)` fallaba con un E0301 que no cuadraba con
+               nada. Un QUAT se construye con un constructor, cuando lo haya. */
             for (int i = 0; i < e->vec.len; i++) {
                 HxTy *ct = e->vec.items[i]->ty;
                 if (ct && ct->kind != TY_FLOAT && ct->kind != TY_INT &&

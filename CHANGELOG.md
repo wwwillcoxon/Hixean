@@ -116,6 +116,20 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **Los vectores se pueden escribir.** `VEC2`, `VEC3` y `VEC4` estaban en el
+  AST, el verificador, el emisor, el runtime generado y el `.hxc`, y no había
+  forma de declarar una variable de ese tipo: no estaban en la lista de tipos
+  incorporados. Ahora cada verbo tiene además la forma de método (`a.DOT(b`
+  además de `DOT(a, b)`), `ADD`, `SUB` y `SCALE` que solo estaban en el runtime,
+  y un `DIM` sin valor inicial es el vector cero (antes emitía
+  `hx_vec3 v = hx_zero_int32()`, que el C no acepta).
+  - **`LEN` de un vector devolvía la longitud al cuadrado**: `LEN((1,2,3))` decía
+    14 en vez de 3.74. `NORMALIZED` se compensaba con una raíz propia, así que
+    el fallo no se notaba; ahora la longitud es la longitud.
+  - Cuatro `FLOAT` en un literal ya no se adivinan como `QUAT`: adivinar el tipo
+    de un literal es peor que no adivinar, y `DIM q AS VEC4 = (1.0, 2.0, 3.0,
+    4.0)` fallaba con un `E0301` que no cuadraba con nada.
+  - `MAT4` y `QUAT` se quedan **sin nombre** a propósito: no hay constructor.
 - **El guard de un `CASE` se emitía antes que las ligaduras del patrón**:
   `CASE x WHEN x > 10` generaba C que no compilaba, con `hx_v_x` sin declarar.
   Ahora cada `CASE` declara sus ligaduras antes de evaluar su condición. El

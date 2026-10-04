@@ -804,7 +804,6 @@ static const char *HX_RT_VEC =
     "static hx_vec3 hx_cross(hx_vec3 a, hx_vec3 b) {\n"
     "  return hx_v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);\n"
     "}\n"
-    "static inline float hx_len3(hx_vec3 v) { return hx_dot(v, v); }\n"
     "static inline double hx_sqrt_d(double x) {\n"
     "  double r = x, prev = 0.0;\n"
     "  int i;\n"
@@ -816,10 +815,16 @@ static const char *HX_RT_VEC =
     "  }\n"
     "  return r;\n"
     "}\n"
+    /* hx_len3 devolvia el producto escalar, o sea la longitud al cuadrado: un
+       LEN de (1,2,3) decia 14 en vez de 3.74. normalized se compensaba con un
+       sqrt por su cuenta; con la longitud ya verdadera no hace falta. */
+    "static inline float hx_len3(hx_vec3 v) {\n"
+    "  return (float)hx_sqrt_d((double)hx_dot(v, v));\n"
+    "}\n"
     "static hx_vec3 hx_normalized(hx_vec3 v) {\n"
     "  float l = hx_len3(v);\n"
     "  if (l <= 0.0f) return v;\n"
-    "  l = 1.0f / (float)hx_sqrt_d((double)l);\n"
+    "  l = 1.0f / l;\n"
     "  return hx_v3(v.x * l, v.y * l, v.z * l);\n"
     "}\n"
     "static hx_vec3 hx_add3(hx_vec3 a, hx_vec3 b) {\n"
@@ -830,6 +835,17 @@ static const char *HX_RT_VEC =
     "}\n"
     "static hx_vec3 hx_scale3(hx_vec3 a, float s) {\n"
     "  return hx_v3(a.x * s, a.y * s, a.z * s);\n"
+    "}\n"
+    "static inline hx_vec2 hx_zero_vec2(void) { return hx_v2(0.0f, 0.0f); }\n"
+    "static inline hx_vec3 hx_zero_vec3(void) { return hx_v3(0.0f, 0.0f, 0.0f); }\n"
+    "static inline hx_vec4 hx_zero_vec4(void) {\n"
+    "  return hx_v4(0.0f, 0.0f, 0.0f, 0.0f);\n"
+    "}\n"
+    "static inline hx_mat4 hx_zero_mat4(void) {\n"
+    "  hx_mat4 m;\n"
+    "  m.r0 = hx_v4(0.0f, 0.0f, 0.0f, 0.0f); m.r1 = m.r0;\n"
+    "  m.r2 = m.r0; m.r3 = m.r0;\n"
+    "  return m;\n"
     "}\n"
     "static inline void hx_print_vec2(hx_vec2 v) {\n"
     "  hx_out(\"(\", 1); hx_print_f32(v.x); hx_out(\", \", 2);\n"
@@ -935,6 +951,13 @@ static const char *hx_zero_fn(HxEmit *e, HxTy *t) {
         case TY_FLOAT: return "f64";
         case TY_STRING: return "str";
         case TY_ARRAY: return "span";
+        /* los vectores sin valor inicial son el vector cero: sin esto salia
+           `hx_vec3 v = hx_zero_int32()`, que el C no acepta */
+        case TY_VEC2: return "vec2";
+        case TY_VEC3: return "vec3";
+        case TY_VEC4: return "vec4";
+        case TY_QUAT: return "vec4";
+        case TY_MAT4: return "mat4";
         case TY_NAMED:
             if (t->decl)
                 return hx_arena_sprintf(e->arena, "rec_%s", hx_sym_str(t->decl->name));
@@ -1665,6 +1688,34 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                     hx_buf_str(b, "hx_len3(");
                     hx_expr_str(e, x->call.args.data[0].value, 0, b);
                     hx_buf_str(b, ")");
+                    break;
+                }
+                if (!hx_ascii_casecmp(nm, "ADD") || !hx_ascii_casecmp(nm, "SUB")) {
+                    hx_buf_printf(b, "hx_%s(", !hx_ascii_casecmp(nm, "ADD") ? "add3" : "sub3");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->call.args.data[1].value, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                if (!hx_ascii_casecmp(nm, "SCALE")) {
+                    hx_buf_str(b, "hx_scale3(");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->call.args.data[1].value, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                if (!hx_ascii_casecmp(nm, "SWIZZLE")) {
+                    hx_buf_str(b, "hx_v4(");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ".x, ");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ".y, ");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ".z, ");
+                    hx_expr_str(e, x->call.args.data[0].value, 0, b);
+                    hx_buf_str(b, ".w)");
                     break;
                 }
                 hx_buf_str(b, "hx_normalized(");
