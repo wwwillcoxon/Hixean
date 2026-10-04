@@ -223,8 +223,10 @@ static const char *HX_RT_NET_FREESTANDING =
 /* los stubs van aparte: ISO C99 obliga a soportar literales de 4095 bytes */
 #endif /* _WIN32: en Windows el net es siempre el de stubs */
 
-static const char *HX_RT_NET_STUBS =
-    "#else\n"
+/* Los stubs van con su #else y su #endif porque acompanan al bloque de syscalls.
+   En Windows son lo unico que se emite, y emitirlos con el #else puesto dejaba un
+   #endif sin su #if en el runtime generado. Por eso el cuerpo va aparte. */
+static const char *HX_RT_NET_STUBS_CUERPO =
     "static inline int64_t hx_socket(int64_t t) { return -1; }\n"
     "static inline int64_t hx_bind(int64_t f, hx_inet a) { (void)f; (void)a; return -1; }\n"
     "static inline int64_t hx_listen(int64_t f, int64_t c) { (void)f; (void)c; return -1; }\n"
@@ -239,8 +241,7 @@ static const char *HX_RT_NET_STUBS =
     "static hx_str hx_net_recv(int64_t f, hx_arena *a) { (void)f; (void)a; return hx_lit(\"\", 0); }\n"
     "static hx_str hx_net_recv_de(int64_t f, hx_arena *a, int64_t *p, int64_t *i) {\n"
     "  (void)f; (void)a; (void)p; (void)i; return hx_lit(\"\", 0);\n"
-    "}\n"
-    "#endif\n";
+    "}\n";
 
 #ifndef _WIN32
 static const char *HX_RT_NET_LIBC =
@@ -3259,11 +3260,14 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
            existe: el programa sigue compilando y las llamadas de red devuelven
            -1, que es lo que ya pasaria sin permiso. */
 #if defined(_WIN32)
-        hx_buf_str(b, HX_RT_NET_STUBS);
+        /* sin el #else: solo los stubs, y un #endif sin su #if rompe el runtime */
+        hx_buf_str(b, HX_RT_NET_STUBS_CUERPO);
 #else
         if (e->profile == HX_PROFILE_FREESTANDING) {
             hx_buf_str(b, HX_RT_NET_FREESTANDING);
-            hx_buf_str(b, HX_RT_NET_STUBS);
+            hx_buf_str(b, "#else\n");
+            hx_buf_str(b, HX_RT_NET_STUBS_CUERPO);
+            hx_buf_str(b, "#endif\n");
         } else {
             hx_buf_str(b, HX_RT_NET_LIBC);
         }
