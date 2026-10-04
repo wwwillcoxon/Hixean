@@ -324,8 +324,11 @@ grep -q "E0501" build/busqueda/nada.out \
   || { echo "FALLO: el fallo no explica donde se busco"; exit 1; }
 # el paquete lleva la biblioteca y el instalador la deja donde hxc la mira:
 # esto se compila con el binario INSTALADO, desde otro directorio, sin -I
+# Esto prueba el tarball que publica la release, y ese es solo linux-x64. En
+# macOS y Windows no hay artefacto que instalar: no es que falle, es que la
+# pregunta no aplica. El patron es el mismo que la capacidad net.
 rm -rf build/prefixe
-if command -v tar >/dev/null 2>&1; then
+if [ "$(uname -s)" = "Linux" ] && command -v tar >/dev/null 2>&1; then
   sh tools/dist.sh "$VERSION" linux-x64 >/dev/null 2>&1
   mkdir -p build/prefixe
   if HIXEAN_PREFIX=build/prefixe sh tools/install.sh \
@@ -341,7 +344,7 @@ if command -v tar >/dev/null 2>&1; then
     echo "FALLO: install.sh no instala un paquete local"; exit 1
   fi
 else
-  echo "ok     instalacion omitida: no hay tar"
+  echo "ok     instalacion omitida: el tarball publicado es solo linux-x64"
 fi
 # un modulo con punto: std.texto.hxs se llama std.texto y se llama texto.Doble
 ./build/hxc run tests/modulos_con_punto/usa.hxe > build/punto.out 2>&1
