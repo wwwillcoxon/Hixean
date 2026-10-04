@@ -8,25 +8,25 @@
 class Hixean < Formula
   desc "Lenguaje AOT que compila a C11, sin VM y sin unwinding"
   homepage "https://github.com/wwwillcoxon/Hixean"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-macos-arm64.tar.gz"
+      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-macos-arm64.tar.gz"
       sha256 "REEMPLAZAR_CON_EL_SHA256_DE_macos-arm64"
     else
-      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-macos-x64.tar.gz"
+      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-macos-x64.tar.gz"
       sha256 "REEMPLAZAR_CON_EL_SHA256_DE_macos-x64"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-linux-arm64.tar.gz"
+      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-linux-arm64.tar.gz"
       sha256 "REEMPLAZAR_CON_EL_SHA256_DE_linux-arm64"
     else
-      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.1.0/hixean-0.1.0-linux-x64.tar.gz"
+      url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-linux-x64.tar.gz"
       sha256 "REEMPLAZAR_CON_EL_SHA256_DE_linux-x64"
     end
   end

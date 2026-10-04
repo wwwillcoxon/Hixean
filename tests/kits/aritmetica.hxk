@@ -1,5 +1,5 @@
 KIT aritmetica 1.0.0
-  TARGET hixe >= 0.1
+  TARGET hixe >= 0.2
   PROFILE freestanding
   ENTRY aritmetica.hxe
   DEP base >= 0.2

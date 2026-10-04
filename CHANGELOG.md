@@ -3,13 +3,45 @@
 Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y
 versionado semántico. El número de versión es el del compilador y del
 lenguaje a la vez: `hxc version` lo imprime y los manifiestos lo comparan
-con `TARGET hixe >= 0.1`.
+con `TARGET hixe >= 0.2`.
 
-## [Sin publicar]
+## [0.2.0] — 2026-10-04
 
-Después de 0.1.0. El formato de la unidad `.hxc` ya es 2, así que lo que sigue
-saldrá como `0.2.0`: una unidad publicada con 0.1.0 se rechaza con `E0603`, que
-dice qué formato y qué abi entiende este `hxc`.
+Veintiún hitos después de 0.1.0. Sigue siendo `0.x`: el número mayor se mueve
+cuando algo incompatible lo obliga, y esta vez lo hay.
+
+### Cambios incompatibles
+
+- **El `.hxc` es ahora formato 2.** Una unidad publicada con 0.1.0 no la lee este
+  `hxc`: `E0603` dice qué formato trae la unidad, cuál entiende este compilador y
+  qué abi espera. Publicar una biblioteca es una cosa que hay que rehacer con
+  cada `hxc` nuevo.
+- **Los paquetes de este repositorio piden `TARGET hixe >= 0.2`.** El
+  comparador acepta versiones numéricas, así que un paquete con `>= 0.1` seguiría
+  compilando con 0.2.0; lo que ya no compila es al revés. Un paquete construido
+  aquí lleva un `.hxc` de formato 2 y un `hxc` 0.1.0 no lo entendería.
+- **Quince palabras clave que existían sin uso ya no están reservadas**:
+  `IMPL`, `COMPTIME`, `DYN`, `PUBLIC`, `SHADER`, `VERTEX`, `FRAGMENT`,
+  `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y `ENTRY`.
+  No hacían nada y reservaban nombres que un programa debería poder usar. La
+  entrada `ENTRY` de los manifiestos `.hxk` no es esta palabra clave: la lee
+  `kit.c` como texto. Un programa que usara uno de esos quince nombres como
+  variable ahora compila; uno que esperara que estuvieran reservados, no.
+- **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
+  errores de `UNIQUE` son `E0216` y `E0218`, y los dos llevan una nota que
+  menciona `E0212`, como pide la política de códigos de diagnóstico. El código
+  vuelve a estar libre para reutilizar.
+- **`^` ahora atraviesa un `REF`.** Antes `p^.campo` sobre un `REF` era `E0722`;
+  lo que no se puede hacer es llamar métodos a través de un `REF`, y eso sigue
+  siendo un error.
+- **Reasignar un `REF` que es una variable es `E0408`.** Antes escribía a través
+  del puntero, que al principio es `NULL`, y el programa moría en silencio. El
+  préstamo se hace al declarar, no al reasignar.
+- **Un método sobre el resultado de una llamada se resuelve.** `f(x).Metodo` era
+  `E0305` porque el emisor solo miraba el nombre; ahora compila.
+- **Un arreglo dentro de un registro reserva su memoria al construirlo.** Antes
+  las celdas eran un `hx_span` con el puntero a `NULL`, y escribir en
+  `t.celdas[0]` escribía en el vacío.
 
 ### Añadido
 
@@ -27,12 +59,6 @@ dice qué formato y qué abi entiende este `hxc`.
   de la lista. Los módulos con punto (`std.texto` → `std.texto.hxs`) se
   resuelven probando el nombre corto y el largo. El nombre del módulo importado
   se comprueba contra la ruta del `IMPORT`.
-- **Quince palabras clave que existían sin uso ya no están reservadas**:
-  `IMPL`, `COMPTIME`, `DYN`, `PUBLIC`, `SHADER`, `VERTEX`, `FRAGMENT`,
-  `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y `ENTRY`.
-  No hacían nada y reservaban nombres que un programa debería poder usar. La
-  entrada `ENTRY` de los manifiestos `.hxk` no es esta palabra clave: la lee
-  `kit.c` como texto.
 - **`ARRAY[T]`: el arreglo dinámico**, con `Len`, `At(i)`, `Set(i, v)` y
   `Push(v)`. Crece por duplicación y sin `realloc`: se reserva el bloque nuevo
   desde la arena y se copia, así que el viejo se queda hasta que la arena se
@@ -138,9 +164,6 @@ dice qué formato y qué abi entiende este `hxc`.
 - **`ARRAY[T]` no se diferenciaba de uno fijo al imprimir el tipo**: el nombre
   era `ARRAY` en los dos casos, así que un `E0301` decía «se esperaba ARRAY, se
   encontró ARRAY».
-- **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
-  errores de `UNIQUE` son ahora `E0216` y `E0218`, y los dos llevan una nota que
-  menciona `E0212`, como pide la política de códigos de diagnóstico.
 - El runtime escribía 12 bytes donde el literal tenía 11: cada pánico de
   desbordamiento salía precedido de un byte nulo. Ahora hay un verificador
   (`tools/verificar-runtime.py`) que comprueba todas las longitudes fijas del
@@ -227,5 +250,5 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   compilador por objetivo con el que probarlas, y no se ha declarado ninguna
   promesa que no se pueda cumplir.
 - El compilador se compila a sí mismo en C, no en Hixean.
-[Sin publicar]: https://github.com/wwwillcoxon/Hixean/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.2.0
 [0.1.0]: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.1.0

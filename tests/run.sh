@@ -158,7 +158,18 @@ else
   grep -q '"code":"E0301"' build/json.out && grep -q '"help":' build/json.out \
     && echo "ok     check --json trae codigo y ayuda (sin python3 no se valida el JSON)"
 fi
-./build/hxc version --json | grep -q '"version": "0.1.0"' && echo "ok     version --json para las herramientas"
+# la version sale del binario, no de una constante escrita a mano: asi esto no
+# se pudre en la proxima release
+VERSION=$("./build/hxc" version --json | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+if [ -z "$VERSION" ]; then
+  echo "FALLO: version --json no trae version"; exit 1
+fi
+# el pie de la pagina dice la version: si uno se olvida de una, el otro lo nota
+if grep -q "Hixean $VERSION ·" site/index.html; then
+  echo "ok     version --json para las herramientas ($VERSION, leida del binario)"
+else
+  echo "FALLO: el binario es $VERSION pero el pie de la pagina no lo dice"; exit 1
+fi
 
 echo "== extension de vscode =="
 if command -v node >/dev/null 2>&1; then
@@ -271,10 +282,10 @@ grep -q "E0501" build/busqueda/nada.out \
 # esto se compila con el binario INSTALADO, desde otro directorio, sin -I
 rm -rf build/prefixe
 if command -v tar >/dev/null 2>&1; then
-  sh tools/dist.sh 0.1.0 linux-x64 >/dev/null 2>&1
+  sh tools/dist.sh "$VERSION" linux-x64 >/dev/null 2>&1
   mkdir -p build/prefixe
   if HIXEAN_PREFIX=build/prefixe sh tools/install.sh \
-       "dist/hixean-0.1.0-linux-x64.tar.gz" >/dev/null 2>&1; then
+       "dist/hixean-$VERSION-linux-x64.tar.gz" >/dev/null 2>&1; then
     printf 'IMPORT std.texto\nPRINT texto.PadLeft("7", 3, "0")\n' > build/instalado.hxe
     (cd build && ./prefixe/bin/hxc run instalado.hxe > instalado.out 2>&1)
     if [ "$(cat build/instalado.out 2>/dev/null)" = "007" ]; then

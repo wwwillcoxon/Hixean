@@ -1,5 +1,5 @@
 KIT base 0.2.0
-  TARGET hixe >= 0.1
+  TARGET hixe >= 0.2
   PROFILE freestanding
   ENTRY base.hxs
   PROVIDES base
