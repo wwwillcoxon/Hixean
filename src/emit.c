@@ -305,20 +305,25 @@ static const char *HX_RT_NET_LIBC =
     "  hx_str s; s.p = p; s.n = n; return s;\n"
     "}\n";
 
-static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, unsigned long);\n"
-    "void *memset(void *, int, unsigned long);\n";
+/* En Windows el perfil freestanding tambien emite sus memcpy y memset, y ahi ya
+   los declara <string.h>: si se vuelven a declarar aqui, el prototipo no coincide
+   (size_t contra unsigned long) y el C no compila. La solucion no es renombrar los
+   nuestros, que entonces no serian los de libc, sino declarar el prototipo con
+   el mismo tipo que usa el resto del runtime al llamarlos. */
+static const char *HX_RT_MEM_DECL = "void *memcpy(void *, const void *, size_t);\n"
+    "void *memset(void *, int, size_t);\n";
 
 static const char *HX_RT_FREESTANDING_MEM =
-    "void *memcpy(void *d, const void *s, unsigned long n) {\n"
+    "void *memcpy(void *d, const void *s, size_t n) {\n"
     "  unsigned char *dd = (unsigned char *)d;\n"
     "  const unsigned char *ss = (const unsigned char *)s;\n"
-    "  unsigned long i;\n"
+    "  size_t i;\n"
     "  for (i = 0; i < n; i++) dd[i] = ss[i];\n"
     "  return d;\n"
     "}\n"
-    "void *memset(void *d, int c, unsigned long n) {\n"
+    "void *memset(void *d, int c, size_t n) {\n"
     "  unsigned char *dd = (unsigned char *)d;\n"
-    "  unsigned long i;\n"
+    "  size_t i;\n"
     "  for (i = 0; i < n; i++) dd[i] = (unsigned char)c;\n"
     "  return d;\n"
     "}\n";
