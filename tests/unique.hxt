@@ -1,0 +1,52 @@
+"UNIQUE: el campo REF es el dueño del prestamo, y una variable no esta en dos"
+TYPE Caja
+  v AS INT
+  etiqueta AS STRING
+END TYPE
+
+TYPE Ranura
+  UNIQUE slot AS REF Caja
+  spare AS REF Caja
+END TYPE
+
+"mover es asignar la variable al campo: a partir de ahi el campo manda"
+DIM primera AS Caja
+primera.v = 1
+primera.etiqueta = "primera"
+
+DIM ranura AS Ranura
+ranura.slot = primera
+PRINT ranura.slot^.v
+PRINT ranura.slot^.etiqueta
+
+"escribiendo a traves del campo se escribe en la variable original"
+ranura.slot^.v = 42
+PRINT primera.v
+
+"el campo UNIQUE recibe otra variable y suelta la anterior"
+DIM segunda AS Caja
+segunda.v = 2
+segunda.etiqueta = "segunda"
+ranura.slot = segunda
+PRINT ranura.slot^.v
+
+"la anterior vuelve a ser prestable cuando el campo recibe otra cosa"
+DIM copia AS Ranura
+copia.spare = primera
+PRINT copia.spare^.v
+
+"y UNIQUE tambien funciona con un registro propio"
+TYPE Enlace
+  UNIQUE destino AS REF Caja
+END TYPE
+
+DIM n1 AS Caja
+n1.v = 7
+DIM n2 AS Caja
+n2.v = 8
+DIM e AS Enlace
+e.destino = n1
+PRINT e.destino^.v
+e.destino = n2
+PRINT e.destino^.v
+PRINT n1.v

@@ -1283,13 +1283,7 @@ static void hx_parse_type(HxParser *p, HxTypeDecl *t, int is_export) {
         }
         HxField f;
         memset(&f, 0, sizeof(f));
-        if (hx_eat_kw(p, TK_KW_UNIQUE)) {
-            /* se acepta el parsed pero la unicidad todavia no se comprueba */
-            hx_error(p->diags, hx_cur(p)->span, "E0212",
-                     "UNIQUE está reservado pero no implementado: el campo se trata "
-                     "como uno más");
-            f.is_unique = 1;
-        }
+        if (hx_eat_kw(p, TK_KW_UNIQUE)) f.is_unique = 1;
         f.span = hx_cur(p)->span;
         f.name = hx_take_ident(p, "el nombre de un campo");
         if (!hx_eat_type_marker(p)) hx_expect_punct(p, ":");

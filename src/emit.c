@@ -2166,6 +2166,10 @@ static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
     if (!s->assign.compound) hx_buf_str(b, " = ");
     else if (s->assign.op == OP_ADD) hx_buf_str(b, " += ");
     else hx_buf_printf(b, " %s= ", hx_binop_spelling(s->assign.op));
+    /* un campo REF guarda la direccion: es un prestamo, no una copia */
+    if (s->assign.target && s->assign.target->ty && s->assign.target->ty->kind == TY_REF &&
+        s->assign.value && !s->assign.compound)
+        hx_buf_str(b, "&");
     hx_expr_str(e, s->assign.value, 0, b);
     hx_buf_str(b, ";\n");
 }
@@ -2206,6 +2210,8 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             if (s->dim.init) {
                 if (s->dim.ty && s->dim.ty->kind == TY_FLOAT && s->dim.init->kind == EX_INT)
                     hx_buf_str(b, "(double)");
+                /* `DIM d AS REF C = k` guarda la direccion: es un prestamo */
+                if (s->dim.ty && s->dim.ty->kind == TY_REF) hx_buf_str(b, "&");
                 hx_expr_str(e, s->dim.init, 0, b);
             } else if (s->dim.ty && s->dim.ty->kind == TY_STRING) {
                 e->uses_string = 1;

@@ -1,0 +1,22 @@
+"UNIQUE: una variable no puede estar en dos campos a la vez"
+TYPE Caja
+  v AS INT
+END TYPE
+TYPE D
+  UNIQUE a AS REF Caja
+  UNIQUE b AS REF Caja
+END TYPE
+DIM k AS Caja
+DIM d AS D
+d.a = k
+d.b = k
+
+"UNIQUE solo tiene sentido sobre un REF"
+TYPE Mal
+  UNIQUE n AS INT
+END TYPE
+
+"y a un campo UNIQUE solo entra una variable"
+DIM otra AS D
+DIM e AS REF Caja
+otra.a = e

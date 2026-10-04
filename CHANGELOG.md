@@ -13,6 +13,12 @@ dice qué formato y qué abi entiende este `hxc`.
 
 ### Añadido
 
+- **`UNIQUE` funciona**: un campo `UNIQUE REF T` es el dueño del préstamo, y
+  asignarle una variable la mueve. Una variable no puede estar en dos campos a
+  la vez (`E0218`), y `UNIQUE` en un campo que no es `REF` da `E0216`.
+- **`^` también funciona sobre un `REF`**, no solo sobre un `PTR`: los dos son
+  punteros en C, y sin esto un campo `REF` no se podía ni leer. Y
+  `DIM d AS REF C = k` ahora presta `k` en vez de dar `E0301`.
 - **`MAYBE T` y `NIL`**: un valor o nada, con `.IsNil`, `.Or(x)`, `.Map(f)` y
   `CASE NIL` en un `MATCH`. Envolver es implícito; desempaquetar no, y un
   `MAYBE U` tampoco vale donde se espera `MAYBE T`.
@@ -85,8 +91,13 @@ dice qué formato y qué abi entiende este `hxc`.
   versión, que durante el desarrollo no cambia): un `.o` viejo se reutilizaba y
   producía un binario roto sin avisar. Ahora la clave incluye un hash del propio
   ejecutable.
-- `NIL` imprimía un cero y `UNIQUE` se ignoraba en silencio. `NIL` ya es parte de
-  `MAYBE T`; `UNIQUE` sigue avisando con `E0212` en vez de fingir.
+- `NIL` imprimía un cero: ahora es parte de `MAYBE T`.
+- **Reasignar un `REF` que es una variable escribía a través del puntero**, que
+  al principio es `NULL`, y el programa moría en silencio. Ahora es `E0408`:
+  el préstamo se hace al declarar.
+- **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
+  errores de `UNIQUE` son ahora `E0216` y `E0218`, y los dos llevan una nota que
+  menciona `E0212`, como pide la política de códigos de diagnóstico.
 - El runtime escribía 12 bytes donde el literal tenía 11: cada pánico de
   desbordamiento salía precedido de un byte nulo. Ahora hay un verificador
   (`tools/verificar-runtime.py`) que comprueba todas las longitudes fijas del

@@ -45,10 +45,20 @@ typedef struct {
     int arena_depth;
     int match_defer;
     int in_forin; /* dentro del iterable de un FOR: ahi si caben los iteradores */
+    /* UNIQUE: que variable prestada lleva ahora cada campo con UNIQUE, y de
+       quien es. La propiedad es lineal dentro de una funcion: al mover una
+       variable a un campo UNIQUE, deja de ser prestable. */
+    struct {
+        HxSym var;
+        HxTypeDecl *decl;
+        HxSym campo;
+    } unicos[32];
+    int n_unicos;
 } HxChecker;
 
 static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e);
 static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g);
+static int hx_unico_de_quien(HxChecker *c, HxSym var, const char **campo, const char **tipo);
 static void hx_define_module_scope(HxChecker *c, HxModule *mod);
 static void hx_collect_names(HxChecker *c, HxModule *mod);
 static void hx_resolve_signature(HxChecker *c, struct HxFunc *fn);
@@ -216,6 +226,17 @@ static void hx_mark_borrow(HxChecker *c, HxExpr *arg, HxSpan sp) {
     HxSym folded = hx_fold(c, arg->path.parts.data[0].name);
     HxSymEntry *se = hx_lookup_in_scope(c, folded);
     if (!se) return;
+    const char *campo = NULL, *tipo = NULL;
+    if (hx_unico_de_quien(c, arg->path.parts.data[0].name, &campo, &tipo)) {
+        hx_diag_note(c->diags, sp, "E0218",
+                     hx_arena_sprintf(c->arena, "'%s' ya está en '%s.%s'",
+                                      hx_sym_str(arg->path.parts.data[0].name),
+                                      tipo ? tipo : "?", campo ? campo : "?"),
+                     "un campo UNIQUE es el dueño del préstamo: para moverlo hay que "
+                     "asignarlo a otro campo UNIQUE",
+                     "E0212 en 0.1.0: UNIQUE estaba reservado y esto no se comprobaba");
+        return;
+    }
     if (se->borrowed) {
         hx_diag_note(c->diags, sp, "E0408",
                      hx_arena_sprintf(c->arena, "'%s' ya está prestado",
@@ -1699,10 +1720,13 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
         case EX_DEREF: {
             e->try.inner = hx_expr_check(c, e->try.inner);
             HxTy *pt = e->try.inner->ty;
-            if (!pt || pt->kind != TY_PTR)
+            /* REF tambien es un puntero en C: '^' sirve para leer y escribir a
+               traves de un campo REF, que antes solo se podia prestar */
+            int puntero = pt && (pt->kind == TY_PTR || pt->kind == TY_REF);
+            if (!puntero)
                 hx_error(c->diags, e->span, "E0722",
-                         "'^' sólo se puede aplicar a un PTR");
-            e->ty = pt && pt->kind == TY_PTR ? pt->inner : hx_ty_builtin(c->arena, TY_UNKNOWN);
+                         "'^' sólo se puede aplicar a un PTR o a un REF");
+            e->ty = puntero ? pt->inner : hx_ty_builtin(c->arena, TY_UNKNOWN);
             return e;
         }
         case EX_PATH:
@@ -2058,6 +2082,75 @@ static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
     }
 }
 
+/* El campo de un tipo al que se apunta, si lleva UNIQUE. */
+static HxField *hx_campo_unico(HxTy *t, const char *nombre) {
+    if (!t || t->kind != TY_NAMED || !t->decl) return NULL;
+    for (int i = 0; i < t->decl->fields.len; i++) {
+        HxField *f = &t->decl->fields.data[i];
+        if (f->is_unique && !hx_ascii_casecmp(hx_sym_str(f->name), nombre)) return f;
+    }
+    return NULL;
+}
+
+/* La variable que ahora vive en ese campo UNIQUE, o NULL. */
+static HxSym hx_unico_de(HxChecker *c, HxTypeDecl *decl, HxSym campo) {
+    for (int i = 0; i < c->n_unicos; i++)
+        if (c->unicos[i].decl == decl && c->unicos[i].campo == campo) return c->unicos[i].var;
+    return 0;
+}
+
+static void hx_unico_poner(HxChecker *c, HxSym var, HxTypeDecl *decl, HxSym campo) {
+    for (int i = 0; i < c->n_unicos; i++)
+        if (c->unicos[i].decl == decl && c->unicos[i].campo == campo) {
+            c->unicos[i].var = var;
+            return;
+        }
+    if (c->n_unicos >= 32) return;
+    c->unicos[c->n_unicos].var = var;
+    c->unicos[c->n_unicos].decl = decl;
+    c->unicos[c->n_unicos].campo = campo;
+    c->n_unicos++;
+}
+
+/* Quien tiene una variable prestada ahora mismo, si es que alguien. */
+static int hx_unico_de_quien(HxChecker *c, HxSym var, const char **campo, const char **tipo) {
+    for (int i = 0; i < c->n_unicos; i++)
+        if (c->unicos[i].var == var) {
+            if (campo) *campo = hx_sym_str(c->unicos[i].campo);
+            if (tipo) *tipo = c->unicos[i].decl ? hx_sym_str(c->unicos[i].decl->name) : "?";
+            return 1;
+        }
+    return 0;
+}
+
+/* Mover una variable a un campo UNIQUE. El origen tiene que ser una variable con
+   nombre: sin eso no se puede saber de quién es la propiedad. */
+static void hx_unico_mover(HxChecker *c, HxExpr *valor, HxTy *tipo_campo, const char *campo) {
+    if (!valor) return;
+    if (valor->kind != EX_PATH || valor->path.parts.len != 1 || !tipo_campo ||
+        !tipo_campo->decl)
+        return;
+    HxSymEntry *se = hx_lookup_in_scope(c, hx_fold(c, valor->path.parts.data[0].name));
+    if (!se) return;
+    const char *otro_campo = NULL, *otro_tipo = NULL;
+    if (hx_unico_de_quien(c, valor->path.parts.data[0].name, &otro_campo, &otro_tipo)) {
+        HxSym prev = hx_unico_de(c, tipo_campo->decl, hx_intern_cstr(c->intern, campo));
+        if (!hx_ascii_casecmp(prev ? hx_sym_str(prev) : "", hx_sym_str(se->name)) &&
+            prev == valor->path.parts.data[0].name)
+            return; /* el mismo campo recibe otra vez la misma variable */
+        hx_diag_note(c->diags, valor->span, "E0218",
+                     hx_arena_sprintf(c->arena, "'%s' ya está en '%s.%s'",
+                                      hx_sym_str(se->name), otro_tipo ? otro_tipo : "?",
+                                      otro_campo ? otro_campo : "?"),
+                     "UNIQUE es de propiedad: una variable prestada vive en un sitio hasta "
+                     "que ese campo recibe otra",
+                     "E0212 en 0.1.0: UNIQUE estaba reservado y esto no se comprobaba");
+        return;
+    }
+    hx_unico_poner(c, valor->path.parts.data[0].name, tipo_campo->decl,
+                   hx_intern_cstr(c->intern, campo));
+}
+
 static void hx_check_stmt(HxChecker *c, HxStmt *s) {
     switch (s->kind) {
         case ST_EXPR:
@@ -2083,9 +2176,70 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 s->assign.target->ty->kind == TY_STRING)
                 hx_error(c->diags, s->span, "E0309",
                          "'+' no concatena cadenas; usa '++' para STRING");
-            if (s->assign.target->ty && s->assign.value->ty)
+            /* un REF variable es un prestamo vivo: reasignarlo no prestaria
+               nada, solo escribiria a traves del puntero (que es NULL). El
+               prestamo se crea al declarar, con `DIM d AS REF C = k`. */
+            if (s->assign.target && s->assign.target->kind == EX_PATH &&
+                s->assign.target->path.parts.len == 1) {
+                HxSymEntry *se = hx_lookup(c, s->assign.target->path.parts.data[0].name);
+                if (se && se->ty && se->ty->kind == TY_REF)
+                    hx_diag_note(c->diags, s->span, "E0408",
+                                 hx_arena_sprintf(c->arena,
+                                                  "no se puede reasignar un REF: '%s' es un "
+                                                  "préstamo",
+                                                  hx_sym_str(se->name)),
+                                 "el préstamo se hace al declarar: al escribir DIM nombre AS REF T "
+                                 "= laVariable",
+                                 "reasignarlo escribiría a través del puntero, que al "
+                                 "principio es NULL");
+            }
+            /* un campo REF recibe una variable: es un prestamo, como el de un
+               parametro REF, y no una conversion de tipos */
+            int destino_ref = s->assign.target && s->assign.target->ty &&
+                              s->assign.target->ty->kind == TY_REF;
+            if (destino_ref) {
+                HxExpr *v = s->assign.value;
+                hx_mark_borrow(c, v, s->assign.value->span);
+                if (v->ty && !hx_ty_equal(v->ty, s->assign.target->ty->inner))
+                    hx_error(c->diags, s->assign.value->span, "E0301",
+                             "este campo REF espera un %s",
+                             hx_ty_name(s->assign.target->ty->inner));
+            } else if (s->assign.target->ty && s->assign.value->ty)
                 hx_coerce_to(c, &s->assign.value, s->assign.target->ty, s->assign.value->span,
-                          NULL);
+                             NULL);
+            /* `campo UNIQUE = x` mueve el préstamo de x al campo, y x deja de
+               ser prestable: es propiedad del campo hasta que otro lo reciba.
+               El destino llega como EX_MEMB o como EX_PATH de dos partes,
+               segun como lo haya agrupado el parser. */
+            {
+                HxExpr *dest = s->assign.target;
+                HxTy *bt = NULL;
+                HxSym campo = 0;
+                if (dest && dest->kind == EX_MEMB) {
+                    bt = dest->member.base ? dest->member.base->ty : NULL;
+                    campo = dest->member.name;
+                } else if (dest && dest->kind == EX_PATH && dest->path.parts.len == 2) {
+                    HxSymEntry *se = hx_lookup(c, dest->path.parts.data[0].name);
+                    bt = se ? se->ty : NULL;
+                    campo = dest->path.parts.data[1].name;
+                }
+                HxField *fld = hx_campo_unico(bt, hx_sym_str(campo));
+                if (fld) {
+                    HxExpr *v = s->assign.value;
+                    int es_var = v && v->kind == EX_PATH && v->path.parts.len == 1;
+                    HxTy *inner = dest && dest->ty && dest->ty->kind == TY_REF ? dest->ty->inner
+                                                                             : NULL;
+                    if (!es_var || !inner || !v->ty || !hx_ty_equal(v->ty, inner))
+                        hx_diag_note(c->diags, v ? v->span : s->span, "E0218",
+                                     "a un campo UNIQUE sólo se puede mover una variable REF",
+                                     "UNIQUE necesita saber de quién es el préstamo, y eso "
+                                     "sólo se ve si el origen es una variable con nombre",
+                                     "E0212 en 0.1.0: UNIQUE estaba reservado y esto no se "
+                                     "comprobaba");
+                    else
+                        hx_unico_mover(c, v, bt, hx_sym_str(campo));
+                }
+            }
             break;
         }
         case ST_DIM: {
@@ -2094,7 +2248,13 @@ static void hx_check_stmt(HxChecker *c, HxStmt *s) {
                 s->dim.init = hx_expr_propagate(c, s->dim.init, s->dim.init->span);
                 if (s->dim.init->ty && s->dim.init->ty->kind == TY_ARRAY && (!t || t->kind == TY_UNKNOWN))
                     t = s->dim.init->ty;
-                if (t && t != s->dim.init->ty)
+                /* `DIM d AS REF C = k` presta k: no es una conversion de tipos */
+                if (t && t->kind == TY_REF) {
+                    hx_mark_borrow(c, s->dim.init, s->dim.init->span);
+                    if (s->dim.init->ty && !hx_ty_equal(s->dim.init->ty, t->inner))
+                        hx_error(c->diags, s->dim.init->span, "E0301",
+                                 "este REF espera un %s", hx_ty_name(t->inner));
+                } else if (t && t != s->dim.init->ty)
                     hx_coerce_to(c, &s->dim.init, t, s->dim.init->span, NULL);
                 if (!t) t = s->dim.init->ty;
             }
@@ -2540,6 +2700,17 @@ int hx_check_unit(HxUnit *unit) {
             for (int i = 0; i < mod->types.data[t].fields.len; i++) {
                 HxField *fld = &mod->types.data[t].fields.data[i];
                 fld->ty = hx_resolve_type(&c, fld->ty, fld->span, 1);
+                if (fld->is_unique && (!fld->ty || fld->ty->kind != TY_REF))
+                    hx_diag_note(c.diags, fld->span, "E0216",
+                                 hx_arena_sprintf(c.arena,
+                                                  "UNIQUE sólo puede ir en un campo REF, y "
+                                                  "'%s' es '%s'",
+                                                  hx_sym_str(fld->name),
+                                                  hx_ty_name(fld->ty)),
+                                 "UNIQUE quiere decir que el campo es dueño del préstamo: "
+                                 "eso sólo tiene sentido sobre una referencia",
+                                 "E0212 en 0.1.0: UNIQUE estaba reservado y esto no se "
+                                 "comprobaba");
             }
         }
         for (int i = 0; i < mod->impls.len; i++) {

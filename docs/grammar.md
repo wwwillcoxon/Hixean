@@ -511,8 +511,52 @@ Un rango en un índice (`a[1..3]`) todavía **no** está implementado: se acepta
 el parser, pero el emisor solo leería el primer elemento, así que da `E0210` en
 lugar de fingir.
 
-Dos palabras clave están reservadas y **no** hacen nada todavía, y en vez de
-callar lo dicen: `NIL` (`E0211`) y `UNIQUE` en un campo (`E0212`).
+`UNIQUE` ya hace lo que dice: convierte un campo `REF` en el dueño del
+préstamo (ver abajo). `E0212`, que decía «UNIQUE está reservado pero no
+implementado», queda retirado en 0.2.0 según la política de ADR 0013; a partir de
+ahora los diagnósticos de UNIQUE son `E0216` y `E0218`, y ambos llevan una nota que
+menciona `E0212` para quien tenga una herramienta filtrando por ese código.
+
+### `UNIQUE`: el campo REF es el dueño
+
+`UNIQUE` va delante del nombre de un campo, y ese campo tiene que ser `REF`
+(`E0216` si no). Asignarle una variable **mueve** el préstamo: el campo pasa a
+ser el dueño y la variable deja de ser prestable.
+
+```
+TYPE Ranura
+  UNIQUE slot AS REF Caja
+  spare AS REF Caja
+END TYPE
+
+DIM primera AS Caja
+primera.v = 1
+DIM ranura AS Ranura
+ranura.slot = primera          ' el campo toma el prestamo
+PRINT ranura.slot^.v           ' 1: se lee a traves del campo
+ranura.slot^.v = 42            ' y se escribe en la variable original
+```
+
+`^` funciona también sobre `REF`, no solo sobre `PTR`: los dos son punteros en
+C, y sin `^` un campo `REF` no se podía ni leer.
+
+Tres reglas, y las tres con código:
+
+| código | cuándo |
+|---|---|
+| `E0216` | `UNIQUE` en un campo que no es `REF` |
+| `E0218` | la variable ya está en otro campo `UNIQUE`, o se presta después de moverse, o el origen no es una variable con nombre |
+| `E0408` | reasignar un `REF` que es una variable: el préstamo se hace al declararlo (`DIM d AS REF C = k`) |
+
+Si el campo `UNIQUE` recibe otra variable, suelta la anterior y ésta vuelve a
+ser prestable. Eso es lo que hace lineal a `UNIQUE`: cada préstamo vive en un sitio.
+
+**Lo que no se comprueba**, y conviene saberlo: el análisis es local a la
+función y ve los movimientos que ve. No sabe si dos campos de *registros
+distintos* apuntan al mismo dato, ni si un `REF` que llegó como parámetro
+apunta al mismo sitio que un campo `UNIQUE`, ni lo que pasa entre funciones.
+Es la misma clase de límite que `a[i]` sin comprobar: se dice en voz alta en
+vez de prometer un análisis de aliasing que no hay.
 
 ### Sobrecarga de operadores
 

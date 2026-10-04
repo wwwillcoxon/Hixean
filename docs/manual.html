@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>25/25</b><span>pruebas del corpus</span></li>
+        <li><b>26/26</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -914,6 +914,39 @@ END FUNCTION
 PRINT saludar("ana")</code></pre>
         <div class="salida"><span>salida</span><pre>hola admin</pre></div>
       </figure>
+      <h3>UNIQUE: el campo REF es el dueño</h3>
+      <p>Un <code>REF</code> es un préstamo. Con <code>UNIQUE</code>, el campo
+      pasa a ser el dueño: asignarle una variable la <em>mueve</em>, y a partir
+      de ahí esa variable ya no se puede prestar otra vez.</p>
+      <figure class="ej">
+        <figcaption><span>ranura.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">TYPE Caja
+  v AS INT
+END TYPE
+
+TYPE Ranura
+  UNIQUE slot AS REF Caja
+END TYPE
+
+DIM primera AS Caja
+primera.v = 1
+DIM ranura AS Ranura
+ranura.slot = primera
+PRINT ranura.slot^.v
+ranura.slot^.v = 42
+PRINT primera.v</code></pre>
+        <div class="salida"><span>salida</span><pre>1
+42</pre></div>
+      </figure>
+      <p><code>^</code> también vale para un <code>REF</code>, no solo para un
+      <code>PTR</code>: los dos son punteros, y sin eso un campo <code>REF</code>
+      no se podía ni leer. Si el campo recibe otra variable, suelta la anterior
+      y ésta vuelve a ser prestable.</p>
+      <p>Lo que <em>no</em> se comprueba: el análisis es local a la función y ve
+      los movimientos que ve. No sabe si dos campos de registros distintos
+      apuntan al mismo dato, ni lo que ocurre entre funciones. Es el mismo tipo
+      de límite que <code>a[i]</code> sin comprobar, y por eso está escrito
+      aquí en vez de prometer un análisis de aliasing que no existe.</p>
       <h3>Operadores propios</h3>
       <p>Un programa puede definir cómo se suma su propio tipo. Es la forma más
       corta de que un <code>TYPE</code> sea cómodo sin pedirle nada al
@@ -1236,10 +1269,12 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
       </div>
       <table id="tabla-errores">
         <tr><th>Código</th><th>Qué significa</th></tr>
+        <tr class="fila" data-codigo="E0216"><td><code>E0216</code></td><td>UNIQUE sólo puede ir en un campo REF, y '…' es '…'</td></tr>
+        <tr class="fila" data-codigo="E0218"><td><code>E0218</code></td><td>'…' ya está en '….…' ? ? · a un campo UNIQUE sólo se puede mover una variable REF</td></tr>
         <tr class="fila" data-codigo="E0000"><td><code>E0000</code></td><td>demasiados errores, se detiene la compilación</td></tr>
         <tr class="fila" data-codigo="E0210"><td><code>E0210</code></td><td>un rango en un índice (a[i..j]) todavía no se puede usar: aquí solo se leería el primer elemento</td></tr>
         <tr class="fila" data-codigo="E0211"><td><code>E0211</code></td><td>CASE NIL necesita un MATCH sobre un MAYBE (aqui el sujeto es '…') · NIL solo vale para un MAYBE, y aqui se esperaba '…' · PRINT no puede imprimir NIL: no hay ningun valor</td></tr>
-        <tr class="fila" data-codigo="E0212"><td><code>E0212</code></td><td>UNIQUE está reservado pero no implementado: el campo se trata como uno más</td></tr>
+        <tr class="fila" data-codigo="E0212"><td><code>E0212</code></td><td>retirado en 0.2.0: era «UNIQUE está reservado pero no implementado». Ahora UNIQUE se comprueba y sus errores son <code>E0216</code> (el campo no es <code>REF</code>) y <code>E0218</code> (la propiedad se viola)</td></tr>
         <tr class="fila" data-codigo="E0213"><td><code>E0213</code></td><td>'…' no se puede sobrecargar</td></tr>
         <tr class="fila" data-codigo="E0214"><td><code>E0214</code></td><td>OPERATOR … necesita exactamente 2 parametros</td></tr>
         <tr class="fila" data-codigo="E0215"><td><code>E0215</code></td><td>OPERATOR … necesita un primer parametro de un TYPE declarado (no …)</td></tr>
@@ -1522,7 +1557,7 @@ PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
     <footer>
       <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
       <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
-      <code>make test</code> ejecuta los 25 programas del corpus, y
+      <code>make test</code> ejecuta los 26 programas del corpus, y
       <code>make size</code> la puerta de 12 KiB.</p>
       <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
       para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del

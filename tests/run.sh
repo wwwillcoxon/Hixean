@@ -236,8 +236,10 @@ if ./build/hxc check tests/malos/rangos.hxe >/dev/null 2>&1; then
 fi
 ./build/hxc check tests/malos/rangos.hxe 2>&1 | grep -q "E0210" \
   && echo "ok     un rango en un indice da E0210 en vez de leer un elemento"
-./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "E0212" \
-  && echo "ok     UNIQUE da E0212 en vez de ignorarse" \
+# E0212 (UNIQUE reservado) esta retirado: lo que ahora se comprueba es E0216
+./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "error\[E0216\]" \
+  && ./build/hxc check tests/malos/reservados.hxe 2>&1 | grep -q "error\[E0211\]" \
+  && echo "ok     UNIQUE ya no esta reservado (E0216) y PRINT NIL da E0211" \
   || { echo "FALLO: UNIQUE"; exit 1; }
 # dos MAYBE de tipos distintos no son intercambiables
 ./build/hxc check tests/malos/tipos-distintos.hxe 2>&1 | grep -q "se esperaba MAYBE STRING, se encontró MAYBE INT" \
@@ -245,6 +247,11 @@ fi
   && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
   || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+# UNIQUE: una variable no puede estar en dos campos, y solo va en un REF
+./build/hxc check tests/malos/unique.hxe 2>&1 | grep -q "ya está en 'D.a'" \
+  && ./build/hxc check tests/malos/unique.hxe 2>&1 | grep -q "E0216" \
+  && echo "ok     UNIQUE rechaza la doble propiedad y el campo que no es REF" \
+  || { echo "FALLO: las reglas de UNIQUE"; exit 1; }
 ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0301" \
   && ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0211" \
   && ./build/hxc check tests/malos/maybe.hxe 2>&1 | grep -q "E0405" \

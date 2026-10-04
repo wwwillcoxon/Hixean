@@ -132,6 +132,7 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M15 | los arreglos se leen: `a.Len()` y `a.At(i)` con la comprobación puesta; `NIL` y `UNIQUE` dejan de fingir | `a.At(99)` sale con el 70 diciendo el índice; `a[1..3]` da `E0210` |
 | M16 | `OPERATOR` funciona: un programa define `+`, `*`, `==` o `<` para su propio `TYPE` | `1/2 + 1/3` da `5/6`, y `+` sobre `INT` sigue verificado |
 | M17 | `MAYBE T` y `NIL` de verdad, con `.IsNil`, `.Or(x)`, `.Map(f)` y `CASE NIL` | un `MAYBE` no se desempaqueta solo; `MAYBE INT` no vale donde se espera `MAYBE STRING` |
+| M18 | `UNIQUE`: un campo `UNIQUE REF T` es el dueño del préstamo, y `^` ya funciona sobre un `REF` | una variable no puede estar en dos campos `UNIQUE` (`E0218`) |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -396,6 +397,31 @@ END MATCH
 `.Map(f)` aplica `f` sólo si hay valor y devuelve otro `MAYBE`. Un `MAYBE U` no
 vale donde se espera `MAYBE T` (`E0301`), y un `MATCH` sobre un `MAYBE` necesita
 `CASE NIL` más un caso para el valor, o da `E0405`.
+
+M18 hace que `UNIQUE` haga algo. Un campo `UNIQUE REF T` es el dueño del
+préstamo: asignarle una variable la mueve, y a partir de ahí esa variable ya no
+se presta más. `^` también vale para un `REF` (los dos son punteros en C), que
+sin eso dejaba los campos `REF` sin poder leerse.
+
+```hixean
+TYPE Ranura
+  UNIQUE slot AS REF Caja
+END TYPE
+
+DIM primera AS Caja
+primera.v = 1
+DIM ranura AS Ranura
+ranura.slot = primera
+PRINT ranura.slot^.v
+ranura.slot^.v = 42
+PRINT primera.v        ' 42: la escritura pasa por el campo
+```
+
+Lo que no se comprueba se dice en voz alta: el análisis es local a la función y
+ve los movimientos que ve. No sabe si dos campos de registros distintos apuntan
+al mismo dato, ni lo que pasa entre funciones. Es el mismo límite que `a[i]` sin
+comprobar. `E0212` («UNIQUE está reservado») queda retirado y los dos códigos
+nuevos llevan una nota que lo menciona, según la política de ADR 0013.
 
 `audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador por
 objetivo, y no hay forma honesta de probarlos aquí. M12 se cierra sin ellos antes
