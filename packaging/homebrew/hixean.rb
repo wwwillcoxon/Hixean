@@ -31,8 +31,10 @@ class Hixean < Formula
       # es identico a x64 en cuanto exista.
       odie "sin artefacto para linux-arm64 todavia: falta el compilador cruzado"
     else
+      # sha256 copiado de SHA256SUMS de la release v0.2.0, y comprobado bajando
+      # el tarball aparte: 48ee116d...
       url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-linux-x64.tar.gz"
-      sha256 "REEMPLAZAR_CON_EL_SHA256_DE_linux-x64"
+      sha256 "48ee116da344853cdd6777c9f971e7498c725b485ffe1716cce57cdace92a080"
     end
   end
 

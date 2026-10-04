@@ -43,6 +43,11 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   las celdas eran un `hx_span` con el puntero a `NULL`, y escribir en
   `t.celdas[0]` escribía en el vacío.
 
+- **Publicada la release `v0.2.0`**, con un artefacto (`linux-x64`) y su
+  `SHA256SUMS`. Probada de punta a punta contra la release real, no en local: el
+  instalador descarga, verifica el hash, extrae y el binario instalado compila un
+  programa que importa `std.texto`. El `sha256` de la fórmula de Homebrew está
+  copiado del fichero publicado y comprobado descargando el tarball aparte.
 - **La release publica un artefacto, el de `linux-x64`.** Es el único camino de
   extremo a extremo que está verde: el perfil `freestanding` es de Linux, y la
   puerta de 12 KiB solo se mide ahí. En `release.yml` está escrito qué falta para
