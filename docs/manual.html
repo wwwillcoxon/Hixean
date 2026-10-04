@@ -1236,6 +1236,14 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
       </div>
       <table id="tabla-errores">
         <tr><th>Código</th><th>Qué significa</th></tr>
+        <tr class="fila" data-codigo="E0000"><td><code>E0000</code></td><td>demasiados errores, se detiene la compilación</td></tr>
+        <tr class="fila" data-codigo="E0210"><td><code>E0210</code></td><td>un rango en un índice (a[i..j]) todavía no se puede usar: aquí solo se leería el primer elemento</td></tr>
+        <tr class="fila" data-codigo="E0211"><td><code>E0211</code></td><td>CASE NIL necesita un MATCH sobre un MAYBE (aqui el sujeto es '…') · NIL solo vale para un MAYBE, y aqui se esperaba '…' · PRINT no puede imprimir NIL: no hay ningun valor</td></tr>
+        <tr class="fila" data-codigo="E0212"><td><code>E0212</code></td><td>UNIQUE está reservado pero no implementado: el campo se trata como uno más</td></tr>
+        <tr class="fila" data-codigo="E0213"><td><code>E0213</code></td><td>'…' no se puede sobrecargar</td></tr>
+        <tr class="fila" data-codigo="E0214"><td><code>E0214</code></td><td>OPERATOR … necesita exactamente 2 parametros</td></tr>
+        <tr class="fila" data-codigo="E0215"><td><code>E0215</code></td><td>OPERATOR … necesita un primer parametro de un TYPE declarado (no …)</td></tr>
+        <tr class="fila" data-codigo="E0717"><td><code>E0717</code></td><td>… sólo se puede usar en el iterable de un FOR</td></tr>
         <tr class="fila" data-codigo="E0101"><td><code>E0101</code></td><td>literal entero inválido · literal flotante inválido · literal numérico inválido</td></tr>
         <tr class="fila" data-codigo="E0102"><td><code>E0102</code></td><td>carácter inesperado '…'</td></tr>
         <tr class="fila" data-codigo="E0103"><td><code>E0103</code></td><td>cadena sin cerrar hasta el final del archivo</td></tr>

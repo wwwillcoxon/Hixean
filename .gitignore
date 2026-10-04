@@ -2,3 +2,6 @@ build/
 *.o
 *.d
 dist/
+
+# cache de python de los verificadores
+__pycache__/

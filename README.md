@@ -129,6 +129,9 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M12 | consultas `.hxq` (`hxc query`) para elegir paquetes por lo que ofrecen; manual HTML interactivo | consulta por `PROVIDES`+`VERSION` acierta y filtra |
 | M13 | 0.1.0: licencia, changelog, política de versiones, `hxc check --json`, extensión de VS Code, `-Werror`, sanitizers y fuzzer | el corpus pasa instrumentado y 3 000 mutaciones no matan al front-end |
 | M14 | distribución: releases con SHA256, `install.sh`/`install.ps1`, Homebrew, winget, y registro de paquetes con `hxc pack`/`hxc install` | el paquete instalado se construye y ejecuta desde el registro |
+| M15 | los arreglos se leen: `a.Len()` y `a.At(i)` con la comprobación puesta; `NIL` y `UNIQUE` dejan de fingir | `a.At(99)` sale con el 70 diciendo el índice; `a[1..3]` da `E0210` |
+| M16 | `OPERATOR` funciona: un programa define `+`, `*`, `==` o `<` para su propio `TYPE` | `1/2 + 1/3` da `5/6`, y `+` sobre `INT` sigue verificado |
+| M17 | `MAYBE T` y `NIL` de verdad, con `.IsNil`, `.Or(x)`, `.Map(f)` y `CASE NIL` | un `MAYBE` no se desempaqueta solo; `MAYBE INT` no vale donde se espera `MAYBE STRING` |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -331,6 +334,68 @@ Los predicados (`PROVIDES`, `FEATURE`, `CAPABILITY`, `DEP`, `VERSION`) se
 combinan con Y y la salida va en orden alfabético, así que sirve tanto para
 leerla como para compararla en un script. La descripción tras `QUERY` es texto
 libre para quien abra el archivo.
+
+M15 hace que un arreglo se pueda leer sin adivinar. `a.Len()` es una constante
+del tipo, así que no cuesta nada en tiempo de ejecución, y `a.At(i)` comprueba
+el índice y sale con el código 70 diciendo qué índice se pidió. `a[i]` sigue
+sin comprobar: es la forma rápida y está documentado como tal.
+
+```hixean
+DIM a AS INT[4]
+a[0] = 10
+PRINT a.Len()
+PRINT a.At(0)
+PRINT a.At(9)         ' sale con el 70: "índice 9 fuera de rango"
+```
+
+Lo que antes fingía, ahora lo dice: `a[1..3]` daba `E0210` en vez de leerse como
+un elemento solo, `NIL` y `UNIQUE` tienen sus códigos (`E0211` y `E0212`), y un
+arreglo dentro de un registro reserva su memoria (antes escribías en el vacío).
+
+M16 deja que un programa defina cómo se comporta su propio tipo con los
+operadores del lenguaje, sin que el compilador tenga que saber nada:
+
+```hixean
+TYPE Fraccion
+  num AS INT
+  den AS INT
+END TYPE
+
+FUNCTION OPERATOR + (a AS Fraccion, b AS Fraccion) AS Fraccion
+  DIM r AS Fraccion
+  r.num = a.num * b.den + b.num * a.den
+  r.den = a.den * b.den
+  RETURN r
+END FUNCTION
+```
+
+`1/2 + 1/3` da `5/6`. El tipo del primer parámetro decide cuál de las
+sobrecargas se usa, así que `f * 6` puede llamar a una cuyo segundo parámetro sea
+`INT`, y `+` sobre `INT` no se toca: sigue siendo la suma verificada.
+
+M17 añade `MAYBE T`, un valor o nada. Envolver es implícito; detrás de un
+`MAYBE` siempre hay que decidir, y para eso hay tres métodos y ningún operador
+nuevo:
+
+```hixean
+FUNCTION perfil(usuario AS STRING) AS MAYBE STRING
+  IF usuario == "ana" THEN RETURN "admin"
+  RETURN NIL
+END FUNCTION
+
+DIM p AS MAYBE STRING = perfil("carlos")
+PRINT p.IsNil            ' true: un miembro, sin parentesis
+PRINT p.Or("nadie")      ' nadie
+
+MATCH p
+  CASE NIL THEN PRINT "sin nombre"
+  CASE nombre THEN PRINT "hola " ++ nombre
+END MATCH
+```
+
+`.Map(f)` aplica `f` sólo si hay valor y devuelve otro `MAYBE`. Un `MAYBE U` no
+vale donde se espera `MAYBE T` (`E0301`), y un `MATCH` sobre un `MAYBE` necesita
+`CASE NIL` más un caso para el valor, o da `E0405`.
 
 `audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador por
 objetivo, y no hay forma honesta de probarlos aquí. M12 se cierra sin ellos antes

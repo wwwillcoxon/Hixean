@@ -39,10 +39,24 @@ def pruebas_del_corpus():
 
 
 def codigos_diagnostico():
+    """Los codigos que el compilador puede emitir.
+
+    La lista vive en tools/verificar-tabla-errores.py: asi la cifra de la pagina
+    y la tabla del manual no pueden separarse. Ojo: E0000 se asigna sin coma
+    detras, asi que buscar solo los que llevan coma se lo saltaba.
+    """
+    sys.path.insert(0, os.path.join(RAIZ, "tools"))
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "vtabla", os.path.join(RAIZ, "tools", "verificar-tabla-errores.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
     total = set()
     for fuente in glob.glob(os.path.join(RAIZ, "src", "*.c")):
         with open(fuente, encoding="utf-8") as f:
-            total |= set(re.findall(r'"(E\d{4})",', f.read()))
+            total |= set(mod.CODIGO_RE.findall(f.read()))
     return len(total)
 
 
@@ -109,7 +123,17 @@ def main():
 
     # 4. numero de ADR, en la tarjeta de documentos
     adr = len(glob.glob(os.path.join(RAIZ, "docs", "adr", "*.md")))
-    palabras = {"catorce": 14, "quince": 15, "dieciseis": 16, "dieciséis": 16, "catorce ": 14}
+    palabras = {
+        "catorce": 14,
+        "quince": 15,
+        "dieciseis": 16,
+        "dieciséis": 16,
+        "diecisiete": 17,
+        "diecisiete ": 17,
+        "dieciocho": 18,
+        "diecinueve": 19,
+        "diecinueve ": 19,
+    }
     m = re.search(r"([A-Za-zé]+) ADR", pagina)
     if m:
         dicho = palabras.get(m.group(1).lower())
