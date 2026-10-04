@@ -35,8 +35,14 @@ void *hx_arena_alloc_tag(HxArena *a, size_t n, uint64_t tag);
 void *hx_arena_calloc(HxArena *a, size_t n);
 char *hx_arena_strndup(HxArena *a, const char *s, size_t n);
 char *hx_arena_strdup(HxArena *a, const char *s);
-char *hx_arena_sprintf(HxArena *a, const char *fmt, ...);
-char *hx_arena_vsprintf(HxArena *a, const char *fmt, va_list ap);
+#if defined(__GNUC__) || defined(__clang__)
+#define HX_PRINTF(fmt_i, arg_i) __attribute__((format(printf, fmt_i, arg_i)))
+#else
+#define HX_PRINTF(fmt_i, arg_i)
+#endif
+
+HX_PRINTF(2, 3) char *hx_arena_sprintf(HxArena *a, const char *fmt, ...);
+HX_PRINTF(2, 0) char *hx_arena_vsprintf(HxArena *a, const char *fmt, va_list ap);
 
 #define HX_VEC_TYPE(T)                                                         \
     struct {                                                                   \
@@ -109,7 +115,7 @@ typedef struct {
 void hx_buf_reserve(HxBuf *b, size_t n);
 void hx_buf_put(HxBuf *b, const char *s, size_t n);
 void hx_buf_str(HxBuf *b, const char *s);
-void hx_buf_printf(HxBuf *b, const char *fmt, ...);
+HX_PRINTF(2, 3) void hx_buf_printf(HxBuf *b, const char *fmt, ...);
 
 typedef struct {
     uint64_t h;

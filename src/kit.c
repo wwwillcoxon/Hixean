@@ -128,7 +128,7 @@ int hx_kit_parse(HxKit *kit, const char *file, HxDiagBag *diags) {
                 return 0;
             }
             if (!kit->entry) {
-                hx_error(diags, (HxSpan){0, 0}, "E0803", "falta ENTRY", file);
+                hx_error(diags, (HxSpan){0, 0}, "E0803", "%s: falta ENTRY", file);
                 diags->ctx_file = ctx_prev;
                 return 0;
             }

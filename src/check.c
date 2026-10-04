@@ -92,8 +92,7 @@ static int hx_net_check(HxChecker *c, HxExpr *e, const char *name) {
         if (!hx_ascii_casecmp(name, tabla[i].name)) idx = i;
     if (idx < 0) return 0;
     if (e->call.args.len != tabla[idx].nargs) {
-        hx_error(c->diags, e->span, "E0306",
-                 hx_arena_sprintf(c->arena, "%s espera %d argumento(s), recibió %d", name,
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "%s espera %d argumento(s), recibió %d", name,
                                   tabla[idx].nargs, e->call.args.len));
         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
         return 1;
@@ -108,8 +107,7 @@ static int hx_net_check(HxChecker *c, HxExpr *e, const char *name) {
         int es_str = inner->kind == TY_STRING;
         int es_i64 = inner->kind == TY_I64 || inner->kind == TY_INT;
         if (!es_i64 && !es_str)
-            hx_error(c->diags, a->span, "E0902",
-                     hx_arena_sprintf(c->arena, "%s: el argumento %d debe ser INT, I64 o STRING",
+            hx_error(c->diags, a->span, "E0902", "%s", hx_arena_sprintf(c->arena, "%s: el argumento %d debe ser INT, I64 o STRING",
                                       name, i + 1));
     }
     c->uses_net = 1;
@@ -422,8 +420,7 @@ static int hx_vec_call_check(HxChecker *c, HxExpr *e, const HxVecIntrin *vi,
                              const char *fname, HxExpr *vrecv) {
     int dados = e->call.args.len + (vrecv ? 1 : 0);
     if (dados != vi->nargs) {
-        hx_error(c->diags, e->span, "E0306",
-                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", fname,
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", fname,
                                   vi->nargs, dados));
         return 0;
     }
@@ -441,11 +438,9 @@ static int hx_vec_call_check(HxChecker *c, HxExpr *e, const HxVecIntrin *vi,
         HxTy *at = a ? a->ty : NULL;
         int largo = hx_vec_len(at);
         if (at && !largo)
-            hx_error(c->diags, a ? a->span : e->span, "E0402",
-                     hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
+            hx_error(c->diags, a ? a->span : e->span, "E0402", "%s", hx_arena_sprintf(c->arena, "'%s' espera un vector", fname));
         else if (largo && vi->vec_len && largo != vi->vec_len)
-            hx_error(c->diags, a ? a->span : e->span, "E0402",
-                     hx_arena_sprintf(c->arena, "'%s' espera un vector de %d componentes", fname,
+            hx_error(c->diags, a ? a->span : e->span, "E0402", "%s", hx_arena_sprintf(c->arena, "'%s' espera un vector de %d componentes", fname,
                                       vi->vec_len));
     }
     for (int i = 0; i < e->call.args.len; i++)
@@ -638,13 +633,11 @@ static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const ch
     if (!ai || !recv) return 0;
     int dado = e->call.args.len;
     if (dado != ai->nargs)
-        hx_error(c->diags, e->span, "E0306",
-                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", member,
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", member,
                                   ai->nargs, dado));
     int dinamico = recv->ty && recv->ty->kind == TY_ARRAY && recv->ty->size < 0;
     if (ai->solo_dinamico && !dinamico) {
-        hx_error(c->diags, e->span, "E0306",
-                 hx_arena_sprintf(c->arena,
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena,
                                   "'%s' sólo existe en un arreglo dinámico (ARRAY[T]); "
                                   "este tiene el tamaño fijo en el tipo",
                                   member));
@@ -656,8 +649,7 @@ static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const ch
         HxTy *at = e->call.args.data[i].value->ty;
         int papel = ai->papels[i < 2 ? i : 0];
         if (papel == 0 && at && at->kind != TY_INT && at->kind != TY_I64)
-            hx_error(c->diags, e->call.args.data[i].span, "E0306",
-                     hx_arena_sprintf(c->arena, "'%s' espera un índice INT o I64", member));
+            hx_error(c->diags, e->call.args.data[i].span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera un índice INT o I64", member));
         if (papel == 1) {
             HxTy *elem = recv->ty ? recv->ty->elem : NULL;
             if (at && elem) hx_coerce_to(c, &e->call.args.data[i].value, elem,
@@ -665,8 +657,7 @@ static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const ch
         }
     }
     if (!hx_es_direccionable(recv))
-        hx_error(c->diags, e->span, "E0402",
-                 hx_arena_sprintf(c->arena,
+        hx_error(c->diags, e->span, "E0402", "%s", hx_arena_sprintf(c->arena,
                                   "'%s' necesita una variable o un campo, no un valor temporal",
                                   member));
     e->is_intrin = 7;
@@ -699,8 +690,7 @@ static int hx_vec_component(HxChecker *c, HxTy *t, const char *member, HxSpan *s
     for (size_t i = 0; i < n; i++) {
         int k = hx_vec_index_of(member[i]);
         if (k < 0 || k >= len) {
-            hx_error(c->diags, *sp, "E0402",
-                     hx_arena_sprintf(c->arena, "'%s' no es un componente o swizzle válido aquí",
+            hx_error(c->diags, *sp, "E0402", "%s", hx_arena_sprintf(c->arena, "'%s' no es un componente o swizzle válido aquí",
                                       member));
             return -1;
         }
@@ -850,8 +840,7 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                             e->ty = kc->ty;
                             return e;
                         }
-                        hx_error(c->diags, parts[split].span, "E0303",
-                                 hx_arena_sprintf(c->arena,
+                        hx_error(c->diags, parts[split].span, "E0303", "%s", hx_arena_sprintf(c->arena,
                                                   "%s no tiene una variante llamada '%s'",
                                                   hx_sym_str(ed->name), member));
                         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
@@ -888,8 +877,7 @@ static HxExpr *hx_path_check(HxChecker *c, HxExpr *e) {
                         e->ty = kc->ty;
                         return e;
                     }
-                    hx_error(c->diags, parts[split].span, "E0303",
-                             hx_arena_sprintf(c->arena, "%s no tiene una variante llamada '%s'",
+                    hx_error(c->diags, parts[split].span, "E0303", "%s", hx_arena_sprintf(c->arena, "%s no tiene una variante llamada '%s'",
                                               hx_sym_str(ed->name), member));
                     e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
                     return e;
@@ -987,8 +975,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             if (in) {
                 int dado = e->call.args.len;
                 if (dado != in->nargs)
-                    hx_error(c->diags, e->span, "E0306",
-                             hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                    hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
                                               mn, in->nargs, dado));
                 for (int i = 0; i < dado; i++)
                     e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
@@ -1027,8 +1014,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         int is_err = !hx_ascii_casecmp(cn, "Err");
         if (is_ok || is_err) {
             if (e->call.args.len != 1)
-                hx_error(c->diags, e->span, "E0306",
-                         hx_arena_sprintf(c->arena, "'%s' espera exactamente 1 argumento",
+                hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera exactamente 1 argumento",
                                           is_ok ? "Ok" : "Err"));
             HxExpr *arg = e->call.args.len ? e->call.args.data[0].value : NULL;
             if (arg) arg = hx_expr_check(c, arg);
@@ -1057,8 +1043,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             for (int i = 0; i < e->call.args.len; i++)
                 e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
             if (!e->call.args.len) {
-                hx_error(c->diags, e->span, "E0710",
-                         hx_arena_sprintf(c->arena, "el metodo %s del TRAIT %s espera un receptor",
+                hx_error(c->diags, e->span, "E0710", "%s", hx_arena_sprintf(c->arena, "el metodo %s del TRAIT %s espera un receptor",
                                           hx_sym_str(mname), hx_sym_str(tr->name)));
                 e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
                 return e;
@@ -1066,16 +1051,14 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             HxTy *recv = e->call.args.data[0].value->ty;
             struct HxFunc *m = hx_find_impl_method(c, tr, recv, mname);
             if (!m) {
-                hx_error(c->diags, raw_callee->path.parts.data[1].span, "E0707",
-                         hx_arena_sprintf(c->arena, "%s no implementa %s.%s", hx_ty_name(recv),
+                hx_error(c->diags, raw_callee->path.parts.data[1].span, "E0707", "%s", hx_arena_sprintf(c->arena, "%s no implementa %s.%s", hx_ty_name(recv),
                                           hx_sym_str(tr->name), hx_sym_str(mname)));
                 e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
                 return e;
             }
             int want = m->params.len;
             if (e->call.args.len != want)
-                hx_error(c->diags, e->span, "E0306",
-                         hx_arena_sprintf(c->arena, "%s.%s espera %d argumento(s), recibio %d",
+                hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "%s.%s espera %d argumento(s), recibio %d",
                                           hx_sym_str(tr->name), hx_sym_str(mname), want,
                                           e->call.args.len));
             for (int i = 0; i < e->call.args.len && i < want; i++)
@@ -1137,8 +1120,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 const HxIntrin *in = hx_find_intrin(irecv->ty, mn);
                 int dado = e->call.args.len;
                 if (dado != in->nargs)
-                    hx_error(c->diags, e->span, "E0306",
-                             hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                    hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
                                               mn, in->nargs, dado));
                 for (int i = 0; i < dado; i++)
                     e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
@@ -1202,8 +1184,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             e->method = callee->method;
             e->recv = recv;
             if (e->call.args.len != in->nargs)
-                hx_error(c->diags, e->span, "E0306",
-                         hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
                                           member, in->nargs, e->call.args.len));
             for (int i = 0; i < e->call.args.len; i++) {
                 e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
@@ -1233,8 +1214,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 if (in->nargs == 0) e->is_intrin = 2;
                 int given = e->call.args.len;
                 if (given != in->nargs)
-                    hx_error(c->diags, e->span, "E0306",
-                             hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                    hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
                                               member, in->nargs, given));
                 for (int i = 0; i < e->call.args.len; i++) {
                     e->call.args.data[i].value =
@@ -1304,8 +1284,7 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
             if (p->ty->kind == TY_REF) {
                 hx_mark_borrow(c, arg->value, arg->span);
                 if (arg->value->ty && !hx_ty_equal(arg->value->ty, p->ty->inner))
-                    hx_error(c->diags, arg->span, "E0301",
-                             hx_arena_sprintf(c->arena, "REF %s espera un %s",
+                    hx_error(c->diags, arg->span, "E0301", "%s", hx_arena_sprintf(c->arena, "REF %s espera un %s",
                                               hx_sym_str(f->name), hx_ty_name(p->ty->inner)));
             } else {
                 hx_coerce_to(c, &arg->value, p->ty, arg->span, hx_sym_str(f->name));
@@ -1375,15 +1354,13 @@ static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **tar
         for (int tp = 0; tp < n; tp++)
             if (g->tparams[tp] == g->constrained[ci]) ti = tp;
         if (ti < 0) {
-            hx_error(c->diags, sp, "E0716",
-                     hx_arena_sprintf(c->arena, "'%s' no es un parametro de tipo de '%s'",
+            hx_error(c->diags, sp, "E0716", "%s", hx_arena_sprintf(c->arena, "'%s' no es un parametro de tipo de '%s'",
                                       hx_sym_str(g->constrained[ci]), hx_sym_str(g->name)));
             return NULL;
         }
         HxTraitDecl *tr = hx_find_trait(c, g->ctraits[ci]);
         if (!tr) {
-            hx_error(c->diags, sp, "E0711",
-                     hx_arena_sprintf(c->arena, "no existe el TRAIT '%s'",
+            hx_error(c->diags, sp, "E0711", "%s", hx_arena_sprintf(c->arena, "no existe el TRAIT '%s'",
                                       hx_sym_str(g->ctraits[ci])));
             return NULL;
         }
@@ -1400,8 +1377,7 @@ static struct HxFunc *hx_instance_for(HxChecker *c, struct HxFunc *g, HxTy **tar
                 if (!hx_ascii_casecmp(hx_sym_str(im->type_name), tn)) hay = 1;
             }
         if (!hay) {
-            hx_error(c->diags, sp, "E0716",
-                     hx_arena_sprintf(c->arena, "%s no implementa el TRAIT %s que exige '%s'",
+            hx_error(c->diags, sp, "E0716", "%s", hx_arena_sprintf(c->arena, "%s no implementa el TRAIT %s que exige '%s'",
                                       tn, hx_sym_str(tr->name), hx_sym_str(g->name)));
             return NULL;
         }
@@ -1444,8 +1420,7 @@ static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g) 
     memset(subs, 0, sizeof(subs));
     int n = g->n_tparams;
     if (e->call.args.len != g->params.len) {
-        hx_error(c->diags, e->span, "E0306",
-                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
                                   hx_sym_str(g->name), g->params.len, e->call.args.len));
         for (int i = 0; i < e->call.args.len; i++)
             e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
@@ -1470,8 +1445,7 @@ static HxExpr *hx_generic_call_check(HxChecker *c, HxExpr *e, struct HxFunc *g) 
             refs[i] = 1;
             hx_mark_borrow(c, arg->value, arg->span);
             if (arg->value->ty && !hx_ty_equal(arg->value->ty, p->ty->inner))
-                hx_error(c->diags, arg->span, "E0301",
-                         hx_arena_sprintf(c->arena, "REF %s espera un %s", hx_sym_str(inst->name),
+                hx_error(c->diags, arg->span, "E0301", "%s", hx_arena_sprintf(c->arena, "REF %s espera un %s", hx_sym_str(inst->name),
                                           hx_ty_name(p->ty->inner)));
         } else if (p->ty) {
             hx_coerce_to(c, &arg->value, p->ty, arg->span, hx_sym_str(inst->name));
@@ -1542,12 +1516,13 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
         if (cuenta->kind == EX_INT) {
             int ancho = l->kind == TY_I64 ? 64 : 32;
             if (cuenta->ival < 0 || cuenta->ival >= ancho)
-                hx_error(c->diags, cuenta->span, "E0316",
-                         hx_arena_sprintf(c->arena, "'%s' con %lld no cabe en un %s", signo,
-                                          (long long)cuenta->ival,
-                                          l->kind == TY_I64 ? "I64" : "INT"),
-                         "un desplazamiento mueve bits: mover 32 en un INT no es un "
-                         "resultado raro, es indefinido");
+                hx_diag_note(c->diags, cuenta->span, "E0316",
+                             hx_arena_sprintf(c->arena, "'%s' con %lld no cabe en un %s", signo,
+                                              (long long)cuenta->ival,
+                                              l->kind == TY_I64 ? "I64" : "INT"),
+                             "un desplazamiento mueve bits: mover 32 en un INT no es un "
+                             "resultado raro, es indefinido",
+                             NULL);
         }
         hx_coerce(c, r, l, e->span, NULL);
         e->ty = l;
@@ -1633,8 +1608,7 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
             if (!comparable && !(eq_only && same)) ok = 0;
         }
         if (!ok) {
-            hx_error(c->diags, e->span, "E0307",
-                     hx_arena_sprintf(c->arena, "'%s' no está definido entre %s y %s",
+            hx_error(c->diags, e->span, "E0307", "%s", hx_arena_sprintf(c->arena, "'%s' no está definido entre %s y %s",
                                       hx_binop_symbol(op), hx_ty_name(l), hx_ty_name(r)));
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             return e;
@@ -1655,8 +1629,7 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
             e->ty = l;
             return e;
         }
-        hx_error(c->diags, e->span, "E0402",
-                 hx_arena_sprintf(c->arena,
+        hx_error(c->diags, e->span, "E0402", "%s", hx_arena_sprintf(c->arena,
                                   "'%s' no está definido entre %s y %s",
                                   hx_binop_symbol(op), hx_ty_name(l), hx_ty_name(r)));
         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
@@ -1829,17 +1802,17 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
            bucle. Fuera del FOR no hay donde dejarla, y antes de avisar esto
            reventaba el compilador con `DIM it AS ITER<INT> = Rango(1, 3)`. */
         if (!c->in_forin) {
-            hx_error(c->diags, e->span, "E0717",
-                     hx_arena_sprintf(c->arena,
-                                      "%s sólo se puede usar en el iterable de un FOR", name),
-                     "un iterador necesita una variable y una arena, y el emisor las crea "
-                     "al abrir el bucle",
-                     NULL);
+            hx_diag_note(c->diags, e->span, "E0717",
+                         hx_arena_sprintf(c->arena, "%s sólo se puede usar en el iterable "
+                                                        "de un FOR", name),
+                         "un iterador necesita una variable y una arena, y el emisor las crea "
+                         "al abrir el bucle",
+                         NULL);
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             return 1;
         }
         if (e->call.args.len != 2) {
-            hx_error(c->diags, e->span, "E0306",
+            hx_error(c->diags, e->span, "E0306", "%s",
                      hx_arena_sprintf(c->arena, "%s espera 2 argumento(s)", name));
             e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             return 1;
@@ -1856,8 +1829,7 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     if (recv && hx_es_maybe(recv->ty) && !hx_ascii_casecmp(hx_sym_str(e->method), "Map"))
         return hx_maybe_call_check(c, e, recv, "Map");
     if (!recv || !recv->ty || recv->ty->kind != TY_ITER) {
-        hx_error(c->diags, e->span, "E0713",
-                 hx_arena_sprintf(c->arena, "%s sólo se puede aplicar a un iterador", name));
+        hx_error(c->diags, e->span, "E0713", "%s", hx_arena_sprintf(c->arena, "%s sólo se puede aplicar a un iterador", name));
         e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
         return 1;
     }
@@ -1895,8 +1867,7 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
             f = NULL; /* una funcion generica no cabe como valor todavia */
     }
     if (!f) {
-        hx_error(c->diags, arg->span, "E0714",
-                 hx_arena_sprintf(c->arena, "%s espera el nombre de una funcion", name));
+        hx_error(c->diags, arg->span, "E0714", "%s", hx_arena_sprintf(c->arena, "%s espera el nombre de una funcion", name));
         e->recv = recv;
         e->ty = recv->ty;
         return 1;
@@ -1905,21 +1876,18 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     e->recv = recv;
     if (is_filter) {
         if (f->params.len != 1 || (f->ret && f->ret->kind != TY_BOOL))
-            hx_error(c->diags, arg->span, "E0715",
-                     hx_arena_sprintf(c->arena,
+            hx_error(c->diags, arg->span, "E0715", "%s", hx_arena_sprintf(c->arena,
                                       "FILTER espera una funcion de %s a BOOL",
                                       hx_ty_name(recv->ty->elem)));
         e->ty = recv->ty;
         return 1;
     }
     if (f->params.len != 1)
-        hx_error(c->diags, arg->span, "E0715",
-                 hx_arena_sprintf(c->arena, "MAP espera una funcion de un argumento"));
+        hx_error(c->diags, arg->span, "E0715", "%s", hx_arena_sprintf(c->arena, "MAP espera una funcion de un argumento"));
     HxTy *out = f->ret ? f->ret : (recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN));
     if (recv->ty->elem && f->params.len == 1 && f->params.data[0].ty &&
         !hx_ty_equal(f->params.data[0].ty, recv->ty->elem))
-        hx_error(c->diags, arg->span, "E0715",
-                 hx_arena_sprintf(c->arena, "MAP espera una funcion de %s, %s toma %s",
+        hx_error(c->diags, arg->span, "E0715", "%s", hx_arena_sprintf(c->arena, "MAP espera una funcion de %s, %s toma %s",
                                   hx_ty_name(recv->ty->elem), hx_sym_str(f->name),
                                   hx_ty_name(f->params.data[0].ty)));
     e->ty = hx_iter_ty(c, out);
@@ -2102,8 +2070,7 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                 }
             }
             if (!e->ty || e->ty->kind == TY_UNKNOWN) {
-                hx_error(c->diags, e->member.name_span, "E0303",
-                         hx_arena_sprintf(c->arena, "'%s' no tiene un miembro llamado '%s'",
+                hx_error(c->diags, e->member.name_span, "E0303", "%s", hx_arena_sprintf(c->arena, "'%s' no tiene un miembro llamado '%s'",
                                           hx_ty_name(bt), member));
                 e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
             }
@@ -2185,8 +2152,7 @@ static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
                 if (deferred) return t; /* se resolvera en cada instancia */
                 if (t->n_targs != d->n_tparams) {
                     if (report)
-                        hx_error(c->diags, sp, "E0705",
-                                 hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s) de tipo",
+                        hx_error(c->diags, sp, "E0705", "%s", hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s) de tipo",
                                                   hx_sym_str(d->name), d->n_tparams));
                     t->kind = TY_UNKNOWN;
                     return t;
@@ -3020,8 +2986,7 @@ int hx_check_unit(HxUnit *unit) {
             HxImplDecl *im = &mod->impls.data[i];
             HxTraitDecl *tr = hx_find_trait(&c, im->trait_name);
             if (!tr) {
-                hx_error(unit->diags, im->span, "E0711",
-                         hx_arena_sprintf(c.arena, "no existe el TRAIT '%s'",
+                hx_error(unit->diags, im->span, "E0711", "%s", hx_arena_sprintf(c.arena, "no existe el TRAIT '%s'",
                                           hx_sym_str(im->trait_name)));
                 continue;
             }
@@ -3032,8 +2997,7 @@ int hx_check_unit(HxUnit *unit) {
                     if (!hx_ascii_casecmp(hx_sym_str(im->methods.data[k].name), hx_sym_str(want)))
                         found = 1;
                 if (!found)
-                    hx_error(unit->diags, im->span, "E0707",
-                             hx_arena_sprintf(c.arena,
+                    hx_error(unit->diags, im->span, "E0707", "%s", hx_arena_sprintf(c.arena,
                                               "%s no implementa el METODO %s.%s",
                                               hx_sym_str(im->type_name), hx_sym_str(tr->name),
                                               hx_sym_str(want)));

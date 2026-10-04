@@ -34,8 +34,10 @@ typedef struct {
 
 void hx_diag_init(HxDiagBag *d, HxArena *arena);
 HxSpan hx_diag_span(const char *file, const char *src, const char *start, const char *end);
-void hx_error(HxDiagBag *d, HxSpan span, const char *code, const char *fmt, ...);
-void hx_warn(HxDiagBag *d, HxSpan span, const char *code, const char *fmt, ...);
+HX_PRINTF(4, 5) void hx_error(HxDiagBag *d, HxSpan span, const char *code,
+                           const char *fmt, ...);
+HX_PRINTF(4, 5) void hx_warn(HxDiagBag *d, HxSpan span, const char *code,
+                         const char *fmt, ...);
 void hx_diag_note(HxDiagBag *d, HxSpan span, const char *code, const char *msg,
                   const char *note, const char *help);
 void hx_diag_render(const HxDiagBag *d, const char *src, FILE *out);

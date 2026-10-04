@@ -74,14 +74,17 @@ static void hx_execvp(const char *const argv[]);
    llamada que no los admite, y ahi se copia el vector de punteros una vez. */
 static int hx_run(const char *const argv[]) {
 #ifdef _WIN32
-    char *ejecucion[1024];
+    /* _spawnvp toma const char *const argv[]: el vector se declara const desde
+       el principio, porque quitarle el const con un cast es lo que hacia falta y
+       ademas -Wcast-qual lo prohibe */
+    const char *ejecucion[1024];
     int n = 0;
     while (argv[n] && n < 1023) {
-        ejecucion[n] = (char *)argv[n];
+        ejecucion[n] = argv[n];
         n++;
     }
     ejecucion[n] = NULL;
-    intptr_t r = _spawnvp(_P_WAIT, ejecucion[0], ejecucion);
+    intptr_t r = _spawnvp(_P_WAIT, ejecucion[0], (const char *const *)ejecucion);
     return (int)r;
 #else
     pid_t pid = fork();
@@ -130,12 +133,22 @@ static pid_t hx_spawn(const char *const argv[]) {
 #endif
 }
 
+/* Espera un proceso. En Windows no hace falta: los procesos se lanzan con
+   _spawnvp(_P_WAIT), que ya espera y devuelve el codigo de salida, asi que hx_wait
+   solo se usa en la compilacion paralela de POSIX. */
+#ifdef _WIN32
+static int hx_wait(int pid) {
+    (void)pid;
+    return 0;
+}
+#else
 static int hx_wait(pid_t pid) {
     if (pid <= 0) return 0;
     int status = 0;
     if (waitpid(pid, &status, 0) < 0) return 1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
+#endif
 
 static int hx_file_size(const char *path) {
     struct stat st;
@@ -455,12 +468,12 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
             for (int k = j + 1; k < m->funcs.len; k++) {
                 if (m->funcs.data[k].is_operator) continue;
                 if (m->funcs.data[j].name == m->funcs.data[k].name) {
-                    hx_error(&s->diags, m->funcs.data[k].name_span, "E0502",
-                             hx_arena_sprintf(&s->arena,
-                                              "'%s' está declarado más de una vez en '%s'",
-                                              hx_sym_str(m->funcs.data[k].name),
-                                              hx_sym_str(m->name)),
-                             "Hixean no admite sobrecarga de funciones", NULL);
+                    hx_diag_note(&s->diags, m->funcs.data[k].name_span, "E0502",
+                                 hx_arena_sprintf(&s->arena,
+                                                  "'%s' está declarado más de una vez en '%s'",
+                                                  hx_sym_str(m->funcs.data[k].name),
+                                                  hx_sym_str(m->name)),
+                                 "Hixean no admite sobrecarga de funciones", NULL);
                 }
             }
         }

@@ -2438,8 +2438,9 @@ static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
         if (s->assign.target->kind == EX_INDEX) {
             dest = hx_arena_strdup(e->arena, "");
             hx_expr_str(e, s->assign.target, 0, db);
-            dest = hx_arena_sprintf(e->arena, "%s", db->data + db->len);
-            dest = hx_arena_sprintf(e->arena, "%.*s = ", db->len, db->data);
+            /* %.* toma un int, y db->len es size_t: en x86-64 funciona por
+               casualidad, pero el tipo no es el que dice el formato */
+            dest = hx_arena_sprintf(e->arena, "%.*s = ", (int)db->len, db->data);
             db->len = 0;
             if (db->data) db->data[0] = 0;
         } else {
@@ -2749,7 +2750,10 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             }
             if (s->match.has_else) {
                 hx_indent(b, ind);
-                hx_buf_printf(b, "if (!%s) {\n", flag);
+                /* sin casos no hay bandera, y el else va suelto: antes se
+                   imprimia un %s con NULL, que sale como "(null)" en el C */
+                if (hay_casos) hx_buf_printf(b, "if (!%s) {\n", flag);
+                else hx_buf_str(b, "{\n");
                 hx_block(e, &s->match.else_body, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}\n");
