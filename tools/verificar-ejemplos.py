@@ -19,8 +19,9 @@ import subprocess
 import sys
 import tempfile
 
-HXC = os.path.join("build", "hxc")
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+from hxc_bin import HXC, existe  # en Windows el binario es build/hxc.exe
 
 BLOQUE = re.compile(r'<(figure|pre)[^>]*>(.*?)</\1>', re.S)
 CODIGO = re.compile(
@@ -57,8 +58,8 @@ def ejemplos(ruta):
 
 
 def main(rutas, solo_check):
-    if not os.path.exists(HXC):
-        print("FALLO: hxc no esta compilado (make)")
+    if not existe():
+        print("FALLO: hxc no esta compilado; no hay ni build/hxc ni build/hxc.exe (make)")
         return 1
     fallos = total = 0
     for ruta in rutas:

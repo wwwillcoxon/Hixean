@@ -21,7 +21,8 @@ import sys
 import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HXC = os.path.join(RAIZ, "build", "hxc")
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+from hxc_bin import HXC, existe  # en Windows el binario es build/hxc.exe
 
 RE_BLOQUE = re.compile(r"^```hixean\n(.*?)^```", re.S | re.M)
 
@@ -59,8 +60,8 @@ def main():
         print("uso: verificar-guia.py <documento.md>")
         return 2
     ruta = sys.argv[1]
-    if not os.path.exists(HXC):
-        print("FALLO: no esta build/hxc; ejecuta make antes")
+    if not existe():
+        print("FALLO: no esta build/hxc ni build/hxc.exe; ejecuta make antes")
         return 1
     with open(ruta, encoding="utf-8") as f:
         texto = f.read()

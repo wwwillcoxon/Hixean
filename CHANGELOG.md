@@ -62,6 +62,23 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     byte no puede tolerarlo. Ahora el punto de entrada del perfil `libc` pone la
     salida en modo binario antes de escribir nada.
 
+### Arreglado
+- **El corpus entero pasa en Windows**, que hasta ahora no se comprobaba entero:
+  el checkout convertia los `.out` a CRLF y el programa tambien escribia CRLF, que
+  es cosa que compara dos cosas iguales con dos cosas iguales. Con `.gitattributes`
+  fijando LF y el runtime poniendo la salida en modo binario sobre el descriptor,
+  los dos lados escriben lo mismo byte a byte.
+  - El modo va con `_setmode(1, _O_BINARY)` y no con `_fileno(stdout)`: en un hijo
+    creado con `STARTF_USESTDHANDLES` el stream puede no estar resuelto todavia, y
+    si `_fileno` devuelve -1 el `_setmode` falla sin avisar y no cambia nada.
+  - `hxc size` y el test de la extension buscaban `build/hxc` cuando en Windows es
+    `build/hxc.exe`. CreateProcess lo resuelve solo, asi que el corpus no se
+    enteraba, pero cualquier cosa que abra el fichero por su cuenta si. Ahora hay
+    un sitio unico que sabe como se llama el binario de verdad: `tools/hxc_bin.py`.
+  - Un fallo que solo sea de fin de linea se dice: `hxc test` compara normalizando
+    el CRLF y, si es eso, dice cuantos CRLF sobran y avisa de la causa probable. Sin
+    eso decia que esperado y obtenido eran el mismo texto, que no es informacion.
+
 ### Añadido
 
 - **Lo que hace falta para que Hixean se encuentre y se vea al compartir el
