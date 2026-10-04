@@ -78,7 +78,7 @@ static const char *hx_sev_label(HxSeverity s) {
 static void hx_render_one(const HxDiag *d, const char *fallback, FILE *out) {
     const char *src = d->src ? d->src : fallback;
     const char *file = d->file ? d->file : "";
-    uint32_t line = 1, col = 1, end_line = 1, end_col = 1;
+    uint32_t line = 1, col = 1, end_line = 1;
     const char *line_start = src;
     if (src) {
         for (uint32_t i = 0; i < d->span.start && src[i]; i++) {
@@ -90,16 +90,12 @@ static void hx_render_one(const HxDiag *d, const char *fallback, FILE *out) {
                 col++;
             }
         }
+        /* end_line si se usa (el caret se ensancha si el span salta de linea);
+           end_col no lo era, y clang con -Werror no deja variables puestas y
+           sin usar */
         end_line = line;
-        end_col = col;
-        for (uint32_t i = d->span.start; i < d->span.start + d->span.len && src[i]; i++) {
-            if (src[i] == '\n') {
-                end_line++;
-                end_col = 1;
-            } else {
-                end_col++;
-            }
-        }
+        for (uint32_t i = d->span.start; i < d->span.start + d->span.len && src[i]; i++)
+            if (src[i] == '\n') end_line++;
     }
     fprintf(out, "%s:%u:%u: %s[%s]: %s\n", file, line, col, hx_sev_label(d->sev), d->code,
             d->msg ? d->msg : "");

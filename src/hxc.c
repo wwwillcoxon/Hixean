@@ -411,8 +411,8 @@ HxModule *hx_hxc_read(HxArena *arena, HxIntern *intern, HxDiagBag *diags, const 
     }
     if (payload_len != (uint64_t)(r.end - r.p)) {
         hx_error(diags, (HxSpan){0, 0}, "E0602",
-                 "%s está truncada: el cuerpo declara %llu bytes y el archivo tiene %zu", path,
-                 (unsigned long long)payload_len, (size_t)(r.end - r.p));
+                 "%s está truncada: el cuerpo declara %llu bytes y el archivo tiene %lu",
+                 path, (unsigned long long)payload_len, (unsigned long)(r.end - r.p));
         return NULL;
     }
     HxHash got;

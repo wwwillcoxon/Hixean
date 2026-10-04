@@ -65,7 +65,7 @@ static HxArenaBlock *hx_arena_new_block(HxArena *a, size_t need) {
     while (cap < need + 16) cap *= 2;
     HxArenaBlock *b = (HxArenaBlock *)malloc(sizeof(HxArenaBlock) + cap);
     if (!b) {
-        fprintf(stderr, "hx: out of memory (block %zu)\n", cap);
+        fprintf(stderr, "hx: out of memory (block %lu)\n", (unsigned long)cap);
         exit(70);
     }
     b->next = a->head;
