@@ -26,7 +26,17 @@ const char *hx_ty_name(const HxTy *t) {
         case TY_FLOAT: return "FLOAT";
         case TY_STRING: return "STRING";
         case TY_DURATION: return "DURATION";
-        case TY_ARRAY: return "ARRAY";
+        case TY_ARRAY: {
+            /* el nombre tiene que distinguir los dos: si no, un E0301 dice
+               "se esperaba ARRAY, se encontró ARRAY" */
+            static char bufs[4][64];
+            static int turno = 0;
+            if (t->size < 0) return "ARRAY[T]";
+            char *b = bufs[turno];
+            turno = (turno + 1) % 4;
+            snprintf(b, sizeof(bufs[0]), "ARRAY[%lld]", (long long)t->size);
+            return b;
+        }
         case TY_REF: return "REF";
         case TY_PTR: return "PTR";
         case TY_VEC2: return "vec2";

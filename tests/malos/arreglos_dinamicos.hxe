@@ -1,0 +1,18 @@
+"ARRAY[T]: lo que no se puede hacer con un arreglo"
+DIM fijo AS INT[3]
+DIM k AS INT = 0
+
+"Set y Push son de los que crecen, y este tiene el tamaño en el tipo"
+PRINT fijo.Set(k, 1)
+PRINT fijo.Push(1)
+
+"ARRAY[T] no lleva tamaño: para eso está T[n]"
+DIM conTamano AS ARRAY[INT, 2]
+
+"el tamaño es un literal, no una expresión"
+DIM conExpr AS ARRAY[INT, k]
+
+"y un arreglo dinámico no es uno fijo"
+DIM d AS ARRAY[INT]
+DIM f AS INT[3]
+DIM copia AS INT[3] = d

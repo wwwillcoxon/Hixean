@@ -407,16 +407,20 @@ static const HxVecIntrin *hx_find_vec_intrin(const char *name, int *nvec) {
 typedef struct {
     const char *name;
     int nargs;
+    int papels[2]; /* 0 = indice INT, 1 = valor del elemento */
     HxTyKind ret;
-    int elem_ret; /* 1: devuelve el tipo del elemento */
+    int elem_ret;   /* 1: devuelve el tipo del elemento */
+    int solo_dinamico; /* Set y Push no tienen sentido con un tamaño fijo */
 } HxArrIntrin;
 
 /* First y Last se quedan con los iteradores: `Rango(1,9).First()` ya existe y
    no tiene sentido que el mismo nombre signifique dos cosas. */
 static const HxArrIntrin hx_array_intrins[] = {
-    {"Len", 0, TY_I64, 0},
-    {"At", 1, TY_UNKNOWN, 1},
-    {NULL, 0, TY_UNKNOWN, 0},
+    {"Len", 0, {0, 0}, TY_I64, 0, 0},
+    {"At", 1, {0, 0}, TY_UNKNOWN, 1, 0},
+    {"Set", 2, {0, 1}, TY_VOID, 0, 1},
+    {"Push", 1, {1, 0}, TY_I64, 0, 1},
+    {NULL, 0, {0, 0}, TY_UNKNOWN, 0, 0},
 };
 
 static const HxArrIntrin *hx_find_array_intrin(const char *name) {
@@ -528,12 +532,28 @@ static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const ch
         hx_error(c->diags, e->span, "E0306",
                  hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d", member,
                                   ai->nargs, dado));
+    int dinamico = recv->ty && recv->ty->kind == TY_ARRAY && recv->ty->size < 0;
+    if (ai->solo_dinamico && !dinamico) {
+        hx_error(c->diags, e->span, "E0306",
+                 hx_arena_sprintf(c->arena,
+                                  "'%s' sólo existe en un arreglo dinámico (ARRAY[T]); "
+                                  "este tiene el tamaño fijo en el tipo",
+                                  member));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
     for (int i = 0; i < dado; i++) {
         e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
         HxTy *at = e->call.args.data[i].value->ty;
-        if (at && at->kind != TY_INT && at->kind != TY_I64)
+        int papel = ai->papels[i < 2 ? i : 0];
+        if (papel == 0 && at && at->kind != TY_INT && at->kind != TY_I64)
             hx_error(c->diags, e->call.args.data[i].span, "E0306",
                      hx_arena_sprintf(c->arena, "'%s' espera un índice INT o I64", member));
+        if (papel == 1) {
+            HxTy *elem = recv->ty ? recv->ty->elem : NULL;
+            if (at && elem) hx_coerce_to(c, &e->call.args.data[i].value, elem,
+                                         e->call.args.data[i].span, NULL);
+        }
     }
     if (!hx_es_direccionable(recv))
         hx_error(c->diags, e->span, "E0402",
@@ -546,6 +566,10 @@ static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const ch
     e->ty = ai->elem_ret
                 ? (recv->ty && recv->ty->elem ? recv->ty->elem : hx_ty_builtin(c->arena, TY_UNKNOWN))
                 : hx_ty_builtin(c->arena, ai->ret);
+    if (!hx_ascii_casecmp(member, "Push")) {
+        /* el valor se evalua dentro, asi que el receiver es lo que crece */
+        e->ty = hx_ty_builtin(c->arena, TY_I64);
+    }
     return 1;
 }
 
@@ -835,6 +859,30 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 return e;
             }
             if (es_iter && hx_iter_ctor_check(c, e, mn, irecv)) return e;
+        } else {
+            /* Cualquier otro metodo del tipo del receptor. Sin esto
+               `nombres.At(1).Upper()` no encontraba el Upper: el receptor es
+               una llamada y no un camino, y los metodos de ARRAY[T] y de
+               STRING solo se resolvian sobre caminos. */
+            HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
+            const HxIntrin *in = hx_find_intrin(irecv->ty, mn);
+            if (in) {
+                int dado = e->call.args.len;
+                if (dado != in->nargs)
+                    hx_error(c->diags, e->span, "E0306",
+                             hx_arena_sprintf(c->arena, "'%s' espera %d argumento(s), recibió %d",
+                                              mn, in->nargs, dado));
+                for (int i = 0; i < dado; i++)
+                    e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+                e->is_intrin = in->nargs == 0 ? 2 : 1;
+                e->method = raw_callee->member.name;
+                e->recv = irecv;
+                e->ty = hx_ty_builtin(c->arena, in->ret);
+                return e;
+            }
+            if (irecv->ty && irecv->ty->kind == TY_ARRAY &&
+                hx_array_method_check(c, e, irecv, mn))
+                return e;
         }
     }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1) {

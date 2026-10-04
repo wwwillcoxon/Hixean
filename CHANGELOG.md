@@ -13,6 +13,16 @@ dice qué formato y qué abi entiende este `hxc`.
 
 ### Añadido
 
+- **`ARRAY[T]`: el arreglo dinámico**, con `Len`, `At(i)`, `Set(i, v)` y
+  `Push(v)`. Crece por duplicación y sin `realloc`: se reserva el bloque nuevo
+  desde la arena y se copia, así que el viejo se queda hasta que la arena se
+  libere. `T[]` es lo mismo escrito de otra forma. En un arreglo de tamaño fijo
+  `Set` y `Push` dan `E0306`.
+- **`Set(i, v)`**: la escritura comprobada, que no existía (solo se leía con
+  `At`).
+- **Un método ya no necesita que el receptor sea un camino**: antes
+  `nombres.At(1).Upper()` no encontraba el `Upper`, porque el receptor era una
+  llamada. Ahora `f(x).Metodo()` funciona con cualquier método del tipo.
 - **`UNIQUE` funciona**: un campo `UNIQUE REF T` es el dueño del préstamo, y
   asignarle una variable la mueve. Una variable no puede estar en dos campos a
   la vez (`E0218`), y `UNIQUE` en un campo que no es `REF` da `E0216`.
@@ -95,6 +105,9 @@ dice qué formato y qué abi entiende este `hxc`.
 - **Reasignar un `REF` que es una variable escribía a través del puntero**, que
   al principio es `NULL`, y el programa moría en silencio. Ahora es `E0408`:
   el préstamo se hace al declarar.
+- **`ARRAY[T]` no se diferenciaba de uno fijo al imprimir el tipo**: el nombre
+  era `ARRAY` en los dos casos, así que un `E0301` decía «se esperaba ARRAY, se
+  encontró ARRAY».
 - **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
   errores de `UNIQUE` son ahora `E0216` y `E0218`, y los dos llevan una nota que
   menciona `E0212`, como pide la política de códigos de diagnóstico.

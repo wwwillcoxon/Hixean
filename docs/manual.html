@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>26/26</b><span>pruebas del corpus</span></li>
+        <li><b>27/27</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -914,6 +914,44 @@ END FUNCTION
 PRINT saludar("ana")</code></pre>
         <div class="salida"><span>salida</span><pre>hola admin</pre></div>
       </figure>
+      <h3>El arreglo que crece: <code>ARRAY[T]</code></h3>
+      <p>Un arreglo de tamaño fijo no crece, porque el tamaño está en el tipo.
+      <code>ARRAY[T]</code> es el que sí: empieza vacío y <code>Push</code>
+      devuelve el largo nuevo.</p>
+      <figure class="ej">
+        <figcaption><span>dinamico.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">DIM numeros AS ARRAY[INT]
+PRINT numeros.Len()
+PRINT numeros.Push(10)
+PRINT numeros.Push(20)
+numeros.Set(0, 99)
+PRINT numeros.At(0)
+
+DIM puntos AS ARRAY[STRING]
+puntos.Push("ana")
+puntos.Push("beto")
+PRINT puntos.At(1)</code></pre>
+        <div class="salida"><span>salida</span><pre>0
+1
+2
+99
+beto</pre></div>
+      </figure>
+      <p><code>At</code> comprueba el índice como siempre, y <code>Set</code> es
+      la escritura comprobada. En un arreglo de tamaño fijo, <code>Set</code> y
+      <code>Push</code> dan <code>E0306</code>: no tienen sentido si el tamaño
+      está en el tipo.</p>
+      <p>Crece por duplicación y <strong>sin <code>realloc</code></strong>: se
+      reserva el bloque nuevo desde la arena y se copia el contenido, así que el
+      viejo se queda hasta que la arena se libere. Es memoria de más a cambio de
+      no meter <code>realloc</code> en el perfil <code>freestanding</code>, que
+      solo tiene <code>mmap</code> y <code>malloc</code>. Si un programa empuja
+      y quita en bucle, esa memoria vuelve cuando sale el bloque de
+      <code>ARENA</code>.</p>
+      <p><code>a[i]</code> sigue sin comprobar, también aquí:
+      <code>a[0] = 1</code> es rápido, y para lo demás está <code>At</code> y
+      <code>Set</code>. <code>T[]</code> es la misma cosa escrita de otra forma,
+      y <code>T[n]</code> sigue siendo el arreglo fijo.</p>
       <h3>UNIQUE: el campo REF es el dueño</h3>
       <p>Un <code>REF</code> es un préstamo. Con <code>UNIQUE</code>, el campo
       pasa a ser el dueño: asignarle una variable la <em>mueve</em>, y a partir
@@ -1557,7 +1595,7 @@ PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
     <footer>
       <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
       <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
-      <code>make test</code> ejecuta los 26 programas del corpus, y
+      <code>make test</code> ejecuta los 27 programas del corpus, y
       <code>make size</code> la puerta de 12 KiB.</p>
       <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
       para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del

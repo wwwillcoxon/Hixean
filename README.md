@@ -133,6 +133,7 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M16 | `OPERATOR` funciona: un programa define `+`, `*`, `==` o `<` para su propio `TYPE` | `1/2 + 1/3` da `5/6`, y `+` sobre `INT` sigue verificado |
 | M17 | `MAYBE T` y `NIL` de verdad, con `.IsNil`, `.Or(x)`, `.Map(f)` y `CASE NIL` | un `MAYBE` no se desempaqueta solo; `MAYBE INT` no vale donde se espera `MAYBE STRING` |
 | M18 | `UNIQUE`: un campo `UNIQUE REF T` es el dueño del préstamo, y `^` ya funciona sobre un `REF` | una variable no puede estar en dos campos `UNIQUE` (`E0218`) |
+| M19 | `ARRAY[T]`: el arreglo que crece, con `Push`, `Set`, `At` comprobado y `Len` | 101 elementos y `At(100)` sale con el 70 diciendo el índice |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -422,6 +423,25 @@ ve los movimientos que ve. No sabe si dos campos de registros distintos apuntan
 al mismo dato, ni lo que pasa entre funciones. Es el mismo límite que `a[i]` sin
 comprobar. `E0212` («UNIQUE está reservado») queda retirado y los dos códigos
 nuevos llevan una nota que lo menciona, según la política de ADR 0013.
+
+M19 añade el arreglo dinámico, `ARRAY[T]`. Empieza vacío, `Push` devuelve el
+largo nuevo y `At` sale con el 70 si te pasas, como siempre:
+
+```hixean
+DIM numeros AS ARRAY[INT]
+PRINT numeros.Len()      ' 0
+PRINT numeros.Push(10)   ' 1: el largo nuevo
+numeros.Set(0, 99)
+PRINT numeros.At(0)      ' 99
+```
+
+Crece por duplicación y **sin `realloc`**: se reserva el bloque nuevo desde la
+arena y se copia el contenido, así que el viejo se queda hasta que la arena se
+libera. Es memoria de más a cambio de no meter `realloc` en el perfil
+`freestanding`, y sale escrito en el manual. Sirve de elementos de cualquier
+tipo (`ARRAY[Punto]`, `ARRAY[STRING]`) y vive dentro de los registros igual que
+uno de tamaño fijo. `T[]` es la misma cosa escrita de otra forma, y `T[n]` sigue
+siendo el arreglo de tamaño fijo, que no crece: `Set` y `Push` ahí dan `E0306`.
 
 `audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador por
 objetivo, y no hay forma honesta de probarlos aquí. M12 se cierra sin ellos antes

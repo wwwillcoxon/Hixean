@@ -348,6 +348,23 @@ static HxTy *hx_type(HxParser *p) {
         HxSym name = hx_cur(p)->sym;
         HxSpan nsp = hx_cur(p)->span;
         hx_bump(p);
+        /* ARRAY[T] es el arreglo dinámico: `size` negativo, que es lo mismo que
+           ya producía `T[]`. El tamaño no se escribe aquí (para eso está
+           `T[n]`): una sola forma de cada cosa. */
+        if (!hx_ascii_casecmp(hx_sym_str(name), "ARRAY") && hx_is_punct(p, "[")) {
+            hx_bump(p);
+            HxTy *elem = hx_type(p);
+            if (hx_eat_punct(p, ","))
+                hx_error(p->diags, hx_cur(p)->span, "E0203",
+                         "ARRAY[T] es dinámico y no lleva tamaño: para uno de tamaño "
+                         "fijo escribe T[n]");
+            hx_expect_punct(p, "]");
+            HxTy *dyn = hx_ty_mk(p->arena, TY_ARRAY);
+            dyn->elem = elem;
+            dyn->size = -1;
+            (void)nsp;
+            return dyn;
+        }
         base = hx_ty_mk(p->arena, TY_NAMED);
         base->name = name;
         if (hx_is_punct(p, "<")) {

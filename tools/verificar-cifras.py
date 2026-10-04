@@ -133,6 +133,7 @@ def main():
         "dieciocho": 18,
         "diecinueve": 19,
         "diecinueve ": 19,
+        "veinte": 20,
     }
     m = re.search(r"([A-Za-zé]+) ADR", pagina)
     if m:

@@ -19,6 +19,7 @@ typedef struct {
     int uses_string;
     int uses_index;  /* a.At(i), que comprueba el rango */
     int uses_maybe;  /* MAYBE<T> */
+    int uses_darr;   /* ARRAY[T] dinámico: Push necesita la arena */
     int uses_arena;
     int uses_iter;
     int uses_enum;
@@ -31,6 +32,10 @@ typedef struct {
     HX_VEC_ANON(const char *) maybe_inners;
     /* pares (valor, MAYBE resultante) de cada m.Map(f), para el ayudante */
     HX_VEC_ANON(HxIterMap) maybe_maps;
+    /* tipos de elemento de los ARRAY[T] a los que se les hace Push: cada uno
+       necesita su ayudante, porque pasar el valor y tomar su direccion dentro
+       de una expresion no se puede escribir en C */
+    HX_VEC_ANON(const char *) darr_push_types;
     /* pares (origen, resultado) de los MAP que cambian el tipo */
     HX_VEC_ANON(HxIterMap) iter_maps;
     int uses_exit;
@@ -61,7 +66,7 @@ static const char *hx_c_ty(HxEmit *e, HxTy *t) {
             const char *inner = hx_c_ty(e, t->inner);
             return hx_arena_sprintf(e->arena, "%s*", inner);
         }
-        case TY_ARRAY: return "hx_span";
+        case TY_ARRAY: return t->size < 0 ? "hx_darr" : "hx_span";
         case TY_VEC2: return "hx_vec2";
         case TY_VEC3: return "hx_vec3";
         case TY_VEC4: return "hx_vec4";
@@ -488,7 +493,37 @@ static const char *HX_RT_INDEX =
     "static inline void hx_idx_chk(int64_t i, int64_t n) {\n"
     "  if (i < 0 || i >= n) hx_panic_i64(\"indice fuera de rango\", 22, i);\n"
     "}\n"
+    "static inline void *hx_idx_at(void *p, int64_t i, int64_t esz, int64_t n) {\n"
+    "  hx_idx_chk(i, n);\n"
+    "  return (char *)p + i * esz;\n"
+    "}\n"
     "#define HX_AT(p, i, n) (hx_idx_chk((int64_t)(i), (int64_t)(n)), (p)[(i)])\n";
+
+/* El arreglo dinámico: {datos, largo, capacidad}. Crece por duplicación y sin
+   realloc: se reserva un bloque nuevo desde la arena y se copia el contenido, así
+   que el viejo se queda hasta que la arena se libera. Es memoria de más a
+   cambio de no depender de realloc en el perfil freestanding. */
+static const char *HX_RT_DARR =
+    "typedef struct { void *data; int64_t len, cap; } hx_darr;\n"
+    "static hx_darr hx_darr_make(void) {\n"
+    "  hx_darr d; d.data = NULL; d.len = 0; d.cap = 0; return d;\n"
+    "}\n"
+    "static hx_darr hx_darr_make_n(hx_arena *a, int64_t n, int64_t esz) {\n"
+    "  hx_darr d = hx_darr_make();\n"
+    "  if (n > 0) { d.data = hx_arena_alloc(a, n * esz); d.cap = n; }\n"
+    "  return d;\n"
+    "}\n"
+    "static hx_darr hx_darr_push(hx_arena *a, hx_darr d, int64_t esz, const void *v) {\n"
+    "  if (d.len == d.cap) {\n"
+    "    int64_t cap = d.cap ? d.cap * 2 : 4;\n"
+    "    void *p = hx_arena_alloc(a, cap * esz);\n"
+    "    if (d.len) memcpy(p, d.data, (size_t)(d.len * esz));\n"
+    "    d.data = p; d.cap = cap;\n"
+    "  }\n"
+    "  memcpy((char *)d.data + d.len * esz, v, (size_t)esz);\n"
+    "  d.len++;\n"
+    "  return d;\n"
+    "}\n";
 
 static const char *HX_RT_CHECKED =
     "static inline int32_t hx_add_i32(int32_t a, int32_t b) {\n"
@@ -916,7 +951,48 @@ static void hx_emit_array_member(HxEmit *e, HxExpr *x, HxBuf *b) {
     HxExpr *recv = x->recv ? x->recv : x->member.base;
     HxTy *bt = recv ? recv->ty : NULL;
     long largo = bt ? (long)bt->size : 0;
-    if (!strcmp(hx_sym_str(x->method), "Len")) {
+    const char *metodo = hx_sym_str(x->method);
+    if (bt && bt->kind == TY_ARRAY && bt->size < 0) {
+        /* ARRAY[T]: el largo vive en el struct y Push devuelve el receptor */
+        const char *el = hx_c_ty(e, bt->elem);
+        if (!strcmp(metodo, "Len")) {
+            hx_buf_str(b, "(");
+            hx_expr_str(e, recv, 0, b);
+            hx_buf_str(b, ").len");
+            return;
+        }
+        e->uses_index = 1;
+        e->uses_darr = 1;
+        e->uses_arena = 1;
+        if (!strcmp(metodo, "Push")) {
+            /* Push devuelve el largo nuevo, asi que el receptor tiene que
+               crearse: de ahi el parentesis y el .len de despues */
+            hx_buf_str(b, "((");
+            hx_expr_str(e, recv, 7, b);
+            hx_buf_printf(b, " = hx_darr_push_%s(", el);
+            if (e->arena_depth) hx_buf_printf(b, "&%s", e->arena_stack[e->arena_depth - 1]);
+            else hx_buf_str(b, "&hx_static_arena");
+            hx_buf_str(b, ", ");
+            hx_expr_str(e, recv, 7, b);
+            hx_buf_str(b, ", ");
+            hx_expr_str(e, x->call.args.data[0].value, 0, b);
+            hx_buf_str(b, ")).len)");
+            return;
+        }
+        hx_buf_printf(b, "(*(%s *)hx_idx_at(", el);
+        hx_expr_str(e, recv, 7, b);
+        hx_buf_str(b, ".data, ");
+        hx_expr_str(e, x->call.args.data[0].value, 0, b);
+        hx_buf_printf(b, ", sizeof(%s), ", el);
+        hx_expr_str(e, recv, 7, b);
+        hx_buf_str(b, ".len))");
+        if (!strcmp(metodo, "Set")) {
+            hx_buf_str(b, " = ");
+            hx_expr_str(e, x->call.args.data[1].value, 0, b);
+        }
+        return;
+    }
+    if (!strcmp(metodo, "Len")) {
         hx_buf_printf(b, "INT64_C(%ld)", largo);
         return;
     }
@@ -942,6 +1018,7 @@ static void hx_body(HxEmit *e, HxStmtVec *body, int ind);
 static void hx_scan_stmt(HxEmit *e, HxStmt *s);
 static void hx_scan_body(HxEmit *e, HxStmtVec *body);
 static void hx_maybe_note_map(HxEmit *e, HxTy *from, HxTy *to);
+static void hx_darr_note_push(HxEmit *e, HxTy *elem);
 
 static void hx_scan_expr(HxEmit *e, HxExpr *x) {
     if (!x) return;
@@ -958,6 +1035,14 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 e->uses_arena = 1;
             }
             if (x->is_intrin == 10) { hx_maybe_note_map(e, x->recv->ty, x->ty); }
+            if (x->is_intrin == 7 && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_ARRAY && x->recv->ty->size < 0 &&
+                !hx_ascii_casecmp(hx_sym_str(x->method), "Push")) {
+                /* Push necesita el runtime del dinámico y un ayudante por tipo */
+                e->uses_darr = 1;
+                e->uses_arena = 1;
+                hx_darr_note_push(e, x->recv->ty->elem);
+            }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             hx_scan_expr(e, x->call.callee);
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
@@ -969,6 +1054,14 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
         case EX_UN: hx_scan_expr(e, x->un.operand); break;
         case EX_MEMB:
             if (x->is_intrin == 10) { hx_maybe_note_map(e, x->recv->ty, x->ty); }
+            if (x->is_intrin == 7 && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_ARRAY && x->recv->ty->size < 0 &&
+                !hx_ascii_casecmp(hx_sym_str(x->method), "Push")) {
+                /* Push necesita el runtime del dinámico y un ayudante por tipo */
+                e->uses_darr = 1;
+                e->uses_arena = 1;
+                hx_darr_note_push(e, x->recv->ty->elem);
+            }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             hx_scan_expr(e, x->member.base);
             break;
@@ -1021,8 +1114,14 @@ static void hx_scan_stmt(HxEmit *e, HxStmt *s) {
             break;
         case ST_DIM:
             hx_scan_expr(e, s->dim.init);
-            if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && s->dim.ty->size > 0)
-                e->uses_arena = 1;
+            if (s->dim.ty && s->dim.ty->kind == TY_ARRAY) {
+                if (s->dim.ty->size > 0) e->uses_arena = 1;
+                else if (s->dim.ty->size < 0) {
+                    /* dinámico: la primera reserva la hace Push, desde la arena */
+                    e->uses_darr = 1;
+                    e->uses_arena = 1;
+                }
+            }
             /* un MAYBE necesita su typedef antes de que se emita el codigo */
             if (s->dim.ty && s->dim.ty->kind == TY_MAYBE) hx_c_ty(e, s->dim.ty);
             break;
@@ -2190,13 +2289,22 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 hx_emit_propagating(e, s->dim.init, ind, dest, 0);
                 break;
             }
+            if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && s->dim.ty->size < 0 &&
+                !s->dim.init) {
+                e->uses_darr = 1;
+                e->uses_arena = 1;
+                hx_indent(b, ind);
+                hx_buf_printf(b, "hx_darr hx_v_%s = hx_darr_make();\n",
+                              hx_sym_str(s->dim.name));
+                break;
+            }
             if (s->dim.ty && s->dim.ty->kind == TY_ARRAY && !s->dim.init) {
                 e->uses_arena = 1;
                 const char *el = hx_c_ty(e, s->dim.ty->elem);
                 int64_t cnt = s->dim.ty->size;
                 hx_indent(b, ind);
-                hx_buf_printf(b, "hx_span hx_v_%s = hx_span_make(hx_arena_alloc(",
-                              hx_sym_str(s->dim.name));
+                hx_buf_printf(b, "%s hx_v_%s = hx_span_make(hx_arena_alloc(",
+                              hx_c_ty(e, s->dim.ty), hx_sym_str(s->dim.name));
                 if (e->arena_depth) hx_buf_printf(b, "&%s", e->arena_stack[e->arena_depth - 1]);
                 else hx_buf_str(b, "&hx_static_arena");
                 hx_buf_printf(b, ", %lld), %lld);\n",
@@ -2217,7 +2325,12 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                 e->uses_string = 1;
                 hx_buf_str(b, "hx_lit(\"\", 0)");
             } else if (s->dim.ty && s->dim.ty->kind == TY_ARRAY) {
-                hx_buf_str(b, "hx_span_make(NULL, 0)");
+                if (s->dim.ty->size < 0) {
+                    e->uses_darr = 1;
+                    hx_buf_str(b, "hx_darr_make()");
+                } else {
+                    hx_buf_str(b, "hx_span_make(NULL, 0)");
+                }
             } else {
                 hx_buf_printf(b, "hx_zero_%s()", hx_zero_fn(e, s->dim.ty));
             }
@@ -2497,7 +2610,13 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
         /* sin esto, escribir en t.celdas[0] seria escribir en un puntero nulo */
         for (int j = 0; j < t->fields.len; j++) {
             HxField *campo = &t->fields.data[j];
-            if (!campo->ty || campo->ty->kind != TY_ARRAY || campo->ty->size <= 0) continue;
+            if (!campo->ty || campo->ty->kind != TY_ARRAY) continue;
+            if (campo->ty->size < 0) {
+                hx_buf_printf(b, "  v.%s = hx_darr_make();\n", hx_sym_str(campo->name));
+                e->uses_darr = 1;
+                continue;
+            }
+            if (campo->ty->size <= 0) continue;
             if (!campo->ty->elem) continue;
             hx_buf_printf(b,
                           "  v.%s = hx_span_make(hx_arena_alloc(&hx_static_arena, %lld), %lld);\n",
@@ -2652,6 +2771,16 @@ static void hx_iter_take_helpers(HxBuf *b, const char *tag) {
 
 
 /* registra el tipo de elemento para generar sus ayudantes una sola vez */
+/* Un Push necesita un ayudante por tipo de elemento */
+static void hx_darr_note_push(HxEmit *e, HxTy *elem) {
+    if (!elem) return;
+    const char *t = hx_c_ty(e, elem);
+    for (int i = 0; i < e->darr_push_types.len; i++)
+        if (!strcmp(e->darr_push_types.data[i], t)) return;
+    if (e->darr_push_types.len >= 32) return;
+    HX_VEC_PUSH(e->darr_push_types, t);
+}
+
 /* Un MAP de MAYBE necesita un ayudante por par de tipos: la firma en C depende
    de los dos, y escribir el ternario a mano se enreda con los literales
    compuestos. */
@@ -2894,6 +3023,8 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_NET_LIBC);
     }
     }
+    /* el arreglo dinámico usa la arena, asi que sus ayudantes van despues */
+    if (e->uses_darr) hx_buf_str(b, HX_RT_DARR);
     if (e->uses_iter) {
         hx_buf_str(b, HX_RT_ITER);
         hx_emit_iter_helpers(e, b);
@@ -2976,6 +3107,24 @@ static void hx_emit_maybe_types(HxEmit *e, HxBuf *b) {
         hx_buf_printf(b, "static inline %s hx_maybe_or_%s(hx_maybe_%s m, %s otro) {\n", t, t,
                       t, t);
         hx_buf_str(b, "  return m.hay ? m.valor : otro; }\n");
+        hx_buf_str(b, "#endif\n");
+    }
+    for (int i = 0; i < e->darr_push_types.len; i++) {
+        const char *t = e->darr_push_types.data[i];
+        /* con dos modulos los dos escriben el ayudante, igual que los de MAYBE */
+        char macro[96];
+        int k = 0;
+        for (const char *p = t; *p && k + 1 < (int)sizeof(macro); p++)
+            macro[k++] = ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+                           (*p >= '0' && *p <= '9'))
+                              ? *p
+                              : '_';
+        macro[k] = 0;
+        hx_buf_printf(b, "#ifndef HX_DARR_PUSH_%s\n#define HX_DARR_PUSH_%s\n", macro, macro);
+        hx_buf_printf(b,
+                      "static inline hx_darr hx_darr_push_%s(hx_arena *a, hx_darr d, %s v) {\n"
+                      "  return hx_darr_push(a, d, sizeof(%s), &v);\n}\n",
+                      t, t, t);
         hx_buf_str(b, "#endif\n");
     }
     for (int i = 0; i < e->maybe_maps.len; i++) {
@@ -3112,6 +3261,13 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
             hx_scan_body(&e, &m->funcs.data[j].body);
             if (m->funcs.data[j].ret && m->funcs.data[j].ret->kind == TY_MAYBE)
                 hx_c_ty(&e, m->funcs.data[j].ret);
+            for (int q = 0; q <= m->funcs.data[j].params.len; q++) {
+                HxTy *pt = q == 0 ? m->funcs.data[j].ret : m->funcs.data[j].params.data[q - 1].ty;
+                if (pt && pt->kind == TY_ARRAY && pt->size < 0) {
+                    e.uses_darr = 1;
+                    e.uses_arena = 1;
+                }
+            }
             for (int q = 0; q < m->funcs.data[j].params.len; q++)
                 if (hx_ty_is_result(m->funcs.data[j].params.data[q].ty)) e.uses_result = 1;
         }

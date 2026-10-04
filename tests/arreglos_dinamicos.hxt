@@ -1,0 +1,76 @@
+"ARRAY[T]: el arreglo que crece, y que avisa cuando se pasa"
+TYPE Punto
+  x AS INT
+  y AS INT
+END TYPE
+
+"emppieza vacío y Push devuelve el largo nuevo"
+DIM numeros AS ARRAY[INT]
+PRINT numeros.Len()
+PRINT numeros.Push(10)
+PRINT numeros.Push(20)
+PRINT numeros.Len()
+
+"crece por duplicación: no hay que pedirle tamaño"
+DIM muchos AS ARRAY[INT]
+FOR i IN Rango(0, 100)
+  muchos.Push(i * i)
+NEXT i
+PRINT muchos.Len()
+PRINT muchos.At(0)
+PRINT muchos.At(50)
+PRINT muchos.At(99)          ' 9801: el ultimo, sin pasarse
+
+"At comprueba el índice y Set escribe en el sitio"
+muchos.Set(50, -1)
+PRINT muchos.At(50)
+
+"de elementos que no son escalares"
+DIM puntos AS ARRAY[Punto]
+DIM p AS Punto
+p.x = 1
+p.y = 2
+puntos.Push(p)
+p.x = 3
+p.y = 4
+puntos.Push(p)
+PRINT puntos.Len()
+PRINT puntos.At(1).x
+PRINT puntos.At(1).y
+
+"de cadenas"
+DIM nombres AS ARRAY[STRING]
+nombres.Push("ana")
+nombres.Push("beto")
+PRINT nombres.Len()
+PRINT nombres.At(0)
+PRINT nombres.At(1).Upper()
+
+"un arreglo dinámico dentro de un registro"
+TYPE Bolsa
+  cosas AS ARRAY[INT]
+  nombre AS STRING
+END TYPE
+DIM b AS Bolsa
+b.nombre = "bolsa"
+b.cosas.Push(5)
+b.cosas.Push(6)
+PRINT b.cosas.Len()
+PRINT b.cosas.At(0) + b.cosas.At(1)
+
+"y se pasa a una función como un ARRAY[T] cualquiera"
+FUNCTION suma(a AS ARRAY[INT]) AS I64
+  DIM total AS I64 = 0
+  FOR i IN Rango(0, a.Len())
+    total = total + a.At(i)
+  NEXT i
+  RETURN total
+END FUNCTION
+PRINT suma(numeros)
+PRINT suma(muchos)
+
+"La otra forma de escribirlo es T[], que es lo mismo"
+DIM alterno AS INT[]
+alterno.Push(7)
+PRINT alterno.Len()
+PRINT alterno.At(0)

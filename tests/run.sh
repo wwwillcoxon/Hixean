@@ -247,6 +247,12 @@ fi
   && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
   || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+# ARRAY[T]: Set y Push son de los que crecen, y el tamaño no va detrás
+./build/hxc check tests/malos/arreglos_dinamicos.hxe 2>&1 | grep -q "E0306" \
+  && ./build/hxc check tests/malos/arreglos_dinamicos.hxe 2>&1 | grep -q "no lleva tamaño" \
+  && ./build/hxc check tests/malos/arreglos_dinamicos.hxe 2>&1 | grep -q "se esperaba ARRAY\[3\], se encontró ARRAY\[T\]" \
+  && echo "ok     Set y Push no existen en un arreglo fijo, y ARRAY[T] no lleva tamaño" \
+  || { echo "FALLO: las reglas de ARRAY[T]"; exit 1; }
 # UNIQUE: una variable no puede estar en dos campos, y solo va en un REF
 ./build/hxc check tests/malos/unique.hxe 2>&1 | grep -q "ya está en 'D.a'" \
   && ./build/hxc check tests/malos/unique.hxe 2>&1 | grep -q "E0216" \
@@ -263,3 +269,10 @@ if ./build/fuera > build/fuera.out 2>&1; then
   echo "FALLO: At fuera de rango deberia abortar"; exit 1
 fi
 grep -q "fuera de rango" build/fuera.out && echo "ok     At fuera de rango aborta con el indice y sale con 70"
+# lo mismo en un ARRAY[T], que comprueba contra el largo y no contra el tipo
+printf 'DIM d AS ARRAY[INT]\nd.Push(1)\nPRINT d.At(5)\n' > build/fuera2.hxe
+./build/hxc build build/fuera2.hxe -o build/fuera2 >/dev/null 2>&1
+if ./build/fuera2 > build/fuera2.out 2>&1; then
+  echo "FALLO: At fuera de rango en ARRAY[T] deberia abortar"; exit 1
+fi
+grep -q "fuera de rango" build/fuera2.out && echo "ok     At fuera de rango en ARRAY[T] tambien aborta con el indice"

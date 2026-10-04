@@ -493,19 +493,62 @@ sombrear, como en cualquier lenguaje con alcance léxico.
 
 `[]` **no comprueba el rango**: `a[9]` en un arreglo de 3 es una lectura fuera
 de la memoria, y el C generado sale idéntico al que escribiría una persona. Para
-el acceso que aborta con un diagnóstico hay dos métodos de `ARRAY[T]`:
+el acceso que aborta con un diagnóstico hay métodos de `ARRAY[T]`:
 
 | método | qué hace |
 |---|---|
-| `a.Len()` | el tamaño, que es una constante del tipo: no cuesta código |
+| `a.Len()` | el tamaño, que en uno fijo es una constante del tipo: no cuesta código |
 | `a.At(i)` | el elemento en `i`, o salida con código 70 y el índice en pantalla |
 
 ```
 DIM a AS INT[5]
-a.At(4) = 7          ' así se escribe: [] sigue sin comprobar
-PRINT a.At(4)
+a[4] = 7             ' escribir sin comprobar es con []
+PRINT a.At(4)        ' leer sí se puede comprobar
 PRINT a.At(9)        ' hx: indice fuera de rango: 9 no cabe en un arreglo de ese tamaño
 ```
+
+En un arreglo dinámico, `Set(i, v)` es la escritura comprobada: mismo índice,
+misma salida con el 70.
+
+### `ARRAY[T]`: el arreglo que crece
+
+`ARRAY[T]` (o `T[]`, que es lo mismo escrito de otra forma) es un arreglo sin
+tamaño en el tipo: empieza vacío y crece con `Push`, que devuelve el largo
+nuevo.
+
+| método | en `ARRAY[T]` | en `T[n]` |
+|---|---|---|
+| `a.Len()` | el largo, leído del struct | constante del tipo, sin coste |
+| `a.At(i)` | comprobado, como siempre | comprobado |
+| `a.Set(i, v)` | escribe comprobando el índice | `E0306`: no tiene sentido, el tamaño está en el tipo |
+| `a.Push(v)` | añade al final y devuelve el largo nuevo | `E0306`: no crece |
+
+```
+DIM numeros AS ARRAY[INT]
+PRINT numeros.Len()      ' 0
+PRINT numeros.Push(10)   ' 1
+PRINT numeros.Push(20)   ' 2
+PRINT numeros.At(0)      ' 10
+```
+
+Un `ARRAY[T]` no lleva tamaño detrás: para uno fijo está `T[n]`. Un arreglo
+dinámico tampoco es uno fijo, ni al revés (`ARRAY[3]` y `ARRAY[T]` en un mismo
+sitio dan `E0301`).
+
+Sirve de elementos de cualquier tipo (`ARRAY[Punto]`, `ARRAY[STRING]`) y vive
+dentro de un registro igual que uno de tamaño fijo. Se pasa a una función como un
+`ARRAY[T]` cualquiera: `FUNCTION total(a AS ARRAY[INT]) AS I64`.
+
+**Crece por duplicación y sin `realloc`**: se reserva el bloque nuevo desde la
+arena y se copia el contenido, de modo que el viejo se queda hasta que la arena
+se libera. Es memoria de más a cambio de no meter `realloc` en el perfil
+`freestanding`, que solo tiene `mmap`/`munmap` y `malloc`/`free`. Si un programa
+empuja y pops en bucle dentro de una `ARENA`, esa memoria no se devuelve hasta
+salir del bloque; con `ARENA` alrededor, ese es el sitio donde va un ciclo así.
+
+`a[i]` sobre un arreglo dinámico lee y escribe **sin comprobar**, como en el
+fijo: `a[0] = 1` es rápido y `a.At(0) = 1` no existe (la escritura comprobada es
+`a.Set(0, 1)`).
 
 Un rango en un índice (`a[1..3]`) todavía **no** está implementado: se acepta en
 el parser, pero el emisor solo leería el primer elemento, así que da `E0210` en
