@@ -376,6 +376,7 @@ static const char *HX_RT_LIBC =
     "#ifdef _WIN32\n"
     "#include <fcntl.h>\n"
     "#include <io.h>\n"
+    "#include <stdio.h>\n"   /* stdout, que es de donde sale el 1 de _fileno */
     "static inline void hx_modo_binario(void) {\n"
     "  _setmode(_fileno(stdout), _O_BINARY);\n"
     "  _setmode(_fileno(stderr), _O_BINARY);\n"
