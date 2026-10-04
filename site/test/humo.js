@@ -267,9 +267,19 @@ function comprobarScript(t, conObserver) {
    sin bordes redondeados, con todos los enlaces internos resueltos, sin nada
    que venga de fuera y con el PDF de la guia de verdad en su sitio. */
 function comprobarSitio(t) {
-  // 1. Ningun borde redondeado. Es una peticion del proyecto, y en CSS basta
-  // con no escribir border-radius: asi que se busca la propiedad, no el efecto.
-  t.ok(!/border-radius/.test(css), "style.css tiene border-radius: las cajas van rectas");
+  // 1. Ningun borde redondeado, en ningun sitio. Es una peticion del proyecto y
+  // en CSS basta con no escribir la propiedad, asi que se busca la propiedad y
+  // no el efecto: un radio puesto a mano en el 404 del workflow tambien cuenta.
+  const dondeCss = [path.join(RAIZ, "site", "style.css"),
+                    path.join(RAIZ, ".github", "workflows", "pages.yml")];
+  for (const ruta of dondeCss) {
+    if (!fs.existsSync(ruta)) continue;
+    const texto = fs.readFileSync(ruta, "utf8");
+    t.ok(
+      !/border-radius/.test(texto),
+      `${path.basename(ruta)} tiene border-radius: las cajas van rectas`
+    );
+  }
   for (const pagina of PAGINAS) {
     t.ok(
       !/border-radius/.test(pagina.texto),

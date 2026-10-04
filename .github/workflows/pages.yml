@@ -46,7 +46,7 @@ jobs:
           <title>Hixean — no encontrado</title>
           <style>body{background:#0f0e0c;color:#efeade;font:17px/1.6 system-ui,sans-serif;
           display:grid;place-items:center;height:100vh;margin:0}a{color:#e08b5e}
-          code{background:#1b1a15;border:1px solid #33302a;border-radius:5px;padding:.1em .35em}</style>
+          code{background:#1b1a15;border:1px solid #33302a;padding:.1em .35em}</style>
           </head><body><main style="max-width:38rem;padding:2rem">
           <h1 style="font-size:1.6rem">404</h1>
           <p>Esta pagina no existe en <code>/Hixean/</code>.</p>
