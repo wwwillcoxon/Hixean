@@ -966,7 +966,7 @@ static const char *HX_RT_TOSTRING =
 
 static const char *HX_RT_STRING =
     "static char hx_cbuf[65536];\n"
-    "static inline int64_t hx_clen;\n"
+    "static int64_t hx_clen;\n"
     "static hx_str hx_concat(hx_str a, hx_str b) {\n"
     "  hx_str s;\n"
     "  if (hx_clen + a.n + b.n > (int64_t)sizeof(hx_cbuf))\n"
@@ -3249,12 +3249,20 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     if (e->uses_net) {
         e->uses_arena = 1;
         hx_buf_str(b, HX_NET_PRE);
-        if (e->profile == HX_PROFILE_FREESTANDING) {
-        hx_buf_str(b, HX_RT_NET_FREESTANDING);
+        /* El net de libc es POSIX (sys/socket.h); en Windows hace falta Winsock,
+           que no esta. Emitir los stubs es mejor que emitir una cabecera que no
+           existe: el programa sigue compilando y las llamadas de red devuelven
+           -1, que es lo que ya pasaria sin permiso. */
+#if defined(_WIN32)
         hx_buf_str(b, HX_RT_NET_STUBS);
-    } else {
-        hx_buf_str(b, HX_RT_NET_LIBC);
-    }
+#else
+        if (e->profile == HX_PROFILE_FREESTANDING) {
+            hx_buf_str(b, HX_RT_NET_FREESTANDING);
+            hx_buf_str(b, HX_RT_NET_STUBS);
+        } else {
+            hx_buf_str(b, HX_RT_NET_LIBC);
+        }
+#endif
     }
     /* el arreglo dinámico usa la arena, asi que sus ayudantes van despues */
     if (e->uses_darr) hx_buf_str(b, HX_RT_DARR);
@@ -3267,7 +3275,11 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_STRMORE);
     }
     if (e->uses_enum) hx_emit_enum_names(e, b, e->unit);
-    hx_buf_str(b, HX_RT_MEM_DECL);
+    /* El perfil libc ya tiene memcpy y memset, y declararlos otra vez pisa los
+       prototipos: en macOS, ademas, memcpy es una macro. El freestanding es el
+       unico caso en el que hacen falta, porque sus definiciones viven en otro
+       archivo y hay que declararlas antes de usarlas. */
+    if (e->profile == HX_PROFILE_FREESTANDING) hx_buf_str(b, HX_RT_MEM_DECL);
     hx_buf_str(b, "#endif\n");
 }
 
