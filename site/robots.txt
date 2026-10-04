@@ -1,0 +1,6 @@
+# Todo el sitio es publico y no hay nada que esconder.
+User-agent: *
+Allow: /
+
+# El manual vive fuera del directorio del sitio y tambien se indexa.
+Sitemap: https://wwwillcoxon.github.io/Hixean/sitemap.xml

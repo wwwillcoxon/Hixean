@@ -64,6 +64,26 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
 
 ### Añadido
 
+- **Lo que hace falta para que Hixean se encuentre y se vea al compartir el
+  enlace.** Cuatro paginas con `canonical`, Open Graph completo y `twitter:card`;
+  un JSON-LD `SoftwareSourceCode` en el indice; `sitemap.xml` y `robots.txt`; un
+  favicon SVG y sus PNG de 16, 32, 180 y 512; una imagen de 1200x630 para la
+  tarjeta de los enlaces; y un manifest del sitio que es JSON de verdad.
+  - El canonical importa mas de lo que parece: GitHub Pages sirve `/Hixean/` y
+    `/Hixean/index.html` como dos direcciones del mismo documento, y sin esto hay
+    dos paginas con el mismo contenido de las que el buscador tiene que elegir.
+  - No hay conversor de SVG ni Pillow en el repositorio, y meter una dependencia
+    para cuatro rectangulos no compensa. `tools/generar-iconos.py` escribe los PNG
+    a mano: `zlib` de la biblioteca estandar, una fuente de mapa de bits de 5x7
+    dibujada a proposito (el sitio ya es monoespaciada, asi que pixelado encaja),
+    y `--ver` para mirar el resultado en ASCII sin abrir un visor.
+  - Todo esto lo vigila `site/test/humo.js`: que cada pagina tenga canonical
+    absoluto y distinto, las cinco etiquetas de Open Graph, twitter:card, favicon,
+    que el JSON-LD sea JSON que parsea, que los PNG tengan las medidas que
+    prometen, y que el sitemap liste lo que existe.
+- **El manual entra en el humo del sitio**, y eso destapo que tenia diez
+  `border-radius`, contra la regla del proyecto de que las cajas van rectas. No
+  se comprobaba porque el manual no estaba en la lista de paginas del test.
 - **`lib/` viaja en el paquete y `install.sh` lo instala** en
   `<prefijo>/lib/hixean`, que es donde el binario lo mira. `install.sh` además
   acepta un `.tar.gz` local como argumento, para instalar sin red y para poder

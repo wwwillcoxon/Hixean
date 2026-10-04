@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hixean">
+<!-- El icono son las tres palabras de la cabecera del perfil: un programa que
+     compila a C11. Fondo y acento son los mismos tokens del sitio, --fondo y
+     --acento, para que el favicon no parezca de otra pagina. -->
+<rect width="64" height="64" rx="0" fill="#0f0e0c"/>
+<rect x="4" y="4" width="56" height="56" fill="none" stroke="#33302a" stroke-width="2"/>
+<!-- la barra del prompt, y el cursor: Hixean es una linea de codigo -->
+<rect x="16" y="26" width="20" height="4" fill="#e08b5e"/>
+<rect x="40" y="26" width="8" height="4" fill="#8d8676"/>
+<rect x="16" y="36" width="12" height="4" fill="#8d8676"/>
+</svg>

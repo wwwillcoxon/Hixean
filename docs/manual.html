@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hixean: manual de programación</title>
+<meta name="description" content="Manual interactivo de Hixean: los 88 códigos de diagnóstico con su fila, los tipos, los operadores y las reglas, con ejemplos que compilan.">
+<link rel="canonical" href="https://wwwillcoxon.github.io/Hixean/docs/manual.html">
+<link rel="icon" href="../site/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../site/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hixean: manual de programación">
+<meta property="og:description" content="Manual interactivo de Hixean: los 88 códigos de diagnóstico con su fila, los tipos, los operadores y las reglas, con ejemplos que compilan.">
+<meta property="og:url" content="https://wwwillcoxon.github.io/Hixean/docs/manual.html">
+<meta property="og:image" content="https://wwwillcoxon.github.io/Hixean/og-hixean.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hixean: manual de programación">
+<meta name="twitter:description" content="Manual interactivo de Hixean: los 88 códigos de diagnóstico con su fila, los tipos, los operadores y las reglas, con ejemplos que compilan.">
+<meta name="twitter:image" content="https://wwwillcoxon.github.io/Hixean/og-hixean.png">
 <style>
 :root{
   --fondo:#fbfaf7; --papel:#ffffff; --tinta:#1b1a17; --suave:#6b675e; --linea:#e2ded4;
@@ -26,9 +39,9 @@ a{color:var(--acento)}
 .marca{font-weight:700;letter-spacing:.02em;white-space:nowrap}
 .marca span{color:var(--acento)}
 #buscar{flex:1;min-width:180px;padding:.45rem .7rem;border:1px solid var(--linea);
-  border-radius:8px;background:var(--fondo);color:var(--tinta);font-size:.9rem}
+  background:var(--fondo);color:var(--tinta);font-size:.9rem}
 #buscar:focus{outline:2px solid var(--acento);outline-offset:1px}
-.btn{border:1px solid var(--linea);background:var(--fondo);color:var(--tinta);border-radius:8px;
+.btn{border:1px solid var(--linea);background:var(--fondo);color:var(--tinta);
   padding:.4rem .7rem;font-size:.85rem;cursor:pointer;white-space:nowrap}
 .btn:hover{border-color:var(--acento);color:var(--acento)}
 .btn[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:#fff}
@@ -38,7 +51,7 @@ nav{position:sticky;top:3.2rem;align-self:start;height:calc(100vh - 3.2rem);over
   padding:1.2rem 1rem 3rem 1rem;border-right:1px solid var(--linea)}
 nav h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--suave);margin:.6rem 0}
 nav ol{list-style:none;margin:0;padding:0}
-nav a{display:block;padding:.22rem .5rem;border-radius:6px;font-size:.86rem;color:var(--suave);
+nav a{display:block;padding:.22rem .5rem;font-size:.86rem;color:var(--suave);
   text-decoration:none;border-left:2px solid transparent}
 nav a:hover{color:var(--tinta);background:var(--code)}
 nav a.activo{color:var(--acento);border-left-color:var(--acento);background:var(--code)}
@@ -47,7 +60,7 @@ main{padding:2rem 1.6rem 6rem;min-width:0}
 .hero h1{font-size:2.4rem;line-height:1.15;margin:0 0 .6rem}
 .hero p.lead{font-size:1.15rem;color:var(--suave);max-width:60ch;margin:.2rem 0}
 .cifras{display:flex;gap:1.4rem;flex-wrap:wrap;margin:1.2rem 0 0;padding:0;list-style:none}
-.cifras li{background:var(--code);border:1px solid var(--linea);border-radius:10px;padding:.6rem .9rem}
+.cifras li{background:var(--code);border:1px solid var(--linea);padding:.6rem .9rem}
 .cifras b{display:block;font-size:1.3rem;line-height:1.2}
 .cifras span{font-size:.78rem;color:var(--suave)}
 section{padding-top:1.6rem;margin-top:1.2rem;border-top:1px solid var(--linea);scroll-margin-top:4rem}
@@ -58,31 +71,31 @@ h4{font-size:1rem;margin:1.2rem 0 .2rem;color:var(--suave);text-transform:upperc
 p{max-width:74ch}
 ul,ol{max-width:74ch}
 li{margin:.2rem 0}
-code:not(pre code){background:var(--code);border:1px solid var(--linea);border-radius:5px;padding:.05em .3em;font-size:.9em}
-.ej{margin:1rem 0;border:1px solid var(--linea);border-radius:10px;background:var(--papel);overflow:hidden}
+code:not(pre code){background:var(--code);border:1px solid var(--linea);padding:.05em .3em;font-size:.9em}
+.ej{margin:1rem 0;border:1px solid var(--linea);background:var(--papel);overflow:hidden}
 .ej>figcaption{display:flex;justify-content:space-between;align-items:center;gap:.5rem;
   padding:.35rem .6rem .35rem .8rem;background:var(--code);border-bottom:1px solid var(--linea);
   font-size:.78rem;color:var(--suave)}
 .ej pre{margin:0;padding:.8rem;overflow:auto;font-size:.85rem;line-height:1.5}
 .ej .salida{border-top:1px dashed var(--linea);padding:.5rem .8rem;background:var(--fondo);font-size:.82rem}
 .ej .salida b{color:var(--suave);font-weight:600;text-transform:uppercase;font-size:.7rem;letter-spacing:.1em}
-.copiar{border:1px solid var(--linea);background:var(--papel);color:var(--suave);border-radius:6px;
+.copiar{border:1px solid var(--linea);background:var(--papel);color:var(--suave);
   font-size:.72rem;padding:.15rem .45rem;cursor:pointer}
 .copiar:hover{color:var(--acento);border-color:var(--acento)}
 table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.88rem}
 th,td{border:1px solid var(--linea);padding:.42rem .6rem;text-align:left;vertical-align:top}
 th{background:var(--code);font-weight:600}
 td code{white-space:nowrap}
-.aviso{border-left:4px solid var(--acento);background:var(--code);padding:.7rem .9rem;border-radius:0 8px 8px 0;margin:1rem 0;max-width:78ch}
+.aviso{border-left:4px solid var(--acento);background:var(--code);padding:.7rem .9rem;margin:1rem 0;max-width:78ch}
 .aviso.bueno{border-left-color:var(--acento2)}
 .aviso.malo{border-left-color:var(--mal)}
 .chips{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0}
-.chip{border:1px solid var(--linea);background:var(--chip);color:var(--tinta);border-radius:999px;
+.chip{border:1px solid var(--linea);background:var(--chip);color:var(--tinta);
   padding:.2rem .7rem;font-size:.78rem;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:#fff}
 .oculto{display:none !important}
 #recuento{font-size:.78rem;color:var(--suave);margin-left:auto}
-.kbd{border:1px solid var(--linea);border-bottom-width:2px;border-radius:5px;padding:0 .3rem;font-size:.78em;background:var(--code)}
+.kbd{border:1px solid var(--linea);border-bottom-width:2px;padding:0 .3rem;font-size:.78em;background:var(--code)}
 footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;color:var(--suave);font-size:.85rem}
 @media (max-width:860px){
   #cuerpo{grid-template-columns:1fr}

@@ -16,11 +16,19 @@ const html = fs.readFileSync(path.join(RAIZ, "site", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(RAIZ, "site", "style.css"), "utf8");
 const script = fs.readFileSync(path.join(RAIZ, "site", "script.js"), "utf8");
 
-/* Las tres paginas del sitio. Se leen todas para que un enlace roto o un
-   border-radius en cualquiera de ellas se vea aqui y no en el navegador. */
-const PAGINAS = ["index.html", "directorio.html", "terminos.html"].map((nombre) => {
-  const ruta = path.join(RAIZ, "site", nombre);
-  return { nombre, ruta, texto: fs.readFileSync(ruta, "utf8") };
+/* Las paginas publicadas: las tres del sitio y el manual, que sale un nivel mas
+   arriba porque vive en docs/. Se leen todas para que un enlace roto o un
+   border-radius en cualquiera de ellas se vea aqui y no en el navegador. El
+   prefijo es donde vive cada una, porque los enlaces del manual salen con
+   ../site/ y los del sitio sin nada. */
+const PAGINAS = [
+  { nombre: "index.html", dir: "site", prefijo: "" },
+  { nombre: "directorio.html", dir: "site", prefijo: "" },
+  { nombre: "terminos.html", dir: "site", prefijo: "" },
+  { nombre: "manual.html", dir: "docs", prefijo: "../site/" }
+].map(({ nombre, dir, prefijo }) => {
+  const ruta = path.join(RAIZ, dir, nombre);
+  return { nombre, dir, prefijo, ruta, texto: fs.readFileSync(ruta, "utf8") };
 });
 
 class Nodo {
@@ -310,8 +318,11 @@ function comprobarSitio(t) {
       !/<script[^>]+src="https?:/.test(pagina.texto),
       `${pagina.nombre} carga un script de fuera`
     );
+    // El canonical si es una URL absoluta y no cuenta: no descarga nada, le dice
+    // al buscador cual es la direccion buena de esta pagina. Lo que se busca es
+    // una hoja de estilo o un icono que venga de otro sitio.
     t.ok(
-      !/<link[^>]+href="https?:/.test(pagina.texto),
+      !/<link(?![^>]*rel="canonical")[^>]+href="https?:/.test(pagina.texto),
       `${pagina.nombre} carga una hoja de estilo de fuera`
     );
     t.ok(
@@ -337,8 +348,108 @@ function comprobarSitio(t) {
     );
   }
 
-  // 5. Las tres paginas del sitio comparten el pie con la version real
+  // 6. Lo que necesita un buscador, en cada pagina. Se comprueba una vez aqui
+  //    para que quitar una etiqueta se entere en local y no cuando alguien
+  //    comparte un enlace y sale una URL pelada.
+  const BASE = "https://wwwillcoxon.github.io/Hixean";
+  const rutas = {
+    "index.html": "/",
+    "directorio.html": "/directorio.html",
+    "terminos.html": "/terminos.html",
+    "manual.html": "/docs/manual.html"
+  };
+  const vistos = new Set();
   for (const pagina of PAGINAS) {
+    const { nombre, texto } = pagina;
+    const meta = (atributo, valor) =>
+      new RegExp(`<meta[^>]+${atributo}="${valor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`).test(texto);
+
+    t.ok(/^<!DOCTYPE html>/i.test(texto), `${nombre} no empieza por DOCTYPE`);
+    t.ok(/<html[^>]+lang="es"/.test(texto), `${nombre} no declara lang="es"`);
+    t.ok(meta("name", "viewport"), `${nombre} no dice de donde va el ancho de pantalla`);
+    t.ok(/<title>[^<]{10,}<\/title>/.test(texto), `${nombre} no tiene un title util`);
+    t.ok(meta("name", "description"), `${nombre} no tiene meta description`);
+
+    // El canonical tiene que ser la direccion buena y absoluta, y cada pagina la
+    // suya: si dos comparten canonical, el buscador solo indexa una de las dos.
+    const canonicos = texto.match(/<link rel="canonical" href="[^"]+"/g) || [];
+    t.ok(canonicos.length === 1, `${nombre} tiene ${canonicos.length} canonical y debe tener uno`);
+    const esperado = BASE + rutas[nombre];
+    const href = (texto.match(/<link rel="canonical" href="([^"]+)"/) || [])[1];
+    t.ok(href === esperado, `${nombre} canonical deberia ser ${esperado} y es ${href}`);
+    t.ok(!vistos.has(esperado), `dos paginas comparten canonical: ${esperado}`);
+    vistos.add(esperado);
+
+    for (const prop of ["og:title", "og:description", "og:url", "og:image", "og:type"])
+      t.ok(meta("property", prop), `${nombre} no tiene ${prop}`);
+    t.ok(meta("name", "twitter:card"), `${nombre} no tiene twitter:card`);
+    t.ok(/rel="icon"/.test(texto), `${nombre} no declara favicon`);
+    t.ok(/rel="apple-touch-icon"/.test(texto), `${nombre} no declara apple-touch-icon`);
+
+    // og:image y canonical tienen que ser absolutos y del mismo sitio: una
+    // imagen relativa no la encuentra el rastreador cuando la ve desde otra parte
+    t.ok(meta("property", "og:image") || /og:image" content="https:\/\//.test(texto),
+      `${nombre} la og:image no es una URL absoluta`);
+  }
+
+  // 7. El JSON-LD del indice tiene que ser JSON de verdad: un bloque ld+json
+  //    con una coma mal puesta no da error en el navegador, simplemente no se ve
+  const ld = (html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/) || [])[1];
+  t.ok(!!ld, "index.html no tiene JSON-LD");
+  if (ld) {
+    try {
+      const d = JSON.parse(ld);
+      t.ok(d["@type"] === "SoftwareSourceCode", `JSON-LD dice @type=${d["@type"]}`);
+      t.ok(!!d.codeRepository && !!d.license, "JSON-LD sin repositorio o sin licencia");
+      t.ok(d.programmingLanguage === "Hixean", "JSON-LD no dice que lenguaje es");
+    } catch (e) {
+      t.ok(false, `el JSON-LD no es JSON valido: ${e.message}`);
+    }
+  }
+
+  // 8. Los ficheros que el sitio promete tienen que existir y ser de verdad: un
+  //    favicon que no esta da un 404 en cada pagina, y un PNG corrupto peor.
+  for (const f of ["favicon.svg", "favicon-32.png", "favicon-16.png",
+                   "apple-touch-icon.png", "icon-512.png", "og-hixean.png",
+                   "sitemap.xml", "robots.txt", "site.webmanifest"]) {
+    const ruta = path.join(RAIZ, "site", f);
+    t.ok(fs.existsSync(ruta), `el sitio enlaza ${f} y no existe`);
+  }
+  const og = path.join(RAIZ, "site", "og-hixean.png");
+  if (fs.existsSync(og)) {
+    const b = fs.readFileSync(og);
+    t.ok(b.slice(0, 8).toString("latin1") === "\x89PNG\r\n\x1a\n", "og-hixean.png no es un PNG");
+    t.ok(b.readUInt32BE(16) === 1200 && b.readUInt32BE(20) === 630,
+      `og-hixean.png es ${b.readUInt32BE(16)}x${b.readUInt32BE(20)} y debe ser 1200x630`);
+  }
+  // El manifest es JSON: si no lo es, Chrome lo rechaza entero y avisa en consola
+  const man = path.join(RAIZ, "site", "site.webmanifest");
+  if (fs.existsSync(man)) {
+    try {
+      const d = JSON.parse(fs.readFileSync(man, "utf8"));
+      t.ok(!!d.name && Array.isArray(d.icons) && d.icons.length > 0,
+        "el manifest no tiene nombre o iconos");
+    } catch (e) {
+      t.ok(false, `site.webmanifest no es JSON valido: ${e.message}`);
+    }
+  }
+  // y el sitemap tiene queResolvable, que es para lo que existe
+  const sm = path.join(RAIZ, "site", "sitemap.xml");
+  if (fs.existsSync(sm)) {
+    const x = fs.readFileSync(sm, "utf8");
+    const locs = x.match(/<loc>([^<]+)<\/loc>/g) || [];
+    t.ok(locs.length >= 4, `el sitemap tiene ${locs.length} paginas y deberia tener al menos 4`);
+    for (const nombre of ["index.html", "directorio.html", "terminos.html"]) {
+      const url = nombre === "index.html" ? `${BASE}/` : `${BASE}/${nombre}`;
+      t.ok(locs.some((l) => l === `<loc>${url}</loc>`), `el sitemap no lista ${url}`);
+    }
+    t.ok(fs.readFileSync(path.join(RAIZ, "site", "robots.txt"), "utf8").includes("Sitemap:"),
+      "robots.txt no apunta al sitemap");
+  }
+
+  // 5. Las tres paginas del sitio comparten el pie con la version real. El manual
+  //    va aparte porque lleva su propio pie y su propio tema.
+  for (const pagina of PAGINAS.filter((p) => p.dir === "site")) {
     t.ok(
       /Hixean 0\.\d+\.\d+ ·/.test(pagina.texto),
       `${pagina.nombre} no dice la version en el pie`
@@ -353,7 +464,7 @@ function main() {
   comprobarScript(t, false);
   comprobarSitio(t);
   t.cerrar();
-  console.log("ok     el sitio: cifras reales, enlaces resueltos, nada de fuera y sin bordes redondeados");
+  console.log("ok     el sitio: cifras reales, enlaces resueltos, nada de fuera, sin bordes redondeados y con lo que necesita un buscador");
 }
 
 main();
