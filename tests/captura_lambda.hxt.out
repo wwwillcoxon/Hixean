@@ -1,0 +1,45 @@
+10
+20
+30
+---
+8
+9
+10
+11
+---
+19
+29
+39
+---
+8
+9
+---
+3
+6
+9
+---
+2
+3
+4
+---
+160
+vuelta con c=        1        : total antes         0
+  total ahora         5
+vuelta con c=        2        : total antes         5
+  total ahora         12
+vuelta con c=        3        : total antes         12
+  total ahora         21
+---
+2
+3
+101
+102
+---
+1
+1
+1
+1
+1
+2
+2
+2

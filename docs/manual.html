@@ -143,7 +143,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>34/34</b><span>pruebas del corpus</span></li>
+        <li><b>35/35</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -1118,6 +1118,46 @@ NEXT x</code></pre>
       (<code>Rango(1,3).Map(Texto)</code> produce cadenas); <code>FILTER</code>
       exige una función de <code>T</code> a <code>BOOL</code>
       (<code>E0715</code> si no).</p>
+      <h3>Capturar lo de fuera</h3>
+      <p>Una función anónima puede leer las variables de quien la creó, sin
+      pasárselas como parámetros:</p>
+      <figure class="ej">
+        <figcaption><span>captura.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM suelo AS INT = 10
+DIM limite AS INT = 8
+FOR z IN Rango(1, 20).Map(FUNC(n AS INT) AS INT
+  IF n &gt; limite THEN RETURN n * suelo
+  RETURN n
+END)
+  PRINT z
+NEXT</code></pre>
+        <div class="salida"><b>salida</b><pre>1
+2
+3
+4
+5
+6
+7
+8
+90
+100
+110
+120
+130
+140
+150
+160
+170
+180
+190</pre></div>
+      </figure>
+      <p>Se guarda el <strong>valor</strong>, no una referencia, en el momento en
+      que aparece el <code>MAP</code>. Y lo de dentro tapa lo de fuera: si la
+      función anónima declara su propia <code>DIM limite</code>, usa esa. Un
+      <code>CONST</code> del módulo no se captura, porque se ve sin cerrar nada.</p>
+      <p>Lo que <strong>no</strong> hay: guardar una función anónima en una
+      variable y llamarla más tarde. Se acepta donde el iterador espera una
+      función, que es <code>MAP</code> y <code>FILTER</code>.</p>
     </section>
 
     <section id="modulos" data-t="módulos module import export usar biblioteca hxc">

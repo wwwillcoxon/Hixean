@@ -1,0 +1,123 @@
+' Una FUNC ahora captura lo que usa de fuera. Antes se elevaba a una funcion del
+'   modulo y se tomaba como puntero, sin poder leer nada de quien la creo, que
+'   obligaba a escribir una FUNC de nivel superior con un parametro de mas por
+'   cada dato del que dependia el filtro.
+'
+'   Se captura POR VALOR: el cierre copia el valor cuando se construye, y por eso
+'   un bucle que creo la lambda puede seguir su camino sin que el valor cambie
+'   debajo. El ultimo test de este fichero es exactamente eso.
+
+CONST FACTOR AS INT = 3
+
+' una captura, MAP
+DIM suelo AS INT = 10
+FOR z IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+  RETURN n * suelo
+END FUNC)
+  PRINT z
+NEXT
+PRINT "---"
+
+' una captura, FILTER
+DIM limite AS INT = 8
+FOR y IN Rango(1, 12).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n >= limite
+END FUNC)
+  PRINT y
+NEXT
+PRINT "---"
+
+' dos capturas a la vez
+DIM extra AS INT = 1
+FOR w IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+  RETURN n * suelo + extra + limite
+END FUNC)
+  PRINT w
+NEXT
+PRINT "---"
+
+' lo de dentro tapa lo de fuera: la DIM x de la lambda es suya, no se captura el
+'   100 de arriba. Si se capturara, esto daria 101 y 102.
+DIM x AS INT = 100
+FOR v IN Rango(1, 3).Map(FUNC(q AS INT) AS INT
+  DIM x AS INT = 7
+  RETURN x + q
+END FUNC)
+  PRINT v
+NEXT
+PRINT "---"
+
+' una CONST del modulo no se captura: se ve sin cerrar nada
+FOR k IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+  RETURN n * FACTOR
+END FUNC)
+  PRINT k
+NEXT
+PRINT "---"
+
+' una lambda que no captura nada sigue siendo una funcion normal
+FOR m IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+  RETURN n + 1
+END FUNC)
+  PRINT m
+NEXT
+PRINT "---"
+
+' una lambda dentro de una FUNCTION captura las variables de la FUNCTION
+FUNCTION Escalona(base AS INT, veces AS INT) AS INT
+  DIM total AS INT = 0
+  FOR i IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+    RETURN n * base + total
+  END FUNC)
+    total = total + i
+  NEXT
+  RETURN total + veces
+END FUNCTION
+PRINT Escalona(10, 100)
+
+' Cada vuelta construye su cierre con el c que tenia entonces, y por eso el total
+'   sale 5, 12, 21.
+'   Esto NO demuestra que la captura sea por valor: MAP y FILTER consumen el
+'   iterador en la misma sentencia, asi que con referencia daria lo mismo. La
+'   estructura de captura guarda el valor porque es lo correcto, y se vera cuando
+'   los cierres sean valores de primer orden en vez de un argumento de MAP.
+DIM acumulado AS INT = 0
+FOR c IN Rango(1, 4)
+  PRINT "vuelta con c=", c, ": total antes ", acumulado
+  FOR q IN Rango(1, 3).Map(FUNC(n AS INT) AS INT
+    RETURN n + c
+  END FUNC)
+    acumulado = acumulado + q
+  NEXT
+  PRINT "  total ahora ", acumulado
+NEXT
+PRINT "---"
+
+' dos lambdas distintas con el mismo nombre de variable no comparten estructura:
+'   cada una lee la suya
+DIM uno AS INT = 1
+DIM dos AS INT = 100
+FOR a IN Rango(1, 3).Map(FUNC(n AS INT) AS INT
+  RETURN n + uno
+END FUNC)
+  PRINT a
+NEXT
+FOR b IN Rango(1, 3).Map(FUNC(n AS INT) AS INT
+  RETURN n + dos
+END FUNC)
+  PRINT b
+NEXT
+PRINT "---"
+
+' la captura tambien funciona en un MATCH y en un bucle dentro de la lambda
+DIM umbral AS INT = 5
+FOR t IN Rango(1, 9).Map(FUNC(n AS INT) AS INT
+  DIM salida AS INT = 0
+  WHILE n > 0
+    n = n - umbral
+    salida = salida + 1
+  WEND
+  RETURN salida
+END FUNC)
+  PRINT t
+NEXT

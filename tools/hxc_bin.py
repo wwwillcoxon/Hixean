@@ -23,9 +23,13 @@ def _con_exe(base):
 
 
 def encuentra(base):
-    """El nombre que existe de verdad. Si no existe ninguno, devuelve el que se le
-    pidio, para que quien lo llame pueda imprimir algo util."""
-    return base if os.path.exists(base) else _con_exe(base)
+    """El nombre que existe de verdad. Si no existe ninguno se devuelve el que se
+    pidio, para que quien lo llame pueda imprimir algo util: asumir el .exe sin
+    comprobarlo daria una ruta que no esta y un FileNotFoundError sin contexto."""
+    if os.path.exists(base):
+        return base
+    con_exe = _con_exe(base)
+    return con_exe if os.path.exists(con_exe) else base
 
 
 HXC = encuentra(os.path.join(_RAIZ, "build", "hxc"))

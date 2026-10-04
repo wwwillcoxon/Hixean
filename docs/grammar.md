@@ -509,10 +509,47 @@ lambda     = "FUNC" "(" parametros ")" [ "AS" tipo ] , { sentencia } ,
              ( "END" ) ( "FUNC" ) ;
 ```
 
-Una `FUNC` no captura el entorno: el compilador la eleva a una función del
-módulo con nombre generado y la referencia se toma como puntero a función. Se
-acepta donde el lenguaje espera una función de primer orden, es decir en `MAP`
-y `FILTER`.
+Una `FUNC` se acepta donde el lenguaje espera una función de primer orden, es
+decir en `MAP` y `FILTER`.
+
+**Captura por valor.** Una `FUNC` puede leer lo que hay en el ámbito de quien la
+creó, sin necesidad de pasarlo como parámetro:
+
+```hixean
+DIM suelo AS INT = 10
+FOR z IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+  RETURN n * suelo
+END FUNC)
+  PRINT z
+NEXT
+' 10, 20, 30
+```
+
+El compilador detecta qué nombres libres usa el cuerpo —los que resuelven en el
+ámbito de otra `FUNCTION`, no los del módulo, que se ven sin cerrar nada— y les
+da una estructura:
+
+```c
+struct hx_cap_hx_anon_ejemplo_0 { int64_t f0; };   /* suelo */
+static int64_t hx_call_hx_anon_ejemplo_0(int64_t hx_v_n, struct hx_cap_hx_anon_ejemplo_0 *cap);
+/* dentro:  hx_v_n * cap->f0  */
+```
+
+El cierre se construye en el punto donde aparece el `MAP`, copiando el valor que
+tenía la variable en ese momento. Tres reglas:
+
+- **Por valor, no por referencia.** Un bucle que crea la lambda puede seguir su
+  camino sin que el valor cambie por debajo. Con `MAP` y `FILTER` esto todavía no
+  se puede distinguir, porque el iterador se consume en la misma sentencia, pero
+  la estructura guarda el valor y es lo correcto para cuando los cierres sean
+  valores de primer orden.
+- **Sin coste si no captura.** Una `FUNC` que no usa nada de fuera sigue siendo
+  una función normal con su puntero, y `MAP` sigue usando el ayudante de siempre.
+  Los ayudantes con cierre se generan solo para las combinaciones de tipos que
+  los necesitan: en un lenguaje con una puerta de 12 KiB, pagar una llamada
+  indirecta de más en todos los `MAP` para algo que no se usa no sería honesto.
+- **Lo de dentro tapa lo de fuera.** Un `DIM` propio, un parámetro de `FOR` o un
+  enlace de `MATCH` no se capturan aunque se llamen como una variable de fuera.
 
 ## 16. División verificada
 

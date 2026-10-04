@@ -111,6 +111,18 @@ typedef struct {
     HxSpan span;
 } HxPathPart;
 
+/* Una variable de fuera que una FUNC usa por su cuenta. Sin esto, una lambda se
+   eleva a una funcion del modulo con un puntero a funcion y no puede leer nada de
+   quien la creo, que es justo lo que hace inutil un filtro que dependa del dato.
+   Se guarda por valor: la estructura de captura copia el valor cuando se construye
+   el cierre, y la lambda lo lee de ahi. Copiar y no referenciar es lo que
+   permite que el bucle externo siga y que dos MAP del mismo dato no se pisen. */
+typedef struct HxCapture {
+    HxSym name;
+    HxTy *ty;
+    int is_const;
+} HxCapture;
+
 
 struct HxExpr {
     HxExprKind kind;
@@ -239,6 +251,9 @@ struct HxFunc {
     int is_export;
     int index;
     int is_tail_loop;
+    /* Solo en lambdas: lo que usan de fuera. Si esta vacio, la lambda se emite
+       como una funcion normal con su puntero, que es el camino corto. */
+    HX_VEC_ANON(HxCapture) captures;
 };
 
 typedef struct {

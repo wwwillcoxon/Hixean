@@ -93,6 +93,44 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
 
 ### Añadido
 
+- **Las funciones anónimas capturan lo que usan de fuera, por valor.** Era la
+  carencia que mas limitaba a quien escribe: sin captura no hay forma de escribir
+  un filtro que dependa del dato, y habia que escribir una `FUNCTION` de nivel
+  superior con un parámetro de mas por cada dato del que dependía.
+  ```hixean
+  DIM suelo AS INT = 10
+  FOR z IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+    RETURN n * suelo
+  END FUNC)
+    PRINT z
+  NEXT
+  ' 10, 20, 30
+  ```
+  - El verificador recorre el cuerpo de la lambda buscando los nombres libres: los
+    que resuelven en el ámbito de otra `FUNCTION`. Los del módulo no cuentan, que
+    se ven sin cerrar nada. Y lo de dentro tapa lo de fuera: un `DIM` propio, un
+    parámetro de `FOR` o un enlace de `MATCH` no se capturan.
+  - El cierre es una estructura por lambda y un parámetro oculto detrás de los
+    declarados. Los ayudantes de `MAP` y `FILTER` con cierre se emiten aparte, y
+    solo para las combinaciones de tipos que los usan: una lambda que no captura
+    sigue siendo una función normal con su puntero y no paga una llamada
+    indirecta de más. En un lenguaje con una puerta de 12 KiB, pagar eso en todos
+    los `MAP` para algo que no se usa no sería honesto.
+  - Se guarda el valor, no una referencia, en el momento en que aparece el `MAP`.
+    Con `MAP` y `FILTER` todavía no se puede distinguir, porque el iterador se
+    consume en la misma sentencia; la estructura guarda el valor y es lo correcto
+    para cuando los cierres sean valores de primer orden.
+  - 35 programas en el corpus, 8896 <= 12288 bytes, ASan y fuzzer limpios.
+
+### Arreglado
+
+- **`verificar-ejemplos.py` decia «ok» con un FALLO cinco líneas antes.** Devolvía
+  1, asi que la puerta se paraba igual, pero quien leyera el final de la salida se
+  quedaba con la última línea. Ahora el «ok» solo se imprime si no falló nada, y
+  en caso contrario dice cuántos de cuántos ejemplos fallaron.
+
+### Añadido
+
 - **Lo que hace falta para que Hixean se encuentre y se vea al compartir el
   enlace.** Cuatro paginas con `canonical`, Open Graph completo y `twitter:card`;
   un JSON-LD `SoftwareSourceCode` en el indice; `sitemap.xml` y `robots.txt`; un

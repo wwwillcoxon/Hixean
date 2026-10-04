@@ -117,6 +117,12 @@ def main(rutas, solo_check):
     if total == 0:
         print("FALLO: no se encontro ningun ejemplo que comprobar")
         return 1
+    # El «ok» solo si no fallo nada. Imprimirlo con fallos delante es peor que no
+    # imprimirlo: el que lee el final de la salida se queda con la ultima linea,
+    # y era «ok» con un FALLO cinco lineas antes.
+    if fallos:
+        print("FALLO: %d de %d ejemplos no dan lo que dice el documento" % (fallos, total))
+        return 1
     print("ok     %d ejemplos de Hixean en %s dan su salida real" % (total, ", ".join(rutas)))
     return 1 if fallos else 0
 

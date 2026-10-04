@@ -7,6 +7,10 @@
 typedef struct {
     HxTy *from;
     HxTy *to;
+    /* Hubo al menos un MAP de este par cuya lambda capturaba. Con esto se emite el
+       ayudante con cierre solo para los pares que lo necesitan: el resto sigue con
+       el ayudante sin indirecta de mas. */
+    int capta;
 } HxIterMap;
 
 typedef struct {
@@ -28,6 +32,10 @@ typedef struct {
     int iter_n; /* contador global de variables de iterador por funcion */
     /* tipos de elemento usados por iteradores, para generar sus ayudantes */
     HX_VEC_ANON(HxTy) iter_elems;
+    /* paralelo a iter_elems: si ese elemento necesita el FILTER con cierre. Sin
+       esto habria que emitir el ayudante con cierre para todos los FILTER, y cada
+       uno son unas lineas que un programa sin lambdas capturadoras no necesita. */
+    char *iter_caps;
     /* tipos interiores de los MAYBE usados, para generar un typedef por tipo */
     HX_VEC_ANON(const char *) maybe_inners;
     /* pares (valor, MAYBE resultante) de cada m.Map(f), para el ayudante */
@@ -51,6 +59,9 @@ typedef struct {
     int epilogue_stack[16];
     int epilogue_depth;
     HxStmtVec *match_cases;
+    /* La lambda que se esta emitiendo, para saber que nombres se leen del cierre
+       en vez de ser variables suyas. NULL fuera de una lambda. */
+    struct HxFunc *cur_lambda;
 } HxEmit;
 
 static const char *hx_c_ty(HxEmit *e, HxTy *t) {
@@ -1165,7 +1176,9 @@ static void hx_emit_array_member(HxEmit *e, HxExpr *x, HxBuf *b) {
 }
 
 static void hx_iter_note_elem(HxEmit *e, HxTy *t);
-static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to);
+static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to, int capta);
+static void hx_iter_note_cap_elem(HxEmit *e, HxTy *t);
+static struct HxFunc *hx_fn_de_mapa(HxEmit *e, HxExpr *x);
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
 static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b);
 static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name);
@@ -1540,7 +1553,24 @@ static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {
     free(inner.data);
 }
 
+/* Si el identificador es una captura de la lambda que se esta emitiendo, se lee
+   del cierre. La busqueda va sobre e->cur_lambda->captures y no sobre el ambito
+   porque en este punto el verificador ya no esta: aqui solo queda la lista que
+   el verificador computo. */
+static int hx_indice_captura(HxEmit *e, HxSym name) {
+    if (!e->cur_lambda) return -1;
+    for (int i = 0; i < e->cur_lambda->captures.len; i++)
+        if (e->cur_lambda->captures.data[i].name == name) return i;
+    return -1;
+}
+
 static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
+    int cap = hx_indice_captura(e, x->path.parts.data[0].name);
+    if (cap >= 0) {
+        hx_buf_printf(b, "cap->f%d", cap);
+        for (int i = 1; i < pre; i++) hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
+        return;
+    }
     if (x->deref) hx_buf_printf(b, "(*hx_v_%s)", hx_sym_str(x->path.parts.data[0].name));
     else hx_buf_printf(b, "hx_v_%s", hx_sym_str(x->path.parts.data[0].name));
     for (int i = 1; i < pre; i++) hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
@@ -1758,10 +1788,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_buf_str(b, ")");
                 break;
             }
-            if (x->deref) hx_buf_printf(b, "(*hx_v_%s)", hx_sym_str(x->path.parts.data[0].name));
-            else hx_buf_printf(b, "hx_v_%s", hx_sym_str(x->path.parts.data[0].name));
-            for (int i = 1; i < pre; i++)
-                hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
+            /* Pasa por hx_expr_base y no por aquí: es el sitio donde se decide si
+               un nombre se lee de una variable o del cierre de la lambda, y
+               duplicar la emisión es la forma de que las dos se desincronicen. */
+            hx_expr_base(e, x, pre, b);
             break;
         }
         case EX_CALL: {
@@ -2887,9 +2917,23 @@ static void hx_emit_decls(HxEmit *e, HxModule *m) {
 }
 
 static void hx_emit_param_list(HxEmit *e, struct HxFunc *f, HxBuf *b);
+static const char *hx_cap_nombre(HxEmit *e, struct HxFunc *f, char *buf, size_t cap);
+static void hx_iter_mapcap_helpers(HxBuf *b, const char *ct, const char *tag, const char *ct2,
+                                   const char *tag2);
+static void hx_iter_filtercap_helpers(HxBuf *b, const char *ct, const char *tag);
 
 static void hx_emit_func(HxEmit *e, struct HxFunc *f) {
     HxBuf *b = &e->out;
+    char capbuf[128];
+    struct HxFunc *prev_lambda = e->cur_lambda;
+    /* Una lambda con capturas necesita su estructura delante, porque la firma la
+       nombra. Los campos van en el orden en que el verificador los decidio y las
+       referencias se numeran igual, asi que el orden importa: si se reordenaran,
+       un cap->f0 leeria otro valor sin que nada se quejara. */
+    /* La estructura ya se emitio antes, junto a las declaraciones adelantadas del
+       punto de entrada: aqui solo hay que decir que esta lambda lee del cierre. */
+    (void)capbuf;
+    e->cur_lambda = f->captures.len > 0 ? f : NULL;
     hx_buf_printf(b, "%s%s hx_call_%s(", (f->is_export || f->is_instance) ? "" : "static ",
 
                   hx_c_ty(e, f->ret), hx_sym_str(f->name));
@@ -2951,6 +2995,10 @@ static void hx_emit_func(HxEmit *e, struct HxFunc *f) {
     e->epilogue = -1;
     e->ret_is_result = 0;
     hx_buf_str(b, "}\n\n");
+    /* Al salir, la lambda se ha acabado: las variables que le siguen vuelven a ser
+       las suyas. Sin esto, una funcion normal que venga despues leeria sus
+       variables del cierre de la anterior. */
+    e->cur_lambda = prev_lambda;
 }
 
 /* Los ayudantes de MAP dependen del par (origen, resultado); los de FILTER y
@@ -2980,6 +3028,66 @@ static void hx_iter_map_helpers(HxBuf *b, const char *ct, const char *tag, const
                   "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_map_%s_to_%s; "
                   "return it;\n}\n",
                   tag, tag2);
+}
+
+/* Los mismos ayudantes que hx_iter_map_helpers, pero con el cierre. Son
+ * helpers aparte y no una bandera: un MAP sin capturas no debe pagar una llamada
+ * indirecta de mas por algo que no usa, y en un lenguaje con una puerta de 12 KiB
+ * eso no es una preocupacion estetica. */
+static void hx_iter_mapcap_helpers(HxBuf *b, const char *ct, const char *tag, const char *ct2,
+                                   const char *tag2) {
+    hx_buf_printf(b, "typedef struct { hx_iter src; void *f; void *cap; } hx_iter_st_mapc_%s_to_%s;\n",
+                  tag, tag2);
+    hx_buf_printf(b, "static inline int32_t hx_iter_paso_mapc_%s_to_%s(void *st, void *out) {\n",
+                  tag, tag2);
+    hx_buf_printf(b, "  hx_iter_st_mapc_%s_to_%s *s = (hx_iter_st_mapc_%s_to_%s *)st;\n", tag,
+                  tag2, tag, tag2);
+    hx_buf_printf(b, "  %s v;\n", ct);
+    hx_buf_str(b, "  if (!s->src.paso(s->src.estado, &v)) return 0;\n");
+    /* El cierre va el ultimo porque es eso lo que dice la firma de la lambda:
+       los parametros declarados primero y el cierre detras. Si se invirtiera, el
+       programa no fallaria al compilar: el cast lo tapa todo y el fallo sale como
+       un Segment fault con los argumentos cambiados de sitio. */
+    hx_buf_printf(b, "  *(%s *)out = ((%s (*)(%s, void *))s->f)(v, s->cap);\n", ct2, ct2, ct);
+    hx_buf_str(b, "  return 1;\n}\n");
+    hx_buf_printf(b,
+                  "static inline hx_iter hx_iter_mapcap_%s_to_%s(hx_arena *a, hx_iter src, "
+                  "void *f, void *cap) {\n",
+                  tag, tag2);
+    hx_buf_printf(b,
+                  "  hx_iter_st_mapc_%s_to_%s *s = (hx_iter_st_mapc_%s_to_%s *)"
+                  "hx_arena_alloc(a, sizeof(*s));\n",
+                  tag, tag2, tag, tag2);
+    hx_buf_str(b, "  s->src = src; s->f = f; s->cap = cap;\n");
+    hx_buf_printf(b,
+                  "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_mapc_%s_to_%s; "
+                  "return it;\n}\n",
+                  tag, tag2);
+}
+
+static void hx_iter_filtercap_helpers(HxBuf *b, const char *ct, const char *tag) {
+    hx_buf_printf(b, "typedef struct { hx_iter src; void *f; void *cap; } hx_iter_st_filtc_%s;\n",
+                  tag);
+    hx_buf_printf(b, "static inline int32_t hx_iter_paso_filtc_%s(void *st, void *out) {\n", tag);
+    hx_buf_printf(b, "  hx_iter_st_filtc_%s *s = (hx_iter_st_filtc_%s *)st;\n", tag, tag);
+    hx_buf_printf(b, "  %s v;\n", ct);
+    hx_buf_str(b, "  while (s->src.paso(s->src.estado, &v)) {\n");
+    hx_buf_printf(b, "    if (((int32_t (*)(%s, void *))s->f)(v, s->cap)) { *(%s *)out = v; return 1; }\n",
+                  ct, ct);
+    hx_buf_str(b, "  }\n  return 0;\n}\n");
+    hx_buf_printf(b,
+                  "static inline hx_iter hx_iter_filtercap_%s(hx_arena *a, hx_iter src, "
+                  "void *f, void *cap) {\n",
+                  tag);
+    hx_buf_printf(b,
+                  "  hx_iter_st_filtc_%s *s = (hx_iter_st_filtc_%s *)hx_arena_alloc(a, "
+                  "sizeof(*s));\n",
+                  tag, tag);
+    hx_buf_str(b, "  s->src = src; s->f = f; s->cap = cap;\n");
+    hx_buf_printf(b,
+                  "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_filtc_%s; "
+                  "return it;\n}\n",
+                  tag);
 }
 
 static void hx_iter_filter_helpers(HxBuf *b, const char *ct, const char *tag) {
@@ -3067,18 +3175,46 @@ static void hx_iter_note_elem(HxEmit *e, HxTy *t) {
     HX_VEC_PUSH(e->iter_elems, *copy);
 }
 
-static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to) {
+/* Marca que un FILTER de este tipo de elemento necesita el ayudante con cierre. */
+static void hx_iter_note_cap_elem(HxEmit *e, HxTy *t) {
+    for (int i = 0; i < e->iter_elems.len; i++) {
+        if (!hx_ty_equal(&e->iter_elems.data[i], t)) continue;
+        e->iter_caps = (char *)hx_arena_realloc_tmp(e->iter_caps, (size_t)e->iter_elems.len);
+        e->iter_caps[i] = 1;
+        return;
+    }
+}
+
+static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to, int capta) {
     for (int i = 0; i < e->iter_maps.len; i++)
         if (hx_ty_equal(e->iter_maps.data[i].from, from) &&
-            hx_ty_equal(e->iter_maps.data[i].to, to))
+            hx_ty_equal(e->iter_maps.data[i].to, to)) {
+            if (capta) e->iter_maps.data[i].capta = 1;
             return;
+        }
     if (e->iter_maps.len >= 32) return;
     HxIterMap m;
+    m.capta = capta;
     m.from = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
     m.to = (HxTy *)hx_arena_calloc(e->arena, sizeof(HxTy));
     *m.from = *from;
     *m.to = *to;
     HX_VEC_PUSH(e->iter_maps, m);
+}
+
+/* La funcion que se le pasa a un nodo MAP o FILTER: la FUNC literal, o la FUNC de
+   nivel superior que nombra el camino. Es la misma pregunta que se hace al emitir
+   la llamada, y se hace aqui otra vez para que el registro de tipos y la llamada no
+   puedan discrepar: si uno dijera que no captura y el otro que si, el ayudante
+   generado no existiria y el fallo sale como «invalid initializer» sin pistas. */
+static struct HxFunc *hx_fn_de_mapa(HxEmit *e, HxExpr *x) {
+    if (!x || x->kind != EX_CALL || x->call.args.len != 1) return NULL;
+    HxExpr *farg = x->call.args.data[0].value;
+    if (farg->kind == EX_FUNC && farg->lit) return farg->lit;
+    if (farg->kind == EX_PATH && farg->path.parts.len)
+        return hx_find_func_named(
+            e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
+    return NULL;
 }
 
 /* Registra los tipos de una cadena de iteradores antes de escribir el
@@ -3095,10 +3231,14 @@ static void hx_iter_note_chain(HxEmit *e, HxExpr *x) {
         HxTy *from =
             x->recv && x->recv->ty && x->recv->ty->kind == TY_ITER ? x->recv->ty->elem : NULL;
         if (!hx_ascii_casecmp(nm, "Map")) {
+            struct HxFunc *fn = hx_fn_de_mapa(e, x);
+            int capta = fn && fn->captures.len > 0;
             if (from) hx_iter_note_elem(e, from);
             if (elem) hx_iter_note_elem(e, elem);
-            if (from && elem) hx_iter_note_map(e, from, elem);
+            if (from && elem) hx_iter_note_map(e, from, elem, capta);
         } else if (from) {
+            struct HxFunc *fn = hx_fn_de_mapa(e, x);
+            if (fn && fn->captures.len > 0 && from) hx_iter_note_cap_elem(e, from);
             hx_iter_note_elem(e, from);
         }
         hx_iter_note_chain(e, x->recv);
@@ -3175,15 +3315,48 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
     if (farg->kind == EX_FUNC && farg->lit) fn = farg->lit;
     else if (farg->kind == EX_PATH && farg->path.parts.len)
         fn = hx_find_func_named(e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
+    int es_map = !hx_ascii_casecmp(nm, "Map");
+    int capta = fn && fn->captures.len > 0;
+    char capbuf[128];
+
+    /* Se avisa de que tipo necesita el ayudante con cierre. El par (origen,
+       resultado) se registra aqui y no antes porque es el unico sitio donde se
+       sabe si la lambda de este MAP concreto captura. */
+    if (capta) {
+        if (es_map && t && out_t) hx_iter_note_map(e, t, out_t, 1);
+        else if (!es_map && t) hx_iter_note_cap_elem(e, t);
+    }
+
+    if (capta) {
+        /* El cierre se construye aqui, con el valor que tienen las variables de
+           fuera en este momento. Copiar y no referenciar es lo que deja que el
+           bucle que creo la lambda siga su camino sin que el valor cambie debajo:
+           dos MAP del mismo dato con la misma lambda capturan cada uno lo que
+           valia cuando se construyeron, no el del ultimo. */
+        hx_cap_nombre(e, fn, capbuf, sizeof capbuf);
+        hx_buf_printf(&e->out, "struct %s hxcap_%s = { ", capbuf, hx_sym_str(fn->name));
+        for (int i = 0; i < fn->captures.len; i++) {
+            if (i) hx_buf_str(&e->out, ", ");
+            /* El valor se copia por su nombre: alqui sigue siendo una variable de
+               la funcion que contiene la llamada, y ahi se llama hx_v_<nombre>. */
+            hx_buf_printf(&e->out, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
+        }
+        hx_buf_str(&e->out, " };\n");
+    }
+    /* El nombre del ayudante: hx_iter_map_<origen>_to_<resultado>, y el mismo con
+       «cap» en medio cuando la lambda captura. El guion bajo va aqui porque el
+       nombre lo compone hx_iter_suffix. */
     hx_buf_printf(&e->out, "hx_iter %s = hx_iter_%s_", out,
-                  !hx_ascii_casecmp(nm, "Map") ? "map" : "filter");
+                  es_map ? (capta ? "mapcap" : "map") : (capta ? "filtercap" : "filter"));
     hx_iter_suffix(e, t, &e->out);
-    if (!hx_ascii_casecmp(nm, "Map")) {
+    if (es_map) {
         hx_buf_str(&e->out, "_to_");
         hx_iter_suffix(e, out_t, &e->out);
     }
-    hx_buf_printf(&e->out, "(&%s, %s, (void *)&hx_call_%s);\n", arena, inner,
+    hx_buf_printf(&e->out, "(&%s, %s, (void *)&hx_call_%s", arena, inner,
                   hx_sym_str(fn ? fn->name : "?"));
+    if (capta) hx_buf_printf(&e->out, ", &hxcap_%s", hx_sym_str(fn->name));
+    hx_buf_str(&e->out, ");\n");
 }
 
 static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
@@ -3195,6 +3368,8 @@ static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
         hx_ty_mangle(m->from, c1, sizeof(c1));
         hx_ty_mangle(m->to, c2, sizeof(c2));
         hx_iter_map_helpers(&e->out, hx_c_ty(e, m->from), c1, hx_c_ty(e, m->to), c2);
+        if (m->capta)
+            hx_iter_mapcap_helpers(&e->out, hx_c_ty(e, m->from), c1, hx_c_ty(e, m->to), c2);
         if (m->from->kind == TY_FLOAT) continue; /* MAP de FLOAT usa el mismo ayudante */
     }
     for (int i = 0; i < e->iter_elems.len; i++) {
@@ -3202,6 +3377,8 @@ static void hx_emit_iter_helpers(HxEmit *e, HxBuf *b) {
         char tag[96];
         hx_ty_mangle(t, tag, sizeof(tag));
         hx_iter_filter_helpers(&e->out, hx_c_ty(e, t), tag);
+        if (e->iter_caps && e->iter_caps[i])
+            hx_iter_filtercap_helpers(&e->out, hx_c_ty(e, t), tag);
         hx_iter_take_helpers(&e->out, tag);
     }
     b->data = e->out.data;
@@ -3313,9 +3490,24 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     hx_buf_str(b, "#endif\n");
 }
 
+/* El nombre de la estructura de captura de una lambda. Una por lambda: dos
+   lambdas con las mismas capturas no comparten estructura, y compartirla seria un
+   ahorro de bytes a cambio de que una escritura en un cierre se vieran las dos. */
+static const char *hx_cap_nombre(HxEmit *e, struct HxFunc *f, char *buf, size_t cap) {
+    snprintf(buf, cap, "hx_cap_%s", hx_sym_str(f->name));
+    (void)e;
+    return buf;
+}
+
+/* La funcion que se pasa a MAP o FILTER cambia de firma si la lambda captura: el
+ * cierre va delante. Sin esto habria que pasar un argumento de mas siempre, y en
+ * un lenguaje con una puerta de 12 KiB cada llamada indirecta de mas cuenta. */
 static void hx_emit_param_list(HxEmit *e, struct HxFunc *f, HxBuf *b) {
+    char capbuf[128];
+    int con_cap = f->captures.len > 0;
     if (!f->params.len) {
-        hx_buf_str(b, "void");
+        if (con_cap) hx_buf_printf(b, "struct %s *cap", hx_cap_nombre(e, f, capbuf, sizeof capbuf));
+        else hx_buf_str(b, "void");
         return;
     }
     for (int j = 0; j < f->params.len; j++) {
@@ -3323,6 +3515,8 @@ static void hx_emit_param_list(HxEmit *e, struct HxFunc *f, HxBuf *b) {
         hx_buf_printf(b, "%s hx_v_%s", hx_c_ty(e, f->params.data[j].ty),
                       hx_sym_str(f->params.data[j].name));
     }
+    if (con_cap)
+        hx_buf_printf(b, ", struct %s *cap", hx_cap_nombre(e, f, capbuf, sizeof capbuf));
 }
 
 
@@ -3644,6 +3838,21 @@ int hx_emit_unit(HxArena *arena, HxUnit *unit, HxEmitOptions *opt) {
     if (entry) {
         HxBuf saved_f = e.out;
         e.out = main_b;
+        /* Las estructuras de captura van antes que las declaraciones adelantadas:
+           la firma de una lambda con capturas las nombra, y hx_main usa el cierre
+           antes de que ninguna lambda este definida. C emittedas donde nace la
+           lambda, es decir despues, y el C no compila. */
+        for (int i = 0; i < unit->n_lambdas; i++) {
+            struct HxFunc *lam = unit->lambdas[i];
+            if (lam->module != entry->index || !lam->captures.len) continue;
+            char capbuf[128];
+            hx_cap_nombre(&e, lam, capbuf, sizeof capbuf);
+            hx_buf_printf(&e.out, "struct %s {\n", capbuf);
+            for (int j = 0; j < lam->captures.len; j++)
+                hx_buf_printf(&e.out, "  %s f%d; /* %s */\n", hx_c_ty(&e, lam->captures.data[j].ty),
+                              j, hx_sym_str(lam->captures.data[j].name));
+            hx_buf_str(&e.out, "};\n");
+        }
         for (int i = 0; i < unit->n_lambdas; i++)
             if (unit->lambdas[i]->module == entry->index)
                 hx_buf_printf(&e.out, "static %s hx_call_%s(",

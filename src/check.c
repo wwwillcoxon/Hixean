@@ -1,4 +1,5 @@
 #include "hx/check.h"
+#include <stdlib.h> /* free */
 #include "hx/mono.h"
 #include "hx/parse.h"
 
@@ -18,6 +19,12 @@ enum { SK_VAR, SK_FUNC, SK_TYPE, SK_CONST, SK_MODULE, SK_TRAIT };
 typedef struct HxScope {
     HX_VEC_ANON(HxSymEntry) syms;
     struct HxScope *parent;
+    /* De que FUNCTION es este ambito. NULL en el ambito del modulo, y es
+       justamente la distincion que decide si un nombre es libre en una lambda: lo
+       que se encuentra en un ambito con dueno NULL es global y se ve sin
+       capturar; lo que se encuentra en uno con dueno distinto de la lambda es de
+       fuera y hay que meterlo en el cierre. */
+    struct HxFunc *owner;
 } HxScope;
 
 typedef struct {
@@ -1754,6 +1761,272 @@ static struct HxFunc *hx_find_func_named(HxChecker *c, HxSym name) {
 /* Devuelve 1 si el nombre es un constructor o adaptador de iteradores. */
 /* Una FUNC(...) ... END se comprueba como cualquier otra funcion pero con un
    nombre generado, porque en C no hay valores de funcion. */
+/* --- captura de lambda ----------------------------------------------------
+ *
+ * Antes, una FUNC se elevaba a una funcion del modulo y se tomaba como puntero a
+ * funcion, asi que no podia leer nada de quien la creo. Eso obliga a que cualquier
+ * filtro que dependa del dato se escriba con una funcion de nivel superior y con
+ * parametros de mas, y es justo el caso que la gente quiere poder escribir.
+ *
+ * El recorrido de abajo mira la FUNC ya comprobada y busca identificadores sueltos
+ * que resuelven en un ambito de otra FUNCTION. Los globales no cuentan: se ven sin
+ * capturar, y meterlos en el cierre solo haria el cierre mas grande.
+ *
+ * Solo mira lo que se puede citar con nombre. DIM, parametros y enlaces de MATCH
+ * declaran algo nuevo dentro de la lambda, asi que no son libres aunque se llamen
+ * como una variable de fuera; para eso el recorrido lleva su propia pila de
+ * nombres ocultos. */
+
+typedef struct {
+    HxChecker *c;
+    HxFunc *lambda;  /* la lambda que se esta analizando */
+    HxScope *scope;  /* el ambito de la lambda: lo de aqui NO es libre */
+    struct HxCapture *caps;
+    int n_caps, cap_caps;
+    HxSym ocultos[64];
+    int n_ocultos;
+    /* En la pre-pasada solo se recogen declaraciones y no se busca nada libre. Sin
+       ella, un DIM de la lambda solo tapaba su propia sentencia, cuando en
+       realidad las DIM se declaran antes que el cuerpo y son visibles en todo el:
+       `DIM x AS INT = 7` seguido de `RETURN x + q` seguia capturando la x de
+       fuera. */
+    int solo_declaraciones;
+} HxFreeVars;
+
+/* Un identificador, con el ambito donde se encontro: esa es la distincion entre
+ * «mio» y «de fuera». hx_lookup ya recorria la cadena pero sin decir donde. */
+static HxSymEntry *hx_lookup_en(HxScope *c, HxSym name, HxScope **donde) {
+    for (HxScope *s = c; s; s = s->parent) {
+        for (int i = s->syms.len - 1; i >= 0; i--)
+            if (s->syms.data[i].name == name) {
+                if (donde) *donde = s;
+                return &s->syms.data[i];
+            }
+    }
+    if (donde) *donde = NULL;
+    return NULL;
+}
+
+/* Los simbolos del AST van tal y como se escribieron y los de los ambitos van
+ * plegados, asi que comparar los dos en crudo solo funciona por casualidad: con
+ * un nombre todo en minusculas —suelo, limite— coincide, y con «limite_» con
+ * tilde o con mayusculas no. Una lambda que tapa una variable de fuera con su
+ * propio DIM se capturaba igualmente por ese motivo. */
+static int hx_mismo_nombre(HxFreeVars *v, HxSym a, HxSym b) {
+    return hx_fold(v->c, a) == hx_fold(v->c, b);
+}
+
+static int hx_oculto(HxFreeVars *v, HxSym name) {
+    for (int i = 0; i < v->n_ocultos; i++)
+        if (hx_mismo_nombre(v, v->ocultos[i], name)) return 1;
+    return 0;
+}
+
+static void hx_ocultar(HxFreeVars *v, HxSym name) {
+    if (!name || hx_oculto(v, name)) return;
+    if (v->n_ocultos < (int)(sizeof v->ocultos / sizeof v->ocultos[0]))
+        v->ocultos[v->n_ocultos++] = name;
+}
+
+static void hx_nota_libre(HxChecker *c, HxFreeVars *v, HxSym name, HxTy *ty, int is_const) {
+    if (!name || !ty || hx_oculto(v, name)) return;
+    for (int i = 0; i < v->n_caps; i++)
+        if (hx_mismo_nombre(v, v->caps[i].name, name))
+            return; /* dos veces el mismo no se captura dos */
+    if (v->n_caps == v->cap_caps) {
+        v->cap_caps = v->cap_caps ? v->cap_caps * 2 : 8;
+        v->caps = (struct HxCapture *)hx_arena_realloc_tmp(
+            v->caps, sizeof(struct HxCapture) * (size_t)v->cap_caps);
+    }
+    HxCapture cap = {name, ty, is_const};
+    v->caps[v->n_caps++] = cap;
+    (void)c;
+}
+
+static void hx_expr_libre(HxFreeVars *v, HxExpr *x);
+
+static void hx_pat_libre(HxFreeVars *v, HxPattern *p) {
+    if (!p) return;
+    hx_expr_libre(v, p->lit);
+    hx_expr_libre(v, p->lo);
+    hx_expr_libre(v, p->hi);
+    /* los enlaces declaran un nombre nuevo dentro de la lambda: se ocultan
+       mientras se recorre su cuerpo para que no salgan como libres */
+    int antes = v->n_ocultos;
+    if (p->kind == PAT_BIND || p->kind == PAT_CONSTRUCTOR) {
+        hx_ocultar(v, p->name);
+        hx_ocultar(v, p->ctor);
+    }
+    for (int i = 0; i < p->args.len; i++) hx_pat_libre(v, &p->args.data[i]);
+    if (!v->solo_declaraciones) v->n_ocultos = antes;
+}
+
+static void hx_expr_libre(HxFreeVars *v, HxExpr *x) {
+    if (!x) return;
+    switch (x->kind) {
+        case EX_PATH:
+            if (x->path.parts.len == 1) {
+                HxSym name = x->path.parts.data[0].name;
+                HxScope *donde = NULL;
+                HxSymEntry *e = hx_lookup_en(v->scope, name, &donde);
+                /* Se captura lo que pertenece a otra FUNCTION. Lo del ambito de la
+                   propia lambda y lo del modulo no: lo primero es suyo, lo segundo
+                   se ve sin cerrar nada. */
+                if (!v->solo_declaraciones && e && donde && donde->owner
+                    && donde->owner != v->lambda
+                    && (e->kind == SK_VAR || e->kind == SK_CONST))
+                    hx_nota_libre(NULL, v, name, x->ty, e->kind == SK_CONST);
+            }
+            hx_expr_libre(v, x->path.base);
+            return;
+        case EX_CALL:
+            hx_expr_libre(v, x->call.callee);
+            for (int i = 0; i < x->call.args.len; i++)
+                hx_expr_libre(v, x->call.args.data[i].value);
+            return;
+        case EX_BIN:
+            hx_expr_libre(v, x->bin.lhs);
+            hx_expr_libre(v, x->bin.rhs);
+            return;
+        case EX_UN:
+            hx_expr_libre(v, x->un.operand);
+            return;
+        case EX_MEMBER:
+            hx_expr_libre(v, x->member.base);
+            return;
+        case EX_INDEX:
+            hx_expr_libre(v, x->index.base);
+            hx_expr_libre(v, x->index.start);
+            hx_expr_libre(v, x->index.end);
+            return;
+        case EX_TRY:
+            hx_expr_libre(v, x->try.inner);
+            return;
+        case EX_VEC:
+            for (int i = 0; i < x->vec.len; i++) hx_expr_libre(v, x->vec.items[i]);
+            return;
+        case EX_FUNC:
+            /* una FUNC dentro de una FUNC se comprueba por su cuenta y arrastra sus
+               propias capturas: no se mezclan */
+            return;
+        default:
+            hx_expr_libre(v, x->recv);
+            for (int i = 0; i < x->n_segs; i++)
+                if (x->segs) hx_expr_libre(v, x->segs[i].hole);
+            return;
+    }
+}
+
+static void hx_stmts_libre(HxFreeVars *v, HxStmt *sts, int n);
+
+static void hx_stmt_libre(HxFreeVars *v, HxStmt *s) {
+    if (!s) return;
+    /* Lo que declara una sentencia se oculta solo durante su cuerpo: un DIM dentro
+       de un IF no tapa el mismo nombre mas alla del IF. En la pre-pasada no se
+       restaura nada, porque es la coleta de todo lo que declara la lambda entera —
+       si se restaurara, cada sentencia se deshiciera a si misma al terminar. */
+    int antes = v->n_ocultos;
+    switch (s->kind) {
+        case ST_EXPR:
+            hx_expr_libre(v, s->expr);
+            break;
+        case ST_PRINT:
+            for (int i = 0; i < s->print.items.len; i++)
+                hx_expr_libre(v, s->print.items.data[i].expr);
+            break;
+        case ST_ASSIGN:
+            hx_expr_libre(v, s->assign.target);
+            hx_expr_libre(v, s->assign.value);
+            break;
+        case ST_DIM:
+            hx_expr_libre(v, s->dim.init);
+            hx_ocultar(v, s->dim.name);
+            break;
+        case ST_CONST:
+            hx_expr_libre(v, s->konst.value);
+            hx_ocultar(v, s->konst.name);
+            break;
+        case ST_IF:
+            hx_expr_libre(v, s->if_.cond);
+            hx_stmts_libre(v, s->if_.then.data, s->if_.then.len);
+            for (int i = 0; i < s->if_.n_elifs; i++) {
+                hx_expr_libre(v, s->if_.elifs[i].cond);
+                hx_stmts_libre(v, s->if_.elifs[i].then.data, s->if_.elifs[i].then.len);
+            }
+            hx_stmts_libre(v, s->if_.else_.data, s->if_.else_.len);
+            break;
+        case ST_WHILE:
+            hx_expr_libre(v, s->while_.cond);
+            hx_stmts_libre(v, s->while_.body.data, s->while_.body.len);
+            break;
+        case ST_FOR:
+            hx_expr_libre(v, s->for_.start);
+            hx_expr_libre(v, s->for_.end);
+            hx_expr_libre(v, s->for_.step);
+            hx_ocultar(v, s->for_.var);
+            hx_stmts_libre(v, s->for_.body.data, s->for_.body.len);
+            break;
+        case ST_FORIN:
+            hx_expr_libre(v, s->forin_.iter);
+            hx_ocultar(v, s->forin_.var);
+            hx_stmts_libre(v, s->forin_.body.data, s->forin_.body.len);
+            break;
+        case ST_RETURN:
+        case ST_EXIT:
+            hx_expr_libre(v, s->ret.value);
+            break;
+        case ST_BLOCK:
+            hx_stmts_libre(v, s->block.stmts.data, s->block.stmts.len);
+            break;
+        case ST_ARENA:
+            hx_ocultar(v, s->arena.name);
+            hx_stmts_libre(v, s->arena.body.data, s->arena.body.len);
+            break;
+        case ST_DEFER:
+            hx_stmts_libre(v, s->inner.data, s->inner.len);
+            break;
+        case ST_MATCH:
+            hx_expr_libre(v, s->match.subject);
+            hx_ocultar(v, s->match.subject_name);
+            for (int i = 0; i < s->match.cases.len; i++) {
+                HxMatchCase *mc = &s->match.cases.data[i];
+                hx_pat_libre(v, mc->pattern);
+                hx_expr_libre(v, mc->guard);
+                hx_stmts_libre(v, mc->body.data, mc->body.len);
+            }
+            hx_stmts_libre(v, s->match.else_body.data, s->match.else_body.len);
+            break;
+        default:
+            break;
+    }
+    if (!v->solo_declaraciones) v->n_ocultos = antes;
+}
+
+static void hx_stmts_libre(HxFreeVars *v, HxStmt *sts, int n) {
+    for (int i = 0; i < n; i++) hx_stmt_libre(v, &sts[i]);
+}
+
+/* Rellena f->captures y devuelve cuantas hay. */
+static int hx_detectar_capturas(HxChecker *c, struct HxFunc *f, HxScope *ambito) {
+    HxFreeVars v;
+    memset(&v, 0, sizeof v);
+    v.c = c;
+    v.lambda = f;
+    v.scope = ambito;
+    /* Pre-pasada: todo lo que la lambda declara por su cuenta. Los parametros
+       tambien, y los enlaces de MATCH y las variables de FOR, que aparecen en el
+       cuerpo y no como DIM. */
+    v.solo_declaraciones = 1;
+    for (int i = 0; i < f->params.len; i++) hx_ocultar(&v, f->params.data[i].name);
+    hx_stmts_libre(&v, f->body.data, f->body.len);
+    /* Segunda pasada: ahora si, a buscar lo que usa de fuera. */
+    v.solo_declaraciones = 0;
+    hx_stmts_libre(&v, f->body.data, f->body.len);
+    for (int i = 0; i < v.n_caps; i++) HX_VEC_PUSH(f->captures, v.caps[i]);
+    if (v.caps) free(v.caps);
+    return v.n_caps;
+}
+
 static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e) {
     if (!e->lit) return NULL;
     struct HxFunc *f = e->lit;
@@ -1771,7 +2044,13 @@ static struct HxFunc *hx_lambda_func(HxChecker *c, HxExpr *e) {
         c->unit->lambdas[c->unit->n_lambdas++] = f;
     }
     hx_resolve_signature(c, f);
+    HxScope *ambito_lambda = c->scope;
     hx_check_func(c, f);
+    /* La captura se detecta despues de comprobar el cuerpo, que es cuando ya se
+       sabe que nombres existen y de quien son. El ambito que se guarda es el de
+       antes de entrar en la lambda: es el de fuera, y por eso lo de dentro no se
+       cuenta como libre. */
+    hx_detectar_capturas(c, f, ambito_lambda);
     return f;
 }
 
@@ -2834,6 +3113,7 @@ static void hx_analyze_tail(struct HxFunc *f) {
 
 static void hx_check_func(HxChecker *c, struct HxFunc *f) {
     hx_scope_push(c);
+    c->scope->owner = f;
     struct HxFunc *prev = c->cur_func;
     HxTy *prev_ret = c->ret_ty;
     int prev_loop = c->loop_depth;
@@ -3109,6 +3389,17 @@ int hx_check_unit(HxUnit *unit) {
             }
         }
         hx_scope_push(&c);
+        /* El ambito del cuerpo del programa es una FUNCTION tan legitima como
+           cualquiera: sin dueño, una lambda de nivel superior no distinguiria «una
+           DIM de aqui» de «una CONST del modulo» y no capturaria nada. Se le da un
+           dueño sintetico — el punto de entrada, que se emite como hx_main — y asi
+           todo lo que la lambda use de aqui se captura igual que dentro de una
+           FUNCTION. El dueño no se guarda en las capturas (solo el nombre y el
+           tipo), asi que da igual que sea un invento. */
+        {
+            struct HxFunc *entrada = (struct HxFunc *)hx_arena_calloc(c.arena, sizeof(struct HxFunc));
+            c.scope->owner = entrada;
+        }
         hx_decl_locals(&c, &mod->top);
         c.body_hoisted = 1;
         hx_check_body(&c, &mod->top);
