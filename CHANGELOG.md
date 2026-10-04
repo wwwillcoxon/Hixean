@@ -75,6 +75,12 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     `build/hxc.exe`. CreateProcess lo resuelve solo, asi que el corpus no se
     enteraba, pero cualquier cosa que abra el fichero por su cuenta si. Ahora hay
     un sitio unico que sabe como se llama el binario de verdad: `tools/hxc_bin.py`.
+  - Tambien lo dice la salida de hxc, que es el mismo problema un nivel mas
+    arriba: el CRT convertia sus `\n` en CRLF y las consultas `.hxq` devolvian
+    lineas que se veian iguales y no lo eran.
+  - Las consultas `.hxq` no encontraban nada en Windows: el listado de directorios
+    filtraba siempre los directorios, y la consulta necesita el nombre del
+    directorio para entrar en `<ruta>/<nombre>/<nombre>.hxk`.
   - Un fallo que solo sea de fin de linea se dice: `hxc test` compara normalizando
     el CRLF y, si es eso, dice cuantos CRLF sobran y avisa de la causa probable. Sin
     eso decia que esperado y obtenido eran el mismo texto, que no es informacion.

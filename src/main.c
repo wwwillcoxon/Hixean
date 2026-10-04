@@ -33,6 +33,8 @@ static HxArena g_arena_scratch;
 #endif
 #include <windows.h> /* CreateProcess y companhia, para hx_exec */
 #include <process.h>
+#include <fcntl.h> /* _O_BINARY y _setmode: la salida de hxc va en binario */
+#include <io.h>
 #define HX_EXEC(p, a) _spawnvp(_P_WAIT, p, a)
 #define HX_STRCPY_STRDUP(d, s) ((d) = _strdup(s))
 #else
@@ -1023,6 +1025,17 @@ static int kit_gates_set;
 int main(int argc, char **argv) {
     if (argc > 0 && argv[0]) g_argv0 = argv[0];
     hx_arena_init(&g_arena_scratch);
+    /* La salida de hxc tambien va en binario en Windows. Es el mismo problema que
+       el runtime de los programas, un nivel mas arriba: el CRT convierte \n en
+       CRLF, y aqui eso rompe a todo lo que compare lo que dice hxc con un fichero
+       —las consultas .hxq, el --json que leen las herramientas, los codigos de
+       diagnostico— porque las dos mitades de la comparacion dejan de ser los mismos
+       bytes. Por el numero de descriptor y no por _fileno(stdout): en un proceso
+       sin consola _fileno puede dar -1 y el _setmode falla sin avisar. */
+#if defined(_WIN32)
+    _setmode(1, _O_BINARY);
+    _setmode(2, _O_BINARY);
+#endif
     if (argc < 2) {
         hx_usage();
         return 2;
