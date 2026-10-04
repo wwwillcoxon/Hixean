@@ -15,6 +15,8 @@ import subprocess
 import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+from hxc_bin import HXC, encuentra  # en Windows es build/hxc.exe
 PAGINA = os.path.join(RAIZ, "site", "index.html")
 
 fallos = []
@@ -27,7 +29,7 @@ def comprobar(condicion, mensaje):
 
 def pruebas_del_corpus():
     salida = subprocess.run(
-        [os.path.join(RAIZ, "build", "hxc"), "test"]
+        [HXC, "test"]
         + sorted(glob.glob(os.path.join(RAIZ, "tests", "*.hxt")))
         + sorted(glob.glob(os.path.join(RAIZ, "tests", "*.hxe"))),
         capture_output=True,
@@ -61,15 +63,18 @@ def codigos_diagnostico():
 
 
 def tamano_hola_mundo():
+    """Los bytes de hola mundo, que solo tienen un sentido en Linux: son los del
+    perfil freestanding, y en macOS y Windows el perfil por defecto es libc y el
+    binario pesa otra cosa. Por eso hay una puerta de 12 KiB solo en Linux."""
     salida = subprocess.run(
-        [os.path.join(RAIZ, "build", "hxc"), "build", "examples/hola.hxe", "-o", "build/hola"],
+        [HXC, "build", "examples/hola.hxe", "-o", "build/hola"],
         capture_output=True,
         text=True,
         cwd=RAIZ,
     )
     if salida.returncode != 0:
         return 0
-    return os.path.getsize(os.path.join(RAIZ, "build", "hola"))
+    return os.path.getsize(encuentra(os.path.join(RAIZ, "build", "hola")))
 
 
 def main():
@@ -83,9 +88,20 @@ def main():
     for m in re.finditer(r'<b data-cuenta="(\d+)"[^>]*>([^<]*)</b><span>([^<]*)</span>', pagina):
         cifras[int(m.group(1))] = (m.group(2).strip(), m.group(3).strip())
 
+    # Las cifras del sitio son de Linux por definicion: los bytes de hola mundo son
+    # los del perfil freestanding, y el corpus entero con red es el que corre ahi.
+    # En macOS y Windows el perfil por defecto es libc, el binario pesa otra cosa y
+    # el corpus omite la prueba de sockets, asi que comparar 8896 y 34 alli seria
+    # estar midiendo otra cosa. Lo que si se comprueba en todas partes es lo que no
+    # depende del sistema: codigos, ADR y hitos.
+    solo_linux = sys.platform.startswith("linux")
+
     # 1. bytes de hola mundo
-    bytes_reales = tamano_hola_mundo()
-    if 8896 in cifras:
+    bytes_reales = tamano_hola_mundo() if solo_linux else 0
+    if not solo_linux:
+        comprobar(True, "")
+        print("ok     los bytes de hola mundo y las pruebas del corpus se comprueban solo en Linux")
+    elif 8896 in cifras:
         puesto, etiqueta = cifras[8896]
         comprobar(
             re.fullmatch(r"8[\s\u00a0]896", puesto) is not None and bytes_reales == 8896,
@@ -95,10 +111,15 @@ def main():
         comprobar(False, "la pagina ya no muestra la cifra de bytes de hola mundo")
 
     # 2. pruebas del corpus: la cifra se busca por su etiqueta, porque cambia
-    pruebas, fallos_pruebas = pruebas_del_corpus()
-    comprobar(fallos_pruebas == 0, "el corpus tiene %d fallos" % fallos_pruebas)
+    if solo_linux:
+        pruebas, fallos_pruebas = pruebas_del_corpus()
+        comprobar(fallos_pruebas == 0, "el corpus tiene %d fallos" % fallos_pruebas)
+    else:
+        pruebas, fallos_pruebas = 0, 0
     de_pruebas = [(v, e) for v, e in cifras.values() if "pruebas" in e]
-    if de_pruebas:
+    if not solo_linux:
+        comprobar(True, "")
+    elif de_pruebas:
         puesto = de_pruebas[0][0]
         esperado = "%d/%d" % (pruebas, pruebas)
         comprobar(
@@ -168,10 +189,15 @@ def main():
         print("FALLO:", f)
     if fallos:
         return 1
-    print(
-        "ok     las cifras de la pagina cuadran: %d bytes, %d/%d pruebas, %d codigos, %d ADR, %d hitos"
-        % (bytes_reales, pruebas, pruebas, codigos, adr, max(hitos) + 1)
-    )
+    comun = "%d codigos, %d ADR, %d hitos" % (codigos, adr, max(hitos) + 1)
+    if solo_linux:
+        print("ok     las cifras de la pagina cuadran: %d bytes, %d/%d pruebas, %s"
+              % (bytes_reales, pruebas, pruebas, comun))
+    else:
+        # nada de «0 bytes» y «0/0 pruebas»: no se han medido, y decirlo asi que
+        # se midieron seria la misma mentira que este script existe para quitar
+        print("ok     las cifras de la pagina cuadran (las de bytes y pruebas son "
+              "de Linux): %s" % comun)
     return 0
 
 

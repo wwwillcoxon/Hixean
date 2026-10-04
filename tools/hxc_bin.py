@@ -1,52 +1,45 @@
 #!/usr/bin/env python3
-"""Where the compiler actually is.
+"""Donde esta el compilador de verdad.
 
-In Windows the linker adds .exe, so build/hxc is build/hxc.exe. Every script that
-opens the binary with os.path.exists therefore has to look for both, and there are
-four of them plus the C side and the vscode smoke test. This is the one place that
-knows, so the others ask here instead of repeating the guess.
+En Windows el enlazador anade .exe, asi que build/hxc es build/hxc.exe. Todo lo
+que abre el binario con os.path.exists tiene que buscar los dos nombres, y hay
+varios sitios: el runtime de los ejemplos, el verificador de la guia, el de las
+cifras, el test de la extension y hxc size en C. Este es el unico que lo sabe.
 
-    from hxc_bin import HXC   # the path to run
-    from hxc_bin import existe # True if it is there
+    from hxc_bin import HXC       # la ruta que hay que ejecutar
+    from hxc_bin import existe    # True si hxc esta compilado
 
-The name of the runnable path does not change on Windows: CreateProcess and the
-posix shell both append .exe on their own. What changes is what is on disk, which
-is what this module is about.
+El nombre que se ejecuta no cambia: CreateProcess y las shells de Unix anaden .exe
+por su cuenta. Lo que cambia es lo que hay en disco, que es de lo que va esto.
 """
 import os
 import sys
 
-_AQUI = os.path.dirname(os.path.abspath(__file__))
-RAIZ = os.path.dirname(_AQUI)
+_RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _candidatos(base):
-    """The names the binary can have, in the order they should be preferred."""
-    yield base
-    if not base.endswith(".exe"):
-        yield base + ".exe"
+def _con_exe(base):
+    return base if base.endswith(".exe") else base + ".exe"
 
 
-def _base(raiz):
-    return os.path.join(raiz, "build", "hxc")
+def encuentra(base):
+    """El nombre que existe de verdad. Si no existe ninguno, devuelve el que se le
+    pidio, para que quien lo llame pueda imprimir algo util."""
+    return base if os.path.exists(base) else _con_exe(base)
 
 
-def encuentra(raiz=RAIZ):
-    """The first name that actually exists, or the base if none does, so callers
-    can print something meaningful."""
-    for nombre in _candidatos(_base(raiz)):
-        if os.path.exists(nombre):
-            return nombre
-    return _base(raiz)
+HXC = encuentra(os.path.join(_RAIZ, "build", "hxc"))
 
 
-def existe(raiz=RAIZ):
-    return encuentra(raiz) != _base(raiz) or os.path.exists(_base(raiz))
-
-
-HXC = encuentra()
+def existe():
+    """El compilador esta compilado. Sin argumento, porque casi siempre lo que se
+    pregunta es justo eso."""
+    return os.path.exists(HXC)
 
 if __name__ == "__main__":
-    # handy from a shell when a tool complains that hxc is missing
-    print(HXC if existe() else "", end="" if existe() else "\n")
-    sys.exit(0 if existe() else 1)
+    # util desde una shell cuando una herramienta dice que falta hxc
+    if existe():
+        print(HXC)
+        sys.exit(0)
+    print("no esta ni build/hxc ni build/hxc.exe; ejecuta make", file=sys.stderr)
+    sys.exit(1)
