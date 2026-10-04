@@ -19,6 +19,12 @@ El perfil por defecto es `freestanding`: syscalls directas, sin libc, memoria de
 la arena y del sistema. Un hola mundo ocupa 8 896 bytes. El perfil `libc` existe
 para cuando quieras `stdio` y compañía.
 
+> Un detalle que conviene saber antes que nada: **el perfil `freestanding` es de
+> Linux x86-64**. Emite su propio `_start` y llama al kernel con `asm` en línea, así
+> que el binario que produce solo arranca en Linux x86-64. El compilador en sí se
+> compila en macOS y Windows, y allí el perfil por defecto es `libc`, que sí produce
+> programas ejecutables. La puerta de 12 KiB se mide solo en Linux por eso mismo.
+
 > Los ejemplos de este documento se compilan y se ejecutan. El script
 > `tools/verificar-guia.py` los saca del texto, los compila con `hxc` y compara
 > su salida con la que dice aquí. Si un ejemplo dejara de compilar, la puerta

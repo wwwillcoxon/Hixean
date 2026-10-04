@@ -204,6 +204,11 @@ NEXT i</code></pre>
 <pre><code class="lang-bash">./build/hxc run hola.hxe                  # freestanding: sin libc
 ./build/hxc run hola.hxe --libc           # main() y printf del sistema</code></pre>
       </figure>
+      <p><strong>El perfil <code>freestanding</code> solo genera programas de
+      Linux x86-64</strong>: trae su propio <code>_start</code> y llama al kernel
+      con <code>asm</code> en línea. En macOS y Windows, donde el compilador también
+      se compila, el perfil por defecto pasa a ser <code>libc</code>. La puerta de
+      los 12 KiB se mide en Linux, que es donde ese runtime existe.</p>
       <p>El perfil <code>freestanding</code> trae su propio <code>_start</code>,
       sus <code>memcpy</code>/<code>memset</code> y sus syscalls directas. En
       <code>libc</code> el programa es un programa normal de C, lo que ayuda

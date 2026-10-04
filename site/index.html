@@ -397,6 +397,22 @@ NEXT i</code></pre>
 9</pre></div>
     </figure>
 
+    <h3>En qué sistemas funciona</h3>
+    <p>El <strong>compilador</strong> se compila en los seis sistemas que publica la
+    release: Linux, macOS y Windows, en x64 y arm64. Compilarlo no cuesta nada:
+    es C11 sin dependencias.</p>
+    <p>Los <strong>programas que genera</strong> son otra cosa, y conviene decirlo
+    claro: con el perfil <code>freestanding</code>, que es el que trae su propio
+    <code>_start</code> y habla con el kernel directamente, el binario que sale es
+    de <strong>Linux x86-64</strong>. En macOS y Windows el perfil por defecto es
+    <code>libc</code>, y ahí los programas sí se ejecutan. Por eso la puerta de los
+    12 KiB se mide solo en Linux.</p>
+    <p>No es una manera de esconderlo: está en la
+    <a href="../docs/grammar.md">gramática</a>, en el
+    <a href="../docs/manual.html">manual</a> y en la
+    <a href="guia-programar.pdf">guía</a>, en el mismo sitio donde se explica qué
+    perfil hace cada cosa.</p>
+
     <h3>Dónde queda instalado, y cómo se quita</h3>
     <pre class="copiable"><code>prefijo/
   bin/hxc          el compilador
@@ -429,7 +445,7 @@ NEXT i</code></pre>
     <div class="rejilla dos">
       <article class="tarjeta enlace-tarjeta">
         <h3><a href="guia-programar.pdf">Guía de programación en PDF</a></h3>
-        <p>Un documento de 18 páginas para tener al lado: variables, funciones,
+        <p>Un documento de 19 páginas para tener al lado: variables, funciones,
         registros, operadores, cadenas, arreglos, <code>MATCH</code>, genéricos,
         iteradores y vectores. Todos sus ejemplos se compilan y se ejecutan en la
         puerta del repositorio.</p>

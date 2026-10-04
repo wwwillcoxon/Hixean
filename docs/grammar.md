@@ -369,6 +369,13 @@ import     = "IMPORT" , ruta , [ "AS" ident ] ;
 
 Cada módulo compila a su propia unidad de traducción (`build/gen/<modulo>.c`)
 que incluye `_runtime.h`, las cabeceras de los módulos que importa y la suya.
+> **El perfil `freestanding` es de Linux x86-64.** Emite su propio `_start` y sus
+> syscalls con `asm` en línea, así que los programas que produce solo arrancan en
+> Linux x86-64. El compilador en sí se compila en macOS y Windows, y allí el perfil
+> por defecto pasa a ser `libc`. Poner `--freestanding` a mano sigue funcionando
+> como generador de código, pero el binario que sale no se ejecuta en esos
+> sistemas, y la puerta de 12 KiB solo se mide en Linux por eso.
+
 El punto de entrada genera `_entry.c` y el perfil `freestanding` añade
 `_rtmem.c` con `memcpy`/`memset`. Cada objeto se guarda en
 `build/obj/<hash>.o`, donde el hash cubre la fuente C, la versión de `hxc`, el

@@ -1140,7 +1140,19 @@ int main(int argc, char **argv) {
             HxBuildOpts to;
             memset(&to, 0, sizeof(to));
             to.optimize = 2;
+            /* El perfil freestanding emite _start y syscalls de Linux x86-64:
+               en macOS y Windows los programas que genera no arrancan. Asi que el
+               corpus se pasa por libc alli, que es lo que si funciona, y el
+               freestanding se comprueba donde puede: en la puerta de tamano, que
+               solo tiene sentido en Linux. Decirlo en voz alta evita que alguien
+               lea «34 pruebas bien» y piense que el perfil por defecto esta
+               probado en tres sistemas. */
+            /* el mismo criterio que el perfil por defecto */
+#ifdef __linux__
             to.profile = HX_PROFILE_FREESTANDING;
+#else
+            to.profile = HX_PROFILE_LIBC;
+#endif
             /* hxc test tambien necesita la ruta de la biblioteca: un programa
                del corpus puede importar un modulo de lib/hixean */
             hx_preparar_busqueda(ts, &to);
@@ -1172,7 +1184,13 @@ int main(int argc, char **argv) {
                 fail++;
             }
         }
-        printf("%d pruebas, %d fallos\n", pass + fail, fail);
+#ifdef __linux__
+        printf("%d pruebas, %d fallos (perfil freestanding)\n", pass + fail, fail);
+#else
+        /* el perfil por defecto solo produce programas ejecutables en Linux */
+        printf("%d pruebas, %d fallos (perfil libc: el freestanding emite syscalls "
+               "de Linux)\n", pass + fail, fail);
+#endif
         return fail ? 1 : 0;
     }
     if (!strcmp(cmd, "help") || !strcmp(cmd, "--help") || !strcmp(cmd, "-h")) {
@@ -1185,7 +1203,16 @@ int main(int argc, char **argv) {
     HxBuildOpts o;
     memset(&o, 0, sizeof(o));
     o.optimize = 2;
+    /* El perfil por defecto es el que produce programas que arrancan en la
+       maquina donde se compila. El runtime freestanding usa _start y syscalls de
+       Linux x86-64, asi que fuera de Linux lo por defecto es libc; pedir
+       freestanding a mano sigue funcionando, y ahi es lo que se comprueba con
+       la puerta de tamano. */
+#ifdef __linux__
     o.profile = HX_PROFILE_FREESTANDING;
+#else
+    o.profile = HX_PROFILE_LIBC;
+#endif
     int emit_only = 0;
     int run_mode = 0;
     for (int i = 2; i < argc; i++) {

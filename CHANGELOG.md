@@ -116,6 +116,17 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **El perfil `freestanding` solo genera programas de Linux x86-64**, y hasta
+  ahora no lo decía nadie en ninguna parte. Emite su propio `_start` y sus
+  syscalls con `asm` en línea, así que el binario no arranca en macOS ni en
+  Windows aunque el compilador se compile allí. Ahora:
+  - El perfil por defecto es el que produce programas ejecutables en la máquina
+    donde se compila: `freestanding` en Linux, `libc` en los otros dos, y el
+    corpus dice con cuál ha pasado en vez de decir solo que pasó.
+  - La puerta de 12 KiB, que mide el perfil `freestanding`, se mide solo en Linux.
+  - Está escrito en la gramática, en el manual, en la guía y en la página del
+    sitio. Es la afirmación más fuerte que hacía el proyecto («una release», «seis
+    plataformas») y era a medias: el compilador sí, los programas no.
 - **Los parámetros con valor por defecto llegan al C.** Se declaraban, el
   verificador contaba cuáles eran obligatorios y dejaba pasar la llamada con menos
   argumentos... y el emisor escribía una llamada con N argumentos para una función

@@ -13,9 +13,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: compilar hxc
         run: make
+      # El corpus pasa en los tres: el perfil por defecto es freestanding en Linux
+      # y libc en macOS y Windows, porque el runtime freestanding usa _start y
+      # syscalls de Linux x86-64 y sus programas no arrancan en los otros dos.
       - name: corpus de pruebas
         run: make test
-      - name: puerta de tamano (12 KiB, perfil freestanding)
+      # La puerta de tamano mide el perfil freestanding, que solo se puede generar
+      # y ejecutar en Linux. En macOS y Windows no es que falle: es que no hay un
+      # binario que medir.
+      - name: puerta de tamano (12 KiB, perfil freestanding, solo Linux)
+        if: runner.os == 'Linux'
         run: make size
 
   ejemplos:
