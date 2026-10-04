@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Directorio — Hixean</title>
+<meta name="description" content="Todo lo que hay para leer sobre Hixean: guía de programación en PDF, manual interactivo, gramática, ADR, changelog, código y la lista corta de lo que el lenguaje no tiene.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="cabecera" id="arriba">
+  <div class="barra-aviso" role="progressbar" aria-label="Progreso de lectura" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progreso"></div>
+  <nav class="barra">
+    <a class="marca" href="index.html">Hixean</a>
+    <a class="saltar" href="#contenido">Saltar al contenido</a>
+    <div class="enlaces" id="enlaces">
+      <a href="index.html#instalar">Instalar</a>
+      <a href="index.html#lenguaje">Ejemplos</a>
+      <a href="guia-programar.pdf">PDF</a>
+      <a href="terminos.html">Términos</a>
+    </div>
+    <div class="acciones">
+      <button id="tema" class="boton icono" type="button" aria-pressed="true" title="Cambiar entre tema oscuro y claro">
+        <span class="luna" aria-hidden="true"></span>
+        <span class="texto">Oscuro</span>
+      </button>
+      <a class="boton" href="https://github.com/wwwillcoxon/Hixean">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="contenido">
+
+  <section class="hero">
+    <div class="hero-texto">
+      <p class="kicker">directorio</p>
+      <h1>Todo lo que hay<br>para leer</h1>
+      <p class="lema">Cinco documentos y el código. Cada uno dice para qué sirve,
+      así que no hace falta leerlos todos: si quieres instalar, empieza por la
+      <a href="index.html#instalar">guía de instalación</a>; si quieres
+      aprender, por la <a href="guia-programar.pdf">guía en PDF</a>.</p>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>Para empezar</h2>
+    <div class="rejilla dos">
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="index.html#instalar">Guía de instalación</a></h3>
+        <p>Qué hace falta, los cuatro caminos para instalarlo, cómo comprobar que
+        ha ido bien y qué hacer cuando algo falla. Es el primer documento que
+        hay que leer.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="guia-programar.pdf">Cómo programar en Hixean (PDF)</a></h3>
+        <p>Un documento de 18 páginas para tener al lado. Variables, funciones,
+        registros, operadores, cadenas, arreglos, <code>MATCH</code>, genéricos,
+        iteradores, vectores y una lista de lo que el lenguaje no tiene. Los
+        24 ejemplos se compilan y se ejecutan en la puerta del repositorio, y 20
+        de ellos comprueban también su salida.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="../docs/manual.html">Manual interactivo</a></h3>
+        <p>El mismo lenguaje explained con búsqueda, tema oscuro, código
+        copiable y la tabla de diagnósticos filtrable por familia. Un solo
+        archivo, sin JavaScript de terceros.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="terminos.html">Términos</a></h3>
+        <p>Licencia, aviso legal, privacidad y uso aceptable. Sin letra pequeña:
+        cuatro apartados y lo que significan.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>Para cuando ya sabes lo básico</h2>
+    <div class="rejilla dos">
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="../docs/grammar.md">Gramática</a></h3>
+        <p>La especificación completa: léxico, sentencias, tipos, paquetes,
+        capacidades, y los 88 códigos de error con lo que significa cada uno.
+        Cuando el manual no llega, esto sí.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="https://github.com/wwwillcoxon/Hixean/tree/main/docs/adr">Quince decisiones de diseño</a></h3>
+        <p>Las ADR, con las alternativas descartadas y el porqué de cada una. Para
+        saber qué se consideró y por qué no, este es el sitio: por qué el registro
+        de paquetes es un directorio, por qué no hay herencia y por qué
+        <code>MAT4</code> no tiene nombre.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="https://github.com/wwwillcoxon/Hixean/blob/main/CHANGELOG.md">Changelog</a></h3>
+        <p>Qué cambió en cada versión y, sobre todo, qué cambió de forma
+        incompatible. Los códigos <code>E0xxx</code> son parte de la API, así que
+        sus cambios van declarados como tales.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="https://github.com/wwwillcoxon/Hixean">Código</a></h3>
+        <p>El compilador entero en C11, sin dependencias, y las puertas que
+        comprueban que funciona: corpus, <code>make size</code>, sanitizers,
+        fuzzer y cuatro verificadores. Lo que está en el repositorio es lo que
+        está probado.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>Y una lista de lo que no hay</h2>
+    <p class="intro">Está aquí porque un directorio que solo lista lo que existe
+    se lee como el directorio de otro lenguaje. La lista corta, y el porqué de
+    cada cosa, están en el capítulo final de la
+    <a href="guia-programar.pdf">guía</a>.</p>
+    <ul class="faltan">
+      <li><strong>Sin recolector de basura.</strong> La memoria sale de arenas, de
+      <code>mmap</code> o de lo que reserves tú. <code>ToString()</code> no
+      libera.</li>
+      <li><strong>Sin <em>unwinding</em> ni excepciones.</strong> Los errores son
+      <code>Result</code>, y lo que no se comprueba aborta con un código de
+      salida.</li>
+      <li><strong>Las <code>FUNC</code> no capturan.</strong> No hay valores de
+      función en el lenguaje: una lambda que intente leer una variable de su
+      alrededor da un error, no un fallo raro.</li>
+      <li><strong>Sin rebanadas</strong> (<code>a[1..3]</code> da <code>E0210</code>),
+      <strong>sin camino de vuelta de texto a número</strong>
+      (<code>s.ToInt()</code> todavía no existe) y <strong>sin <code>audio</code> ni
+      <code>gpu</code></strong>, porque no hay dispositivo ni compilador por
+      objetivo con el que probarlos.</li>
+      <li><strong>El compilador se compila en C, no en Hixean.</strong>
+      El auto-hospedaje es un objetivo, no un hecho.</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <p>Hixean 0.2.0 · licencia MIT · <span id="anio">2026</span> ·
+  <a href="https://github.com/wwwillcoxon/Hixean">código</a> ·
+  <a href="https://github.com/wwwillcoxon/Hixean/issues">problemas</a></p>
+  <p class="fino">Escrito a mano en HTML, CSS y JavaScript. Sin fuentes
+  remotas, sin analítica, sin nada que cargar de fuera.</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

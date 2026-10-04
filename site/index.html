@@ -15,12 +15,12 @@
     <a class="marca" href="#arriba">Hixean</a>
     <a class="saltar" href="#contenido">Saltar al contenido</a>
     <div class="enlaces" id="enlaces">
-      <a href="#lenguaje">Lenguaje</a>
+      <a href="#instalar">Instalar</a>
       <a href="#lenguaje">Ejemplos</a>
       <a href="#gates">Puertas</a>
       <a href="#historia">Historia</a>
-      <a href="#instalar">Instalar</a>
-      <a href="#documentos">Documentos</a>
+      <a href="directorio.html">Directorio</a>
+      <a href="terminos.html">Términos</a>
     </div>
     <div class="acciones">
       <button id="tema" class="boton icono" type="button" aria-pressed="true" title="Cambiar entre tema oscuro y claro">
@@ -36,21 +36,22 @@
 
   <section class="hero">
     <div class="hero-texto">
-      <p class="kicker">lenguaje compilado · estático · sin VM</p>
-      <h1>Un lenguaje que<br>no esconde lo que hace</h1>
-      <p class="lema">Hixean compila a C11 y deja que el compilador del sistema
-      termine el trabajo. Sin máquina virtual, sin <em>unwinding</em>, sin tabla
-      de personalidades. <code>PRINT "Hola mundo"</code> sigue siendo un programa
-      válido: es la evolución moderna de QBasic.</p>
+      <p class="kicker">guía de instalación · 0.2.0</p>
+      <h1>Instálalo y escribe<br>tu primer programa</h1>
+      <p class="lema">Hixean es un compilador a C11 sin dependencias: se compila
+      con un <code>gcc</code> o un <code>clang</code> y a partir de ahí compila
+      programas a binarios nativos. Un <code>PRINT "Hola mundo"</code> ocupa 8 896
+      bytes. Esta página es la guía de instalación completa; el resto de
+      documentos están en el <a href="directorio.html">directorio</a>.</p>
       <div class="llamadas">
-        <a class="boton grande" href="#instalar">Instalar</a>
-        <a class="boton grande fantasma" href="../docs/manual.html">Leer el manual</a>
+        <a class="boton grande" href="#instalar">Empezar por aquí</a>
+        <a class="boton grande fantasma" href="guia-programar.pdf">Guía en PDF</a>
       </div>
       <ul class="cifras">
         <li><b data-cuenta="8896">8 896</b><span>bytes, hola mundo</span></li>
         <li><b data-cuenta="34" data-sufijo="/34">34/34</b><span>pruebas del corpus</span></li>
         <li><b data-cuenta="0">0</b><span>dependencias fuera de C11</span></li>
-        <li><b data-cuenta="84">84</b><span>códigos de diagnóstico</span></li>
+        <li><b data-cuenta="88">88</b><span>códigos de diagnóstico</span></li>
       </ul>
     </div>
     <div class="hero-codigo">
@@ -319,33 +320,134 @@ $ ./aritmetica
 
   <section id="instalar" class="bloque">
     <h2>Instalarlo</h2>
-    <div class="rejilla dos">
-      <article class="tarjeta">
-        <h3>Sin instalar nada</h3>
-        <pre class="copiable"><code>git clone https://github.com/wwwillcoxon/Hixean
-cd Hixean &amp;&amp; make &amp;&amp; make test</code></pre>
-        <p>Cero dependencias. Requiere un compilador de C11.</p>
-      </article>
-      <article class="tarjeta">
-        <h3>Desde la release</h3>
-        <pre class="copiable"><code>curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
+    <p class="intro">Cuatro caminos. El primero es el que funciona siempre y es el
+    que se usa para trabajar; los otros dos son para quien ya tiene el binario y
+    quiere que se lo busque el sistema.</p>
+
+    <h3>Qué hace falta antes</h3>
+    <ul class="faltan">
+      <li>Un compilador de C11: <code>gcc</code> o <code>clang</code>. Nada más.
+      En Linux hace falta <code>make</code>; en Windows, el <em>clang</em> de
+      LLVM o <em>Build Tools</em> de Visual Studio.</li>
+      <li>Nada de lo que suelen pedir los lenguajes: no hay <code>python</code> de
+      por medio para compilar, ni <code>node</code>, ni gestor de paquetes. El
+      <code>Makefile</code> llama a <code>cc</code> y ya.</li>
+      <li>Para las seis plataformas de la release, <code>git</code>: la instalación
+      por red usa la API de GitHub.</li>
+    </ul>
+
+    <h3>1 · Desde el código, que es el camino serio</h3>
+    <pre class="copiable"><code>git clone https://github.com/wwwillcoxon/Hixean
+cd Hixean
+make
+make test</code></pre>
+    <p><code>make test</code> compila el corpus entero y compara su salida con la
+    esperada. Si pone <em>0 fallos</em>, el compilador funciona en esta máquina.
+    <code>make size</code> comprueba lo otro: que hola mundo sigue entrando en 12 KiB.</p>
+
+    <h3>2 · Desde la release, que es el camino corto</h3>
+    <pre class="copiable"><code>curl -fsSL https://raw.githubusercontent.com/wwwillcoxon/Hixean/main/tools/install.sh | sh
 hxc version</code></pre>
-        <p>Verifica el SHA256 y aborta si no coincide.</p>
-      </article>
-      <article class="tarjeta">
-        <h3>Homebrew</h3>
-        <pre class="copiable"><code>brew install --formula=packaging/homebrew/hixean.rb</code></pre>
-        <p>La fórmula está en el repositorio, con el <code>sha256</code> sin
-        rellenar: funciona cuando la release exista. Publicarla en un tap es un
-        paso pendiente, no una instrucción que hoy funcione.</p>
-      </article>
-      <article class="tarjeta">
-        <h3>winget</h3>
-        <pre class="copiable"><code># aún no está en winget-pkgs
+    <p>El instalador descarga el tarball de la última release para tu plataforma,
+    comprueba el <code>SHA256</code> contra <code>SHA256SUMS</code> y <strong>aborta
+    si no coincide</strong>. Sin ese <code>SHASUM</code> no instala nada. Para
+    instalar una versión concreta: <code>sh tools/install.sh 0.2.0</code>. Y para
+    instalar sin red, un tarball local: <code>sh tools/install.sh ./hixean-0.2.0-linux-x64.tar.gz</code>.</p>
+
+    <h3>3 · Homebrew</h3>
+    <pre class="copiable"><code>brew install --formula=packaging/homebrew/hixean.rb</code></pre>
+    <p>La fórmula está en el repositorio, con el <code>sha256</code> sin
+    rellenar: funciona cuando la release exista. Publicarla en un tap es un
+    paso pendiente, no una instrucción que hoy funcione.</p>
+
+    <h3>4 · winget</h3>
+    <pre class="copiable"><code># aún no está en winget-pkgs
 winget show wwwillcoxon.Hixean</code></pre>
-        <p>El manifiesto está en <code>packaging/winget/</code> y falta enviarlo
-        a <code>microsoft/winget-pkgs</code>. Cuando esté,
-        <code>winget install wwwillcoxon.Hixean</code>.</p>
+    <p>El manifiesto está en <code>packaging/winget/</code> y falta enviarlo
+    a <code>microsoft/winget-pkgs</code>. Cuando esté,
+    <code>winget install wwwillcoxon.Hixean</code>.</p>
+
+    <h3>Comprobar que ha ido bien</h3>
+    <p>Un <code>hxc version</code> que no responde, o un programa que no compila,
+    casi siempre son la misma cosa: el <code>hxc</code> que se está ejecutando no
+    es el que crees. Estos tres pasos lo aclaran.</p>
+    <pre class="copiable"><code>hxc version
+printf 'PRINT "Va"
+' > v.hxe
+hxc run v.hxe
+hxc check v.hxe</code></pre>
+    <p><code>hxc run</code> compila y ejecuta. <code>hxc check</code> solo
+    comprueba y no genera nada, y es la mitad de rápido: para un programa que no
+    va a ejecutar todavía, es la forma de trabajar.</p>
+
+    <h3>El primer programa</h3>
+    <p>Un archivo <code>.hxe</code> es un programa ejecutable. El punto de entrada
+    no se declara: es el archivo. No hay <code>main</code>, ni
+    <code>using</code>, ni punto y coma obligatorio.</p>
+    <figure class="ventana">
+      <figcaption><span class="puntos"><i></i><i></i><i></i></span>hola.hxe</figcaption>
+      <pre><code class="lenguaje">DIM nombre AS STRING = "mundo"
+PRINT "Hola, " ++ nombre
+FOR i = 1 TO 3
+  PRINT i * i
+NEXT i</code></pre>
+      <div class="salida"><span>salida</span><pre>Hola, mundo
+1
+4
+9</pre></div>
+    </figure>
+
+    <h3>Dónde queda instalado, y cómo se quita</h3>
+    <pre class="copiable"><code>prefijo/
+  bin/hxc          el compilador
+  lib/hixean/      la biblioteca estándar (std.texto)</code></pre>
+    <p>El compilador mira su propia biblioteca en <code>&lt;hxc&gt;/lib</code> y en
+    <code>&lt;hxc&gt;/../lib/hixean</code>, así que no hay variables de entorno que
+    configurar. Para quitarlo: borrar el prefijo. No deja nada más, porque no hay
+    registro central ni configuración en tu carpeta personal.</p>
+
+    <h3>Cuando algo falla</h3>
+    <ul class="faltan">
+      <li><strong>«no se encontró cc»</strong>: falta el compilador de C, o no está
+      en el <code>PATH</code>. En Debian y Ubuntu, <code>build-essential</code>.</li>
+      <li><strong>Un error de módulo</strong>: <code>hxc</code> busca primero en el
+      directorio del archivo, luego en <code>-I</code>, luego en
+      <code>HX_LIB</code>. Para mirar en otra parte:
+      <code>hxc build p.hxe -I ../bibliotecas</code>.</li>
+      <li><strong>Un diagnóstico que no entiendes</strong>: cada código
+      <code>E0xxx</code> tiene su fila en la
+      <a href="../docs/manual.html">tabla del manual</a>, con lo que significa y
+      qué hacer. <code>hxc check --json</code> da lo mismo en JSON para
+      herramientas.</li>
+      <li><strong>Un programa que se para</strong>: la aritmética entera de
+      <code>+</code> y <code>-</code> comprueba el desbordamiento y sale con el
+      código 70. No es un fallo del compilador: es el lenguaje diciendo que el
+      número no cabía.</li>
+    </ul>
+
+    <h3>Y después de instalar</h3>
+    <div class="rejilla dos">
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="guia-programar.pdf">Guía de programación en PDF</a></h3>
+        <p>Un documento de 18 páginas para tener al lado: variables, funciones,
+        registros, operadores, cadenas, arreglos, <code>MATCH</code>, genéricos,
+        iteradores y vectores. Todos sus ejemplos se compilan y se ejecutan en la
+        puerta del repositorio.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="../docs/manual.html">Manual interactivo</a></h3>
+        <p>Búsqueda, tema oscuro, código copiable y la tabla de diagnósticos
+        filtrable por familia. Un solo archivo, sin JavaScript de terceros.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="directorio.html">Directorio de documentos</a></h3>
+        <p>Todo lo que hay para leer, con lo que sirve cada cosa: la gramática, las
+        quince decisiones de diseño, el changelog y el código.</p>
+      </article>
+      <article class="tarjeta enlace-tarjeta">
+        <h3><a href="terminos.html">Términos</a></h3>
+        <p>Licencia, aviso legal, privacidad y uso aceptable, en una página y sin
+        letra pequeña.</p>
       </article>
     </div>
   </section>

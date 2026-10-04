@@ -935,6 +935,15 @@ static const char *HX_RT_TOSTRING =
     "  s.p = p; s.n = n;\n"
     "  return s;\n"
     "}\n"
+    "static hx_str hx_str_dup(hx_str s) {\n"
+    "  char *p = (char *)hx_raw_alloc(s.n + 1);\n"
+    "  hx_str r;\n"
+    "  if (!p) hx_panic(\"sin memoria para un texto\", sizeof(\"sin memoria para un texto\") - 1);\n"
+    "  memcpy(p, s.p, (size_t)s.n);\n"
+    "  p[s.n] = 0;\n"
+    "  r.p = p; r.n = s.n;\n"
+    "  return r;\n"
+    "}\n"
     "static hx_str hx_bool_str(hx_bool v) {\n"
     "  const char *t = v ? \"true\" : \"false\";\n"
     "  int64_t n = v ? 4 : 5;\n"
@@ -1031,6 +1040,7 @@ static const char *hx_tostring_cname(HxTy *t) {
         case TY_DURATION: return "i64_str";
         case TY_FLOAT: return "f64_str";
         case TY_BOOL: return "bool_str";
+        case TY_STRING: return "str_dup";
         default: return NULL;
     }
 }

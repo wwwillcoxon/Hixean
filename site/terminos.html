@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Términos — Hixean</title>
+<meta name="description" content="Términos de uso de Hixean: licencia MIT, aviso legal, privacidad y uso aceptable. Sin analítica, sin cookies y sin recogida de datos.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="cabecera" id="arriba">
+  <div class="barra-aviso" role="progressbar" aria-label="Progreso de lectura" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progreso"></div>
+  <nav class="barra">
+    <a class="marca" href="index.html">Hixean</a>
+    <a class="saltar" href="#contenido">Saltar al contenido</a>
+    <div class="enlaces" id="enlaces">
+      <a href="index.html#instalar">Instalar</a>
+      <a href="directorio.html">Directorio</a>
+      <a href="guia-programar.pdf">PDF</a>
+    </div>
+    <div class="acciones">
+      <button id="tema" class="boton icono" type="button" aria-pressed="true" title="Cambiar entre tema oscuro y claro">
+        <span class="luna" aria-hidden="true"></span>
+        <span class="texto">Oscuro</span>
+      </button>
+      <a class="boton" href="https://github.com/wwwillcoxon/Hixean">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="contenido">
+
+  <section class="hero">
+    <div class="hero-texto">
+      <p class="kicker">términos</p>
+      <h1>Licencia, garantía,<br>privacidad y uso</h1>
+      <p class="lema">Qué puedes hacer con este lenguaje y qué no se puede
+      hacer. Se resume en dos líneas: es software libre bajo licencia MIT, no
+      recoge nada de nadie y no garantiza nada. Las secciones siguientes
+      desarrollan esas dos líneas.</p>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <h2>1 · Licencia</h2>
+    <p>Hixean se distribuye bajo la <a href="https://opensource.org/licenses/MIT">licencia
+    MIT</a>, también para el compilador, el runtime, la biblioteca estándar, la
+    documentación y el código de esta página. El texto íntegro está en el
+    fichero <a href="https://github.com/wwwillcoxon/Hixean/blob/main/LICENSE">LICENSE</a>
+    del repositorio, y es el que manda si aquí se resume algo mal.</p>
+    <p>En resumen: puedes usarlo, modificarlo, venderlo y empaquetarlo,
+    incluso en software propietario, y no tienes que abrir nada. La única
+    obligación es conservar el aviso de copyright y el texto de la licencia.</p>
+
+    <h2>2 · Aviso legal: esto no tiene garantía</h2>
+    <p>El software se entrega <strong>tal cual</strong>, sin garantía de ningún
+    tipo, ni expresa ni implícita. Quien lo usa se responsabiliza de lo que pase
+    con sus datos y sus binarios.</p>
+    <p>Esto no es una fórmula de abogado: es una descripción honesta del estado
+    del proyecto. Un compilador de 0.x, sin pruebas de conformidad y con un
+    lenguaje que todavía no tiene captura de entornos ni rebanadas, no puede
+    prometer nada. La única garantía real es la que ve en el repositorio: una
+    puerta que corre el corpus entero, comprueba que hola mundo entra en 12 KiB y
+    pasa el fuzzer.</p>
+    <p>Los binarios que descarga <code>install.sh</code> vienen con un fichero
+    <code>SHA256SUMS</code>. El instalador lo comprueba y aborta si no
+    coincide. Verifícalo tú también si quieres: no cuesta nada.</p>
+
+    <h2>3 · Privacidad: aquí no se recoge nada</h2>
+    <ul class="faltan">
+      <li><strong>Sin analítica.</strong> Ni una. Estas páginas no cargan nada de
+      fuera: no hay Google Analytics, ni fuentes remotas, ni scripts de terceros,
+      ni píxeles.</li>
+      <li><strong>Sin cookies.</strong> El único estado que guarda el navegador es
+      el tema claro u oscuro, en el propio <code>localStorage</code> de tu
+      navegador. Se puede borrar borrando los datos del sitio.</li>
+      <li><strong>Sin formularios.</strong> No hay forma de enviar datos desde
+      aquí: ni registro, ni newsletter, ni formulario de contacto.</li>
+      <li><strong>Servido por GitHub Pages.</strong> Eso significa que GitHub ve
+      las peticiones de red que hace tu navegador, como con cualquier sitio web.
+      Eso ya no lo controla el proyecto, y conviene saberlo.</li>
+      <li><strong><code>install.sh</code> sí hace red</strong>, porque descarga el
+      tarball de la release y pide el <code>SHA256</code> a la API de GitHub.
+      Eso se lo dice a GitHub, no a este sitio, y en ningún caso envía nada de
+      tu máquina más allá de esa petición.</li>
+    </ul>
+
+    <h2>4 · Uso aceptable</h2>
+    <p>La licencia MIT no pone condiciones de uso, pero el proyecto sí tiene una
+    línea roja sobre lo que no se hace con él: <strong>no se usa para
+    malware, crack, ni para eludir medidas de seguridad de un sistema</strong>.
+    Tampoco para causar daño. Es lo mínimo para que un compilador pueda seguir
+    existiendo sin convertirse en un problema para nadie.</p>
+    <p>Cualquier otra cosa, incluido el software propietario, páginas con
+    publicidad, dispositivos o cosas que no gamble bien, se puede hacer.</p>
+
+    <h2>5 · Marcas y nombres</h2>
+    <p>«Hixean» y «hxc» son de este proyecto. Puedes hablar de ellos y usarlos
+    como nombre de un programa tuyo, pero no puedes usarlos para una distribución
+    de software que parezca oficial. El nombre <code>QBasic</code> aparece en la
+    página de inicio como referencia histórica: es de Microsoft y no implica
+    ninguna relación ni patrocinio.</p>
+
+    <h2>6 · Si esto cambia</h2>
+    <p>Estos términos cambian con el proyecto, no al revés: se actualizan en el
+    mismo commit que los cambia, así que siempre están en la versión que estás
+    leyendo. Si algún día empiezan a recoger algo, esta página lo dirá antes de
+    que lo hagan.</p>
+
+    <h2>Preguntas que suelen salir</h2>
+    <ul class="faltan">
+      <li><strong>¿Puedo usarlo en un proyecto cerrado?</strong> Sí. La MIT lo
+      permite sin condiciones.</li>
+      <li><strong>¿Puedo cambiar el lenguaje o el compilador?</strong> Sí, y no
+      hace falta pedir permiso. Solo avisa de que cambiaste algo si te parece,
+      que es cortesía, no obligación.</li>
+      <li><strong>¿Puedo publicar un compilador derivado?</strong> Sí, con otro
+      nombre si quieres. Lo único que no puedes es que parezca el oficial.</li>
+      <li><strong>Los datos de mi programa, son de alguien?</strong> Son tuyos.
+      Aquí no se recoge nada, y el programa que compiles no habla con el mundo
+      salvo que tú lo escribas.</li>
+    </ul>
+  </section>
+
+  <section class="bloque cierre">
+    <h2>Esto no es un contrato</h2>
+    <p>Una página de términos escrita a mano no es un contrato de abogados, y no
+    pretende serlo. Pretende ser una explicación clara de lo que pasa con la
+    licencia, con la garantía y con los datos, en el mismo idioma que el resto
+    del proyecto. Si algo aquí no coincide con lo que hace el código, manda el
+    código, y es un bug que hay que abrir.</p>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <p>Hixean 0.2.0 · licencia MIT · <span id="anio">2026</span> ·
+  <a href="https://github.com/wwwillcoxon/Hixean">código</a> ·
+  <a href="https://github.com/wwwillcoxon/Hixean/issues">problemas</a></p>
+  <p class="fino">Escrito a mano en HTML, CSS y JavaScript. Sin fuentes
+  remotas, sin analítica, sin nada que cargar de fuera.</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

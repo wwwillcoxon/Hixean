@@ -5,7 +5,7 @@ TYPE Resultado
   texto AS STRING
 END TYPE
 
-FUNCTION par(n AS INT) AS Result
+FUNCTION par(n AS INT) AS Result<INT, STRING>
   IF n MOD 2 == 0 THEN RETURN Ok(n)
   RETURN Err("impar")
 END FUNCTION
@@ -39,7 +39,7 @@ FUNCTION banda(c AS INT) AS STRING
 END FUNCTION
 
 FUNCTION describe(n AS INT) AS STRING
-  "AS Result sin <T,E>: el payload se deduce del Ok, no hace falta escribirlo"
+  "los dos parametros van escritos, porque si no el payload se desconoce"
   MATCH par(n)
     CASE Ok(v) WHEN v > 100 THEN
       RETURN "par grande"
@@ -50,8 +50,9 @@ FUNCTION describe(n AS INT) AS STRING
   END MATCH
 END FUNCTION
 
-FUNCTION ruta(r AS Result) AS STRING
-  "cubrir Ok y Err quita la necesidad de CASE ELSE"
+FUNCTION ruta(r AS Result<INT, STRING>) AS STRING
+  "cubrir Ok y Err quita la necesidad de CASE ELSE. El tipo entero va escrito:
+   un Result sin los dos parametros no sabe que lleva (E0219)"
   MATCH r
     CASE Ok(v) THEN
       RETURN "ok"

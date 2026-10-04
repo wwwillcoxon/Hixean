@@ -7,8 +7,8 @@ con `TARGET hixe >= 0.2`.
 
 ## [0.2.0] — 2026-10-04
 
-Veintiún hitos después de 0.1.0. Sigue siendo `0.x`: el número mayor se mueve
-cuando algo incompatible lo obliga, y esta vez lo hay.
+Veintiún hitos después de 0.1.0, más todo lo que hay debajo. Sigue siendo `0.x`:
+el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
 
 ### Cambios incompatibles
 
@@ -116,6 +116,27 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **Los parámetros con valor por defecto llegan al C.** Se declaraban, el
+  verificador contaba cuáles eran obligatorios y dejaba pasar la llamada con menos
+  argumentos... y el emisor escribía una llamada con N argumentos para una función
+  de C con N+1. `Saluda("ana")` con `saludo AS STRING = "Hola"` no compilaba.
+- **`Err("...")` como argumento.** `RETURN Err(...)` dentro de una función con
+  `Result<INT, STRING>` funciona desde hace tiempo, y pasar un `Err(...)` a una
+  función que espera ese tipo fallaba con el inútil «se esperaba Result, se
+  encontró Result». La regla que lo resolvía estaba escrita solo para el `RETURN`.
+- **`STRING.ToString()`** devuelve el mismo texto. No hace falta para nada, pero si
+  el método solo estuviera en los números, `algo.ToString()` cambiaría según el
+  tipo.
+- **Un `Result` sin los dos parámetros escritos da `E0219`** cuando `?` o `CASE
+  Ok(v)` necesitan saber la carga. Antes el `?` se quedaba sin tipo, la
+  comprobación se hacía con un tipo `NULL` (que no comprueba nada) y el C salía con
+  `hx_result r = hx_t0.i`.
+- **El sitio es una guía de instalación**, con un directorio de documentos y una
+  página de términos. Ninguna caja redondeada, y `site/test/humo.js` lo vigila.
+- **Hay una guía de programación en PDF** (18 páginas) generada con
+  `tools/generar-pdf.py`, que escribe el PDF sin dependencias: ni pandoc, ni LaTeX,
+  ni reportlab. Los 24 ejemplos del documento se compilan y se ejecutan en la
+  puerta, y 20 de ellos comprueban también su salida.
 - **`ToString()` en los números.** `PRINT 42` funciona desde el principio, pero no
   había forma de *convertir* un número en texto, así que no se podía escribir
   `"n = " ++ n.ToString()`: no había ningún camino de número a cadena. Ahora `INT`,

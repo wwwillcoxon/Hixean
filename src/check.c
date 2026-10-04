@@ -514,6 +514,10 @@ static const HxIntrin *hx_find_intrin(HxTy *recv, const char *name) {
         for (int i = 0; hx_string_intrins[i].name; i++)
             if (!hx_ascii_casecmp(hx_string_intrins[i].name, name))
                 return &hx_string_intrins[i];
+        /* ToString tambien existe en STRING, y devuelve lo mismo. No hace falta
+           para nada, pero si el metodo solo estuviera en los numeros, un
+           `algo.ToString()` tendria queChanges segun el tipo. */
+        if (!hx_ascii_casecmp(name, "ToString")) return &hx_tostring_intrin;
         return NULL;
     }
     /* ToString es el unico metodo de los escalares: sin el no hay forma de
@@ -546,6 +550,24 @@ static void hx_coerce_to(HxChecker *c, HxExpr **slot, HxTy *to, HxSpan sp,
             hx_error(c->diags, (*slot)->span, "E0211",
                      "NIL solo vale para un MAYBE, y aqui se esperaba '%s'",
                      hx_ty_name(to));
+        (*slot)->ty = to;
+        return;
+    }
+    /* `Err("x")` no sabe cual es el tipo del Ok: lo deduce de la firma. En un
+       RETURN lo resolvia el propio caso de ST_RETURN, y solo alli: pasar un
+       Err(...) como argumento a una funcion que espera Result<INT, STRING>
+       fallaba con el inútil «se esperaba Result, se encontró Result». Aqui se
+       resuelve para cualquier sitio donde se espera un Result con los dos
+       parametros escritos. */
+    if ((*slot)->is_err_ctor && hx_ty_is_result((*slot)->ty) && hx_ty_is_result(to) &&
+        to->n_targs) {
+        hx_coerce(c, (*slot)->ty->inner, to->inner, (*slot)->span, what);
+        (*slot)->payload_ty = to->elem;
+        (*slot)->ty = to;
+        return;
+    }
+    if ((*slot)->is_ok_ctor && hx_ty_is_result((*slot)->ty) && hx_ty_is_result(to) &&
+        to->n_targs && hx_ty_equal((*slot)->ty->elem, to->elem)) {
         (*slot)->ty = to;
         return;
     }
@@ -1252,6 +1274,25 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                          : NULL,
                      NULL);
     }
+    /* Los argumentos que faltan se rellenan con el valor por defecto de la
+       firma. El verificador ya contaba cuales son obligatorios y por eso
+       dejaba pasar la llamada con menos argumentos, pero la llamada se quedaba
+       corta: el C recibia N de los N+1 parametros y no compilaba. El relleno va
+       aqui, antes de comprobar los tipos, que para entonces ya son todos. */
+    if (given < f->params.len) {
+        /* sin tocar cap: el vector crece solo, y tocarlo a mano rompe el
+           bookkeeping de hx_vec_grow */
+        while (e->call.args.len < f->params.len) {
+            HxArg vacio;
+            memset(&vacio, 0, sizeof(vacio));
+            HX_VEC_PUSH(e->call.args, vacio);
+        }
+        for (int i = given; i < f->params.len; i++) {
+            HxExpr *por_defecto = f->params.data[i].default_value;
+            e->call.args.data[i].value = por_defecto;
+            e->call.args.data[i].span = por_defecto ? por_defecto->span : e->span;
+        }
+    }
     int *refs = (int *)hx_arena_calloc(c->arena, sizeof(int) * (e->call.args.len + 1));
     for (int i = 0; i < e->call.args.len; i++) {
         HxArg *arg = &e->call.args.data[i];
@@ -1695,6 +1736,15 @@ static HxExpr *hx_expr_propagate(HxChecker *c, HxExpr *e, HxSpan site) {
         if (!hx_ty_is_result(e->try.inner->ty))
             hx_error(c->diags, e->span, "E0404",
                      "'?' sólo se aplica a un valor de tipo Result");
+        /* Un Result escrito sin <T,E> no sabe que lleva dentro: sin esta comprobacion
+           el `?` se quedaba sin tipo, la comprobacion se hacia con un tipo NULL (que
+           no comprueba nada) y el C salia con `hx_result r = hx_t0.i`. */
+        if (e->try.inner->ty && !e->try.inner->ty->elem)
+            hx_diag_note(c->diags, e->span, "E0219",
+                         "este Result no dice que lleva, y '?' necesita saberlo",
+                         "escribe el tipo entero: Result<INT, STRING> en vez de Result",
+                         "Hixean no adivina la carga de un Result: lo que no se escribe, "
+                         "no se sabe");
         e->propagate = 1;
         e->ty = e->try.inner->ty ? e->try.inner->ty->elem : NULL;
         return e;
@@ -2318,6 +2368,12 @@ static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
             int is_err = !hx_ascii_casecmp(hx_sym_str(pat->ctor), "Err");
             if ((is_ok || is_err) && hx_ty_is_result(subj)) {
                 HxTy *pt = is_ok ? subj->elem : subj->inner;
+                if (!pt)
+                    hx_diag_note(c->diags, pat->span, "E0219",
+                                 "este Result no dice que lleva, y el patron necesita saberlo",
+                                 "escribe el tipo entero: Result<INT, STRING> en vez de Result",
+                                 "Hixean no adivina la carga de un Result: lo que no se "
+                                 "escribe, no se sabe");
                 if (pat->args.len == 1)
                     hx_check_pattern(c, &pat->args.data[0], pt);
                 return;

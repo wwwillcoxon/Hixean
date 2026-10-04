@@ -16,6 +16,13 @@ const html = fs.readFileSync(path.join(RAIZ, "site", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(RAIZ, "site", "style.css"), "utf8");
 const script = fs.readFileSync(path.join(RAIZ, "site", "script.js"), "utf8");
 
+/* Las tres paginas del sitio. Se leen todas para que un enlace roto o un
+   border-radius en cualquiera de ellas se vea aqui y no en el navegador. */
+const PAGINAS = ["index.html", "directorio.html", "terminos.html"].map((nombre) => {
+  const ruta = path.join(RAIZ, "site", nombre);
+  return { nombre, ruta, texto: fs.readFileSync(ruta, "utf8") };
+});
+
 class Nodo {
   constructor(sel) {
     this.sel = sel;
@@ -138,8 +145,15 @@ function comprobarPagina(t) {
   t.ok(/paso pendiente/.test(html), "la tarjeta de Homebrew no dice que falta publicar el tap");
 
   // los ejemplos de la pagina los verifica tools/verificar-ejemplos.py
+  /* El numero de ejemplos verificados lo vigila tools/verificar-ejemplos.py, que
+     ademas los ejecuta. Aqui solo se comprueba que no se cuele ninguno sin
+     comprobar: todos los bloques de la pagina llevan clase "lenguaje" y eso es
+     lo que hace que el verificador los ejecute. */
   const ejemplos = (html.match(/<pre><code class="lenguaje/g) || []).length;
-  t.ok(ejemplos === 8, `se esperaban 8 bloques de código, hay ${ejemplos}`);
+  t.ok(ejemplos >= 8, `se esperaban al menos 8 bloques de código, hay ${ejemplos}`);
+  const sinComprobar = (html.match(/<pre><code(?! class="lenguaje)/g) || []).length;
+  const conShell = (html.match(/<pre class="copiable">/g) || []).length;
+  t.ok(conShell >= sinComprobar, "hay bloques de codigo sin clase, y verificar-ejemplos no los mira");
 }
 
 function comprobarScript(t, conObserver) {
@@ -249,13 +263,87 @@ function comprobarScript(t, conObserver) {
   t.ok(env.localStorage.datos["hixean-tema"] === "oscuro", "el tema por defecto no se guardó");
 }
 
+/* Lo que el sitio tiene que cumplir siempre, y que no se ve al abrirlo:
+   sin bordes redondeados, con todos los enlaces internos resueltos, sin nada
+   que venga de fuera y con el PDF de la guia de verdad en su sitio. */
+function comprobarSitio(t) {
+  // 1. Ningun borde redondeado. Es una peticion del proyecto, y en CSS basta
+  // con no escribir border-radius: asi que se busca la propiedad, no el efecto.
+  t.ok(!/border-radius/.test(css), "style.css tiene border-radius: las cajas van rectas");
+  for (const pagina of PAGINAS) {
+    t.ok(
+      !/border-radius/.test(pagina.texto),
+      `${pagina.nombre} tiene border-radius en el HTML`
+    );
+  }
+
+  // 2. Todo enlace interno tiene que existir. Un enlace roto en una pagina
+  //    estatica no avisa a nadie: se queda ahi hasta que alguien lo pulse.
+  for (const pagina of PAGINAS) {
+    const enlaces = pagina.texto.match(/(?:href|src)="([^"]+)"/g) || [];
+    for (const crudo of enlaces) {
+      const destino = crudo.slice(crudo.indexOf('"') + 1, -1);
+      if (/^(https?:|mailto:|#)/.test(destino)) continue;
+      const limpio = destino.split("#")[0];
+      if (!limpio) continue;
+      const abs = path.resolve(path.dirname(pagina.ruta), limpio);
+      t.ok(
+        fs.existsSync(abs),
+        `${pagina.nombre} apunta a ${limpio}, que no existe`
+      );
+    }
+  }
+
+  // 3. Nada de fuera: ni scripts remotos, ni fuentes, ni estilos de otro sitio.
+  for (const pagina of PAGINAS) {
+    t.ok(
+      !/<script[^>]+src="https?:/.test(pagina.texto),
+      `${pagina.nombre} carga un script de fuera`
+    );
+    t.ok(
+      !/<link[^>]+href="https?:/.test(pagina.texto),
+      `${pagina.nombre} carga una hoja de estilo de fuera`
+    );
+    t.ok(
+      !/@import/.test(css),
+      "style.css importa algo de fuera"
+    );
+  }
+
+  // 4. El PDF existe y no es un fichero de mentira: el generador dice cuantas
+  //    paginas tiene, y el numero del sitio tiene que ser el mismo.
+  const pdf = path.join(RAIZ, "site", "guia-programar.pdf");
+  t.ok(fs.existsSync(pdf), "no esta site/guia-programar.pdf, que el sitio enlaza");
+  if (fs.existsSync(pdf)) {
+    const buf = fs.readFileSync(pdf);
+    t.ok(buf.slice(0, 5).toString() === "%PDF-", "el PDF no empieza por %PDF-");
+    t.ok(buf.slice(-6).toString().includes("%%EOF"), "el PDF no termina en %%EOF");
+    const n = (buf.toString("latin1").match(/\/Type \/Page[^s]/g) || []).length;
+    t.ok(n >= 10, `el PDF tiene ${n} paginas: parece demasiado corto para una guia`);
+    const pisadas = html.match(/(\d+) páginas/);
+    t.ok(
+      !pisadas || Number(pisadas[1]) === n,
+      `la pagina dice ${pisadas && pisadas[1]} paginas y el PDF tiene ${n}`
+    );
+  }
+
+  // 5. Las tres paginas del sitio comparten el pie con la version real
+  for (const pagina of PAGINAS) {
+    t.ok(
+      /Hixean 0\.\d+\.\d+ ·/.test(pagina.texto),
+      `${pagina.nombre} no dice la version en el pie`
+    );
+  }
+}
+
 function main() {
   const t = fallos();
   comprobarPagina(t);
   comprobarScript(t, true);
   comprobarScript(t, false);
+  comprobarSitio(t);
   t.cerrar();
-  console.log("ok     la pagina: cifras reales, nada oculto sin JS y los contadores cuentan");
+  console.log("ok     el sitio: cifras reales, enlaces resueltos, nada de fuera y sin bordes redondeados");
 }
 
 main();

@@ -12,7 +12,6 @@
   --acento-2: #7cc39b;
   --acento-3: #e5c07b;
   --sombra: 0 1px 0 rgba(255, 255, 255, .03), 0 18px 40px -24px rgba(0, 0, 0, .8);
-  --radio: 14px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
@@ -54,7 +53,6 @@ code, pre, kbd { font-family: var(--mono); }
 p code, li code, td code, h3 code, figcaption code {
   background: var(--papel-2);
   border: 1px solid var(--linea-suave);
-  border-radius: 5px;
   padding: .05em .34em;
   font-size: .88em;
   white-space: nowrap;
@@ -115,7 +113,6 @@ p code, li code, td code, h3 code, figcaption code {
   border: 1px solid var(--linea);
   background: var(--papel);
   color: var(--tinta);
-  border-radius: 9px;
   padding: .38rem .75rem;
   font: inherit;
   font-size: .88rem;
@@ -127,7 +124,7 @@ p code, li code, td code, h3 code, figcaption code {
 .boton.grande { padding: .6rem 1.1rem; font-size: 1rem; }
 .boton.fantasma { background: transparent; }
 .boton.icono .luna {
-  width: .85rem; height: .85rem; border-radius: 50%;
+  width: .85rem; height: .85rem;
   background: var(--acento-3);
   box-shadow: inset -3px 0 0 0 var(--papel);
 }
@@ -175,7 +172,6 @@ p code, li code, td code, h3 code, figcaption code {
 
 .cifras li {
   border: 1px solid var(--linea-suave);
-  border-radius: 11px;
   padding: .7rem .8rem;
   background: var(--papel);
 }
@@ -206,7 +202,6 @@ p code, li code, td code, h3 code, figcaption code {
 
 .tarjeta {
   border: 1px solid var(--linea-suave);
-  border-radius: var(--radio);
   background: var(--papel);
   padding: 1.1rem 1.2rem;
   box-shadow: var(--sombra);
@@ -222,7 +217,6 @@ p code, li code, td code, h3 code, figcaption code {
 .ventana {
   margin: 1.2rem 0;
   border: 1px solid var(--linea);
-  border-radius: var(--radio);
   overflow: hidden;
   background: var(--fondo-2);
   box-shadow: var(--sombra);
@@ -242,7 +236,7 @@ p code, li code, td code, h3 code, figcaption code {
 }
 
 .puntos { display: inline-flex; gap: .3rem; }
-.puntos i { width: .6rem; height: .6rem; border-radius: 50%; background: var(--linea); }
+.puntos i { width: .55rem; height: .55rem; background: var(--linea); }
 .puntos i:first-child { background: var(--acento); opacity: .7; }
 .puntos i:nth-child(2) { background: var(--acento-3); opacity: .7; }
 .puntos i:nth-child(3) { background: var(--acento-2); opacity: .7; }
@@ -251,7 +245,6 @@ p code, li code, td code, h3 code, figcaption code {
   border: 1px solid var(--linea);
   background: var(--fondo);
   color: var(--suave);
-  border-radius: 6px;
   font: inherit;
   font-size: .72rem;
   padding: .12rem .45rem;
@@ -294,7 +287,6 @@ pre.copiable {
   padding: .7rem .85rem;
   background: var(--fondo-2);
   border: 1px solid var(--linea-suave);
-  border-radius: 9px;
   font-size: .8rem;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -338,7 +330,6 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
 
 .barra-presupuesto {
   height: 12px;
-  border-radius: 999px;
   background: var(--papel-2);
   border: 1px solid var(--linea);
   overflow: hidden;
@@ -347,7 +338,6 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
 .relleno {
   height: 100%;
   width: 0;
-  border-radius: 999px;
   background: linear-gradient(90deg, var(--acento-2), var(--acento));
   transition: width 1.2s cubic-bezier(.2, .7, .2, 1);
 }
@@ -385,7 +375,6 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
   top: .55rem;
   width: .62rem;
   height: .62rem;
-  border-radius: 50%;
   background: var(--acento);
   box-shadow: 0 0 0 4px var(--fondo);
 }
@@ -452,7 +441,6 @@ pre.copiable .copiar { position: absolute; top: .4rem; right: .4rem; }
   top: .5rem;
   background: var(--papel);
   border: 1px solid var(--acento);
-  border-radius: 8px;
   padding: .3rem .7rem;
   font-size: .85rem;
   z-index: 40;

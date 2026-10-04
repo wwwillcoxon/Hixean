@@ -232,6 +232,16 @@ if command -v python3 >/dev/null 2>&1; then
   python3 tools/verificar-runtime.py
   python3 tools/verificar-cifras.py
   python3 tools/verificar-tabla-errores.py
+  python3 tools/verificar-guia.py docs/guia-programar.md
+  # el PDF se regenera y se compara: un PDF commiteado que no corresponde al
+  # markdown es un documento que ya no explica lo que dice explicar
+  python3 tools/generar-pdf.py docs/guia-programar.md build/guia.pdf >/dev/null
+  if cmp -s build/guia.pdf site/guia-programar.pdf; then
+    echo "ok     el PDF del sitio corresponde al markdown que lo genera"
+  else
+    echo "FALLO: site/guia-programar.pdf no es el que genera docs/guia-programar.md"
+    exit 1
+  fi
 else
   echo "ok     ejemplos, runtime, cifras y tabla de errores omitidos: no hay python3"
 fi
