@@ -1,0 +1,39 @@
+"std.texto: la biblioteca que viene con el compilador, sin -I ni HX_LIB"
+IMPORT std.texto
+
+"preguntas de una vez"
+PRINT texto.StartsWith("hola mundo", "hola")
+PRINT texto.StartsWith("hola mundo", "mundo")
+PRINT texto.EndsWith("hola mundo", "mundo")
+PRINT texto.Contains("hola mundo", "a mun")
+PRINT texto.Contains("hola mundo", "zzz")
+
+"Replace, que en C es un chollo y aqui no"
+PRINT texto.Replace("a-b-c", "-", "+")
+PRINT texto.Replace("hola", "xyz", "abc")
+PRINT texto.Replace("aaa", "a", "")
+
+"Split y Join con ARRAY[T] del otro lado"
+DIM partes AS ARRAY[STRING] = texto.Split("uno,dos,tres", ",")
+PRINT partes.Len()
+PRINT partes.At(0)
+PRINT partes.At(2)
+PRINT texto.Join("|", partes)
+PRINT texto.Join("", partes)
+
+"y los bordes, que es donde suelen estar los fallos"
+DIM vacio AS ARRAY[STRING] = texto.Split("sin separador", ",")
+PRINT vacio.Len()
+PRINT vacio.At(0)
+DIM doblet AS ARRAY[STRING] = texto.Split("a,,b", ",")
+PRINT doblet.Len()
+PRINT doblet.At(1)
+DIM primero AS ARRAY[STRING] = texto.Split(",x", ",")
+PRINT primero.At(0)
+PRINT primero.At(1)
+
+"relleno a los dos lados"
+PRINT texto.PadLeft("7", 3, "0")
+PRINT texto.PadRight("7", 3, ".")
+PRINT texto.PadLeft("ya largo", 3, "0")
+PRINT texto.PadLeft("7", 3, "")

@@ -134,6 +134,11 @@ def main():
         "diecinueve": 19,
         "diecinueve ": 19,
         "veinte": 20,
+        "veintiuno": 21,
+        "veintiún": 21,
+        "veintiun ": 21,
+        "veintidós": 22,
+        "veintidos": 22,
     }
     m = re.search(r"([A-Za-zé]+) ADR", pagina)
     if m:
@@ -149,7 +154,7 @@ def main():
     with open(os.path.join(RAIZ, "README.md"), encoding="utf-8") as f:
         readme = f.read()
     hitos = sorted({int(n) for n in re.findall(r"^\| M(\d+)", readme, re.M)})
-    m = re.search(r"<h2>([A-Za-zé]+) hitos", pagina)
+    m = re.search(r"<h2>([A-Za-zÀ-ÿ]+) hitos", pagina)
     if m and hitos:
         dicho = palabras.get(m.group(1).lower())
         comprobar(

@@ -134,6 +134,7 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M17 | `MAYBE T` y `NIL` de verdad, con `.IsNil`, `.Or(x)`, `.Map(f)` y `CASE NIL` | un `MAYBE` no se desempaqueta solo; `MAYBE INT` no vale donde se espera `MAYBE STRING` |
 | M18 | `UNIQUE`: un campo `UNIQUE REF T` es el dueño del préstamo, y `^` ya funciona sobre un `REF` | una variable no puede estar en dos campos `UNIQUE` (`E0218`) |
 | M19 | `ARRAY[T]`: el arreglo que crece, con `Push`, `Set`, `At` comprobado y `Len` | 101 elementos y `At(100)` sale con el 70 diciendo el índice |
+| M20 | rutas de biblioteca (`-I`, `HX_LIB`, la del propio compilador), módulos con punto y `std.texto` | `IMPORT std.texto` funciona sin `-I`; el error de módulo no encontrado dice dónde se buscó |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
@@ -442,6 +443,32 @@ libera. Es memoria de más a cambio de no meter `realloc` en el perfil
 tipo (`ARRAY[Punto]`, `ARRAY[STRING]`) y vive dentro de los registros igual que
 uno de tamaño fijo. `T[]` es la misma cosa escrita de otra forma, y `T[n]` sigue
 siendo el arreglo de tamaño fijo, que no crece: `Set` y `Push` ahí dan `E0306`.
+
+M20 añade dónde buscar los módulos y una biblioteca que Finde en el sitio. Las
+rutas, en orden: el directorio del archivo de entrada, cada `-I`, lo que diga
+`HX_LIB` (separado por `:` o `;`), los directorios de las dependencias del
+manifiesto y, al final, la biblioteca que vino con el compilador.
+
+```hixean
+IMPORT std.texto        ' no hace falta -I: hxc la encuentra junto a su binario
+
+DIM partes AS ARRAY[STRING] = texto.Split("uno,dos,tres", ",")
+PRINT partes.Len()
+PRINT texto.Join("|", partes)
+PRINT texto.PadLeft("7", 3, "0")
+```
+
+`std.texto` está escrito en Hixean, en `lib/hixean/std.texto.hxs`, sobre los
+métodos de `STRING` que ya tenía el lenguaje: `StartsWith`, `EndsWith`,
+`Contains`, `Replace`, `Split`, `Join`, `PadLeft` y `PadRight`. Los métodos
+viejos **no se mueven**: eso rompería todos los programas que los usan.
+
+Con esto una ruta de `IMPORT` puede llevar puntos: `std.texto` busca
+`std.texto.hxs` (cuyo nombre sale del nombre del archivo) y, si no está,
+`std.hxs`. El namespace es el último segmento, así que se llama
+`texto.Funcion(...)`. Y el nombre del módulo importado se comprueba contra la
+ruta: si un `mate.hxs` declara `MODULE otra_cosa`, da `E0501` en vez de
+aceptarse en silencio.
 
 `audio` y `gpu` siguen sin existir: necesitan un dispositivo o un compilador por
 objetivo, y no hay forma honesta de probarlos aquí. M12 se cierra sin ellos antes

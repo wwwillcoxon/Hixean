@@ -54,8 +54,25 @@ programa    = { top_item } , EOF ;
 top_item    = module | import | funcion | type | const_declaracion | sentencia ;
 module      = [ "MODULE" ident ] , { top_item } , [ "END" [ "MODULE" ] ] ;
 import      = "IMPORT" , ruta , [ "AS" ident ] ;
-ruta        = ident , { "." , ident } ;      (* std.net *)
+ruta        = ident , { "." , ident } ;      (* std.texto *)
 ```
+
+Una ruta con puntos puede ser un archivo con puntos (`std.texto` →
+`std.texto.hxs`, cuyo nombre sale del archivo) o el módulo corto que lo
+contiene (`std.hxs`). Se prueban los dos, en ese orden, y el namespace con el
+que se llama es el último segmento: `IMPORT std.texto` se usa como
+`texto.Funcion(...)`.
+
+Las rutas donde se buscan, en orden:
+
+1. el directorio del archivo de entrada,
+2. cada `-I DIR`, en el orden en el que se pasan,
+3. `HX_LIB`, con varios directorios separados por `:` o `;`,
+4. los directorios que aportan las dependencias de `--kit`,
+5. `<hxc>/lib`, `<hxc>/../lib/hixean` y `<hxc>/../lib`, que es donde queda la
+   biblioteca cuando el instalador pone el binario en `<prefijo>/bin`.
+
+Si no aparece, `E0501` dice cuáles eran.
 
 En un `.hxe` las sentencias de nivel superior forman el `Main` implícito.
 Sólo `EXPORT` es visible desde otro módulo.

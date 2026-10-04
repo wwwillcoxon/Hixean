@@ -1,0 +1,91 @@
+' std.texto: las cosas de texto que faltan. Escrito en Hixean sobre los
+'   metodos de STRING que ya tiene el lenguaje, sin pedirle nada al compilador.
+'   Vive en lib/hixean/ y el compilador la encuentra sola (hx Self la busca en
+'   <hxc-dir>/../lib/hixean), asi que `IMPORT std.texto` no necesita -I.
+
+EXPORT FUNCTION StartsWith(s AS STRING, prefijo AS STRING) AS BOOL
+  IF prefijo.Len() > s.Len() THEN RETURN FALSE
+  RETURN s.Slice(0, prefijo.Len()) == prefijo
+END FUNCTION
+
+EXPORT FUNCTION EndsWith(s AS STRING, sufijo AS STRING) AS BOOL
+  IF sufijo.Len() > s.Len() THEN RETURN FALSE
+  RETURN s.Slice(s.Len() - sufijo.Len(), s.Len()) == sufijo
+END FUNCTION
+
+EXPORT FUNCTION Contains(s AS STRING, aguja AS STRING) AS BOOL
+  IF aguja.Len() == 0 THEN RETURN TRUE
+  DIM i AS I64 = 0
+  WHILE i + aguja.Len() <= s.Len()
+    IF s.Slice(i, i + aguja.Len()) == aguja THEN RETURN TRUE
+    i = i + 1
+  WEND
+  RETURN FALSE
+END FUNCTION
+
+EXPORT FUNCTION Replace(s AS STRING, viejo AS STRING, nuevo AS STRING) AS STRING
+  IF viejo.Len() == 0 THEN RETURN s
+  DIM r AS STRING = ""
+  DIM i AS I64 = 0
+  WHILE i < s.Len()
+    IF (i + viejo.Len() <= s.Len() AND
+        s.Slice(i, i + viejo.Len()) == viejo) THEN
+      r = r ++ nuevo
+      i = i + viejo.Len()
+    ELSE
+      r = r ++ s.At(i)
+      i = i + 1
+    END IF
+  WEND
+  RETURN r
+END FUNCTION
+
+EXPORT FUNCTION Split(s AS STRING, sep AS STRING) AS ARRAY[STRING]
+  DIM partes AS ARRAY[STRING]
+  IF sep.Len() == 0 THEN
+    partes.Push(s)
+    RETURN partes
+  END IF
+  DIM actual AS STRING = ""
+  DIM i AS I64 = 0
+  WHILE i < s.Len()
+    IF (i + sep.Len() <= s.Len() AND
+        s.Slice(i, i + sep.Len()) == sep) THEN
+      partes.Push(actual)
+      actual = ""
+      i = i + sep.Len()
+    ELSE
+      actual = actual ++ s.At(i)
+      i = i + 1
+    END IF
+  WEND
+  partes.Push(actual)
+  RETURN partes
+END FUNCTION
+
+EXPORT FUNCTION Join(sep AS STRING, partes AS ARRAY[STRING]) AS STRING
+  DIM r AS STRING = ""
+  FOR i IN Rango(0, partes.Len())
+    IF i > 0 THEN r = r ++ sep
+    r = r ++ partes.At(i)
+  NEXT i
+  RETURN r
+END FUNCTION
+
+EXPORT FUNCTION PadLeft(s AS STRING, ancho AS I64, relleno AS STRING) AS STRING
+  IF s.Len() >= ancho OR relleno.Len() == 0 THEN RETURN s
+  DIM r AS STRING = s
+  WHILE r.Len() < ancho
+    r = relleno ++ r
+  WEND
+  RETURN r
+END FUNCTION
+
+EXPORT FUNCTION PadRight(s AS STRING, ancho AS I64, relleno AS STRING) AS STRING
+  IF s.Len() >= ancho OR relleno.Len() == 0 THEN RETURN s
+  DIM r AS STRING = s
+  WHILE r.Len() < ancho
+    r = r ++ relleno
+  WEND
+  RETURN r
+END FUNCTION

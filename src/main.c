@@ -265,6 +265,44 @@ static const char *hx_modulo_en(HxArena *a, const char *dir, const char *sp,
     return hx_file_exists(c) ? c : NULL;
 }
 
+/* El orden es lo explicito primero y lo que viene con el compilador al final:
+   el directorio de la entrada lo busca hx_collect_modules2, y despues -I, HX_LIB,
+   los directorios del manifiesto y la biblioteca que vino con este hxc. La lista
+   es global porque hay dos sitios que compilan (hx build/run y hxc test) y los dos
+   tienen que buscar igual. */
+static void hx_preparar_busqueda(HxSession *s, const HxBuildOpts *o) {
+    g_extra_mod_dirs = NULL;
+    g_n_extra_mod_dirs = 0;
+    g_cap_extra_mod_dirs = 0;
+    if (!g_hxc_self) hx_calc_self(s);
+    for (int i = 0; i < o->n_include; i++) hx_busqueda_add(s, o->include[i]);
+    {
+        const char *env = getenv("HX_LIB");
+        if (env && *env) {
+            char *copia = hx_arena_strdup(&s->arena, env);
+            for (char *p = copia;;) {
+                char *sep = p;
+                while (*sep && *sep != ':' && *sep != ';') sep++;
+                int fin = *sep == 0;
+                if (!fin) *sep = 0;
+                if (*p) hx_busqueda_add(s, p);
+                if (fin) break;
+                p = sep + 1;
+            }
+        }
+    }
+    for (int i = 0; i < o->n_mod_dirs; i++) hx_busqueda_add(s, o->mod_dirs[i]);
+    if (g_hxc_self) {
+        char *self_dir = hx_path_dirname(&s->arena, g_hxc_self);
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/lib", self_dir));
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib/hixean", self_dir));
+        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib", self_dir));
+    }
+    if (o->verbose)
+        for (int i = 0; i < g_n_extra_mod_dirs; i++)
+            fprintf(stderr, "hx:   busqueda %s\n", g_extra_mod_dirs[i]);
+}
+
 static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
@@ -1046,6 +1084,9 @@ int main(int argc, char **argv) {
             memset(&to, 0, sizeof(to));
             to.optimize = 2;
             to.profile = HX_PROFILE_FREESTANDING;
+            /* hxc test tambien necesita la ruta de la biblioteca: un programa
+               del corpus puede importar un modulo de lib/hixean */
+            hx_preparar_busqueda(ts, &to);
             double ms = 0;
             if (hx_build_main(ts, arg, &to, bin, &ms) != 0) {
                 hx_render(&ts->diags, NULL);
@@ -1198,40 +1239,7 @@ int main(int argc, char **argv) {
         bin_path = hx_arena_sprintf(&s->arena, "build/%s.bin", stem);
     }
 
-    /* El orden es lo explicito primero y lo que viene con el compilador al
-       final: directorio de la entrada (lo busca hx_collect_modules2), -I,
-       HX_LIB, los directorios del manifiesto y por ultimo la biblioteca que
-       vino con este hxc. */
-    g_extra_mod_dirs = NULL;
-    g_n_extra_mod_dirs = 0;
-    g_cap_extra_mod_dirs = 0;
-    if (!g_hxc_self) hx_calc_self(s);
-    for (int i = 0; i < o.n_include; i++) hx_busqueda_add(s, o.include[i]);
-    {
-        const char *env = getenv("HX_LIB");
-        if (env && *env) {
-            char *copia = hx_arena_strdup(&s->arena, env);
-            for (char *p = copia;;) {
-                char *sep = p;
-                while (*sep && *sep != ':' && *sep != ';') sep++;
-                int fin = *sep == 0;
-                if (!fin) *sep = 0;
-                if (*p) hx_busqueda_add(s, p);
-                if (fin) break;
-                p = sep + 1;
-            }
-        }
-    }
-    for (int i = 0; i < o.n_mod_dirs; i++) hx_busqueda_add(s, o.mod_dirs[i]);
-    if (g_hxc_self) {
-        char *self_dir = hx_path_dirname(&s->arena, g_hxc_self);
-        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/lib", self_dir));
-        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib/hixean", self_dir));
-        hx_busqueda_add(s, hx_arena_sprintf(&s->arena, "%s/../lib", self_dir));
-    }
-    if (o.verbose)
-        for (int i = 0; i < g_n_extra_mod_dirs; i++)
-            fprintf(stderr, "hx:   busqueda %s\n", g_extra_mod_dirs[i]);
+    hx_preparar_busqueda(s, &o);
     double ms = 0;
     if (hx_build_main(s, entry, &o, bin_path, &ms) != 0) {
         const char *src = NULL;

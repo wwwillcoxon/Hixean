@@ -13,6 +13,16 @@ dice qué formato y qué abi entiende este `hxc`.
 
 ### Añadido
 
+- **`std.texto`, la primera biblioteca estándar**: `StartsWith`, `EndsWith`,
+  `Contains`, `Replace`, `Split`, `Join`, `PadLeft` y `PadRight`, escritas en
+  Hixean en `lib/hixean/std.texto.hxs`. El compilador la busca sola junto a su
+  binario, así que `IMPORT std.texto` no necesita `-I`. Los métodos que ya
+  tenía `STRING` se quedan donde estaban.
+- **Rutas de Import**: `-I DIR` repetible, `HX_LIB` con varios directorios
+  separados por `:` o `;`, y la biblioteca que vino con el compilador al final
+  de la lista. Los módulos con punto (`std.texto` → `std.texto.hxs`) se
+  resuelven probando el nombre corto y el largo. El nombre del módulo importado
+  se comprueba contra la ruta del `IMPORT`.
 - **`ARRAY[T]`: el arreglo dinámico**, con `Len`, `At(i)`, `Set(i, v)` y
   `Push(v)`. Crece por duplicación y sin `realloc`: se reserva el bloque nuevo
   desde la arena y se copia, así que el viejo se queda hasta que la arena se
