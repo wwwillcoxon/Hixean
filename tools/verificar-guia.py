@@ -46,10 +46,10 @@ def compilar_y_ejecutar(bloque, tmpdir, indice):
     with open(fuente, "w", encoding="utf-8") as f:
         f.write(sin_esperado(bloque))
     r = subprocess.run([HXC, "build", fuente, "-o", binario],
-                       capture_output=True, text=True, cwd=RAIZ)
+                       capture_output=True, encoding="utf-8", errors="replace", cwd=RAIZ)
     if r.returncode != 0:
         return False, "no compila:\n" + r.stdout + r.stderr, None
-    r = subprocess.run([binario], capture_output=True, text=True, timeout=30)
+    r = subprocess.run([binario], capture_output=True, encoding="utf-8", errors="replace", timeout=30)
     if r.returncode != 0:
         return False, "compila pero sale con %d:\n%s" % (r.returncode, r.stderr), None
     return True, "", r.stdout.strip("\n")

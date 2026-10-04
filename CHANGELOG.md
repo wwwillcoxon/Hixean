@@ -78,6 +78,12 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   - Tambien lo dice la salida de hxc, que es el mismo problema un nivel mas
     arriba: el CRT convertia sus `\n` en CRLF y las consultas `.hxq` devolvian
     lineas que se veian iguales y no lo eran.
+  - Las herramientas de Python dicen UTF-8 al abrir ficheros y al leer la salida
+    de `hxc`. En Windows, abrir sin `encoding` decodifica con la codificacion del
+    sistema, y los diagnosticos del manual llegaban con las tildes rotas: el
+    documento decia «se encontro Animal» y llegaba «se encontr� Animal». Lo
+    peligroso es que mientras los dos lados esten mal decodificados se parecen y
+    el test pasa; en cuanto uno deja de estarlo, falla sin decir por que.
   - Las consultas `.hxq` no encontraban nada en Windows: el listado de directorios
     filtraba siempre los directorios, y la consulta necesita el nombre del
     directorio para entrar en `<ruta>/<nombre>/<nombre>.hxk`.

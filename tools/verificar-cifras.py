@@ -33,7 +33,7 @@ def pruebas_del_corpus():
         + sorted(glob.glob(os.path.join(RAIZ, "tests", "*.hxt")))
         + sorted(glob.glob(os.path.join(RAIZ, "tests", "*.hxe"))),
         capture_output=True,
-        text=True,
+        encoding="utf-8", errors="replace",
         cwd=RAIZ,
     )
     m = re.search(r"(\d+) pruebas, (\d+) fallos", salida.stdout)
@@ -69,7 +69,7 @@ def tamano_hola_mundo():
     salida = subprocess.run(
         [HXC, "build", "examples/hola.hxe", "-o", "build/hola"],
         capture_output=True,
-        text=True,
+        encoding="utf-8", errors="replace",
         cwd=RAIZ,
     )
     if salida.returncode != 0:
