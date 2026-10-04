@@ -1,0 +1,33 @@
+# Sin esto, cada sistema decide por su cuenta que es un final de linea y el
+# corpus falla donde no deberia. El caso que lo revelo: en Windows el checkout
+# sacaba los tests/*.out con CRLF y el programa escribia LF, asi que las 34
+# pruebas fallaban mostrando un texto que se veia identico.
+#
+# La regla es una sola: dentro del repositorio los bytes de un fichero son los
+# mismos en todas las maquinas, y el que convierte al formato nativo es el editor
+# de quien lo abre. Un lenguaje que compara salidas byte a byte no puede
+# depender de la plataforma de quien lo probo.
+* text=auto eol=lf
+
+# Los .out son la salida esperada de un programa: son bytes, no texto que
+# reescriba nadie. Con -text no hay conversion que vuelta a cambiar.
+*.out -text
+
+# Los ficheros de la guia y de las fuentes tambien son LF, por si acaso.
+*.hxe text eol=lf
+*.hxt text eol=lf
+*.hxs text eol=lf
+*.hxk text eol=lf
+*.hxq text eol=lf
+*.c   text eol=lf
+*.h   text eol=lf
+*.md  text eol=lf
+*.py  text eol=lf
+*.sh  text eol=lf
+*.yml text eol=lf
+
+# Los ficheros .pdf y .gz son binarios: sin esto git intenta hacerles un
+# filtro de fin de linea y los corrompe.
+*.pdf binary
+*.gz  binary
+*.png binary

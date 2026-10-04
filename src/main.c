@@ -863,6 +863,28 @@ static int hx_exec(const char *bin, const char *out_path) {
 #endif
 }
 
+/* Dos ficheros que solo se diferencian en el fin de linea se imprimen igual en
+   un diff: el \r no se ve, asi que el fallo sale como «el texto es identico» y
+   no dice nada de por que. Esto Normaliza el CRLF y devuelve cuantos bytes habia
+   de mas, o 0 si la diferencia es de otro tipo. Es lo que paso en Windows: los
+   .out salen del checkout con CRLF y el programa escribe LF. */
+static size_t hx_solo_crlf(const char *a, size_t alen, const char *b, size_t blen) {
+    if (!a || !b) return 0;
+    size_t i = 0, j = 0, crlf = 0;
+    while (i < alen || j < blen) {
+        int ca = (i < alen) ? (unsigned char)a[i] : -1;
+        int cb = (j < blen) ? (unsigned char)b[j] : -1;
+        /* un \r solo cuando va seguido de \n: solo asi cuenta como fin de linea */
+        if (ca == '\r' && i + 1 < alen && a[i + 1] == '\n') { crlf++; i++; continue; }
+        if (cb == '\r' && j + 1 < blen && b[j + 1] == '\n') { crlf++; j++; continue; }
+        if (ca != cb) return 0;
+        if (ca < 0) break;
+        i++;
+        j++;
+    }
+    return crlf;
+}
+
 /* --json decide como se imprimen los diagnosticos en todos los comandos */
 static int g_json = 0;
 
@@ -1199,8 +1221,21 @@ int main(int argc, char **argv) {
                 pass++;
             } else {
                 printf("  FALLO  %s (rc=%d)\n", arg, rc);
-                printf("    --- esperado ---\n%s    --- obtenido ---\n%s", edata,
-                       adata ? adata : "");
+                size_t crlf = hx_solo_crlf(edata, elen, adata, alen);
+                if (crlf) {
+                    /* Decirlo aqui es lo que convierte un fallo invisible en uno
+                       que se entiende: sin esto solo se ve que esperado y obtenido
+                       son el mismo texto. */
+                    printf("    el texto es el mismo y solo difieren los fines de linea: "
+                           "%zu CRLF de mas (%zu bytes esperados, %zu obtenidos)\n",
+                           crlf, elen, alen);
+                    printf("    el esperado tiene CRLF; el programa escribio LF. "
+                           "Si el esperado viene del checkout de Windows, "
+                           "falta .gitattributes con eol=lf\n");
+                } else {
+                    printf("    --- esperado ---\n%s    --- obtenido ---\n%s", edata,
+                           adata ? adata : "");
+                }
                 fail++;
             }
         }

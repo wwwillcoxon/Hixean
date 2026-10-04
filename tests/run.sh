@@ -103,6 +103,31 @@ sed -i "0,/RETURN acc + 7/s//RETURN acc + 4242/" build/inc/m7.hxs
 ./build/hxc build build/inc/main.hxe -o build/multi --timing 2>&1 | grep -q "1 TU recompiladas" \
   && echo "ok     1 unidad tras cambiar un modulo"
 echo
+echo "== un fallo solo de fin de linea se explica solo =="
+# Sin esto, en Windows las 34 pruebas fallaban mostrando un texto identico: el
+# checkout sacaba los .out con CRLF, el programa escribia LF, y el diff no
+# ensejia el byte que sobraba. La prueba comprueba que hxc test lo dice.
+rm -f build/crlf.hxt.out
+printf 'PRINT 1\nPRINT 2\n' > build/crlf.hxt
+./build/hxc test build/crlf.hxt >/dev/null 2>&1
+python3 - <<'PY'
+d = open('build/crlf.hxt.out', 'rb').read()
+open('build/crlf.hxt.out', 'wb').write(d.replace(b'\n', b'\r\n'))
+PY
+if ./build/hxc test build/crlf.hxt 2>&1 | grep -q "solo difieren los fines de linea"; then
+  echo "ok     el fallo por CRLF se nombra en vez de mostrar el texto dos veces"
+else
+  echo "FALLO: hxc test deberia decir que la diferencia es el fin de linea"; exit 1
+fi
+# y ningun .out del repositorio lleva un CR dentro: si alguien reintroduce la
+# conversion de finales de linea, esto lo dice en local y no en un runner
+cr_en_out=$(grep -rl $'\r' tests/*.out tests/hxc/*.out 2>/dev/null | wc -l)
+if [ "$cr_en_out" -eq 0 ]; then
+  echo "ok     ningun .out del repositorio lleva un CR"
+else
+  echo "FALLO: $cr_en_out ficheros .out tienen CR; revisa .gitattributes"; exit 1
+fi
+echo
 echo "== puertas de tamano =="
 ./build/hxc build examples/hola.hxe -o build/hola
 ./build/hxc size build/hola
