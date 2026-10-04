@@ -3193,7 +3193,16 @@ static void hx_emit_module_source(HxEmit *e, HxUnit *unit, HxModule *m, HxBuf *b
         const char *dot = strrchr(ip, '.');
         const char *base = dot ? dot + 1 : ip;
         HxSym as = im->alias ? im->alias : hx_intern_cstr(unit->intern, base);
-        hx_buf_printf(b, "#include \"%s.h\"\n", hx_sym_str(as));
+        /* La cabecera generada se llama como el módulo, no como el alias: con
+           `IMPORT std.texto` el módulo es std.texto y se llama texto, así que
+           incluir "texto.h" no encontraba nada. */
+        const char *cabecera = hx_sym_str(as);
+        for (int k = 0; k < unit->modules.len; k++)
+            if (!hx_ascii_casecmp(hx_sym_str(unit->modules.data[k].name), ip)) {
+                cabecera = hx_sym_str(unit->modules.data[k].name);
+                break;
+            }
+        hx_buf_printf(b, "#include \"%s.h\"\n", cabecera);
     }
     hx_buf_printf(b, "#include \"%s.h\"\n", hx_sym_str(m->name));
     for (int k = 0; k < m->consts.len; k++) {

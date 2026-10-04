@@ -201,6 +201,24 @@ static void hx_calc_build_id(HxSession *s) {
 static const char **g_extra_mod_dirs;
 static int g_n_extra_mod_dirs;
 
+/* Un IMPORT puede venir con puntos: "std.texto". Se prueban las dos formas, y
+   la primera que exista gana. El orden es el de siempre (el nombre corto antes
+   que el largo) para no cambiar lo que ya funciona, y dentro de cada directorio
+   primero el corto y luego el con puntos. */
+static const char *hx_modulo_en(HxArena *a, const char *dir, const char *sp,
+                                const char *ext) {
+    const char *dot = strrchr(sp, '.');
+    if (dot) {
+        char *corto = hx_arena_sprintf(a, "%s/%.*s%s", dir, (int)(dot - sp), sp, ext);
+        if (hx_file_exists(corto)) return corto;
+        char *largo = hx_arena_sprintf(a, "%s/%s%s", dir, sp, ext);
+        if (hx_file_exists(largo)) return largo;
+        return NULL;
+    }
+    char *c = hx_arena_sprintf(a, "%s/%s%s", dir, sp, ext);
+    return hx_file_exists(c) ? c : NULL;
+}
+
 static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
@@ -272,17 +290,12 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
             const char *dot = strrchr(sp, '.');
             char *stem = dot ? hx_arena_strndup(&s->arena, sp, (size_t)(dot - sp))
                              : hx_arg(&s->arena, sp);
-            char *cand = hx_arena_sprintf(&s->arena, "%s/%s.hxs", dir, stem);
-            int found = hx_file_exists(cand);
-            char *encontrado = found ? cand : NULL;
-            for (int d = 0; !found && d < g_n_extra_mod_dirs; d++) {
-                /* los paquetes del manifiesto aportan sus modulos */
-                char *c2 = hx_arena_sprintf(&s->arena, "%s/%s.hxs", g_extra_mod_dirs[d], stem);
-                if (hx_file_exists(c2)) {
-                    encontrado = c2;
-                    found = 1;
-                }
-            }
+            /* primero todos los .hxs (el directorio de la entrada y los que
+               aportan los paquetes), luego todos los .hxf */
+            const char *encontrado = hx_modulo_en(&s->arena, dir, sp, ".hxs");
+            for (int d = 0; !encontrado && d < g_n_extra_mod_dirs; d++)
+                encontrado = hx_modulo_en(&s->arena, g_extra_mod_dirs[d], sp, ".hxs");
+            int found = encontrado != NULL;
             if (found) {
                 int seen = 0;
                 for (int k = 0; k < done.len; k++)
@@ -296,22 +309,24 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                     HX_VEC_PUSH(pedido_file, m->file);
                 }
             } else {
-                char *cand2 = hx_arena_sprintf(&s->arena, "%s/%s.hxf", dir, stem);
-                if (hx_file_exists(cand2)) {
+                encontrado = hx_modulo_en(&s->arena, dir, sp, ".hxf");
+                for (int d = 0; !encontrado && d < g_n_extra_mod_dirs; d++)
+                    encontrado = hx_modulo_en(&s->arena, g_extra_mod_dirs[d], sp, ".hxf");
+                found = encontrado != NULL;
+                if (found) {
                     int seen = 0;
                     for (int k = 0; k < done.len; k++)
-                        if (!strcmp(done.data[k], cand2)) seen = 1;
+                        if (!strcmp(done.data[k], encontrado)) seen = 1;
                     if (!seen) {
-                        HX_VEC_PUSH(done, cand2);
-                        HX_VEC_PUSH(pending, cand2);
+                        HX_VEC_PUSH(done, encontrado);
+                        HX_VEC_PUSH(pending, encontrado);
                         HX_VEC_PUSH(esperado, sp);
                         HX_VEC_PUSH(pedido_span, im->path_span);
                         HX_VEC_PUSH(pedido_src, m->src);
                         HX_VEC_PUSH(pedido_file, m->file);
-                    HX_VEC_PUSH(pedido_file, m->file);
                     }
                 } else if (use_hxc) {
-                    char *hxc = hx_arena_sprintf(&s->arena, "%s/%s.hxc", use_hxc, stem);
+                    char *hxc = hx_arena_sprintf(&s->arena, "%s/%s.hxc", use_hxc, sp);
                     HxModule *um = hx_hxc_read(&s->arena, s->intern, &s->diags, hxc);
                     if (!um) {
                         hx_error(&s->diags, im->path_span, "E0501",
@@ -334,7 +349,9 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                               "no se encontró el módulo '%s' (busqué %s.hxs y "
                                               "%s.hxf)",
                                               sp, stem, stem),
-                             "las rutas de IMPORT se resuelven relativas al archivo de entrada",
+                             "las rutas de IMPORT son el directorio del archivo de entrada y "
+                             "los que aporta --kit; con -I, HX_LIB o la biblioteca del "
+                             "compilador se añaden más",
                              NULL);
                 }
             }

@@ -1,0 +1,2 @@
+IMPORT std.texto
+PRINT texto.Doble(21)

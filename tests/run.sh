@@ -247,6 +247,10 @@ fi
   && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
   || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+# un modulo con punto: std.texto.hxs se llama std.texto y se llama texto.Doble
+./build/hxc run tests/modulos_con_punto/usa.hxe > build/punto.out 2>&1
+diff -u tests/modulos_con_punto/usa.hxe.out build/punto.out \
+  && echo "ok     IMPORT std.texto encuentra std.texto.hxs y se llama con su namespace"
 # el nombre del módulo tiene que ser el de la ruta del IMPORT
 rm -rf build/modulo_mal && mkdir -p build/modulo_mal
 cp tests/malos/mate_equivocado.hxs build/modulo_mal/mate.hxs
