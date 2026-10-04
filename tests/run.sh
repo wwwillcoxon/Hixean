@@ -119,13 +119,20 @@ if ./build/hxc test build/crlf.hxt 2>&1 | grep -q "solo difieren los fines de li
 else
   echo "FALLO: hxc test deberia decir que la diferencia es el fin de linea"; exit 1
 fi
-# y ningun .out del repositorio lleva un CR dentro: si alguien reintroduce la
-# conversion de finales de linea, esto lo dice en local y no en un runner
-cr_en_out=$(grep -rl $'\r' tests/*.out tests/hxc/*.out 2>/dev/null | wc -l)
-if [ "$cr_en_out" -eq 0 ]; then
-  echo "ok     ningun .out del repositorio lleva un CR"
+# y ningun .out del repositorio lleva un CR en el disco. Se pregunta a git con
+# --eol y no con grep: git responde con dos letras (i/ lo que hay en el indice,
+# w/ lo que hay en el disco) y dice exactamente que ha pasado. Un guardia que
+# solo dice "hay CR" obliga a adivinar, que es como se perdio esta mañana.
+cr_en_out=$(git ls-files --eol 'tests/*.out' 'tests/hxc/*.out' | grep -c 'w/crlf' || true)
+if [ "${cr_en_out:-0}" -eq 0 ]; then
+  echo "ok     ningun .out del repositorio tiene CRLF en disco"
 else
-  echo "FALLO: $cr_en_out ficheros .out tienen CR; revisa .gitattributes"; exit 1
+  echo "FALLO: $cr_en_out .out tienen CRLF en disco; revisa .gitattributes"
+  echo "---- como lo ve git (las ocho primeras) ----"
+  git ls-files --eol 'tests/*.out' 'tests/hxc/*.out' | grep 'w/crlf' | head -8
+  echo "---- y el atributo que decide ----"
+  git check-attr text eol -- tests/anonimas.hxt.out
+  exit 1
 fi
 echo
 echo "== puertas de tamano =="

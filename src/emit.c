@@ -376,10 +376,15 @@ static const char *HX_RT_LIBC =
     "#ifdef _WIN32\n"
     "#include <fcntl.h>\n"
     "#include <io.h>\n"
-    "#include <stdio.h>\n"   /* stdout, que es de donde sale el 1 de _fileno */
+    /* El modo se pone sobre el numero de descriptor, no con _fileno(stdout).
+       El CRT resuelve stdout con STARTUPINFO en un hijo creado con
+       STARTF_USESTDHANDLES, y si el stream todavia no esta inicializado
+       _fileno devuelve -1: _setmode(-1, ...) falla sin avisar y la salida se
+       sigue volviendo a convertir en CRLF. El 1 y el 2 son los descriptores que
+       escribe hx_out, y esos existen siempre. */
     "static inline void hx_modo_binario(void) {\n"
-    "  _setmode(_fileno(stdout), _O_BINARY);\n"
-    "  _setmode(_fileno(stderr), _O_BINARY);\n"
+    "  _setmode(1, _O_BINARY);\n"
+    "  _setmode(2, _O_BINARY);\n"
     "}\n"
     "#else\n"
     "static inline void hx_modo_binario(void) { }\n"
