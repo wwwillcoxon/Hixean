@@ -493,6 +493,26 @@ typedef struct {
     pid_t pid;   /* 0 si no hay proceso en vuelo */
 } HxTu;
 
+/* El nombre que tiene el binario en disco no es el que se le pasa a -o: en
+   Windows el enlazador de mingw anade .exe al final. CreateProcess lo resuelve
+   solo cuando le das un nombre sin extension, asi que el corpus no se enteraba,
+   pero cualquier cosa que abra el fichero por su cuenta (hx size) si. Este es el
+   unico sitio que lo sabe: si aparece otro caso, se resuelve aqui. */
+static const char *hx_binario_real(const char *pedido) {
+    if (hx_file_exists(pedido)) return pedido;
+#ifdef _WIN32
+    static char con_exe[4200];
+    const char *ext = strrchr(pedido, '.');
+    int ya_exe = ext && !strcmp(ext, ".exe");
+    size_t n = strlen(pedido);
+    if (!ya_exe && n + 4 < sizeof con_exe) {
+        snprintf(con_exe, sizeof con_exe, "%s.exe", pedido);
+        if (hx_file_exists(con_exe)) return con_exe;
+    }
+#endif
+    return pedido;
+}
+
 static int hx_link_objects(HxSession *s, HxBuildOpts *o, HxTu *tus, int ntus,
                           const char *bin_path) {
     const char *argv[1024];
@@ -1024,12 +1044,19 @@ int main(int argc, char **argv) {
             hx_usage();
             return 2;
         }
-        int sz = hx_file_size(argv[2]);
+        const char *real = hx_binario_real(argv[2]);
+        int sz = hx_file_size(real);
         if (sz < 0) {
-            fprintf(stderr, "hx: no existe %s\n", argv[2]);
+            fprintf(stderr, "hx: no existe %s%s\n", argv[2],
+#ifdef _WIN32
+                    " (ni con .exe)"
+#else
+                    ""
+#endif
+            );
             return 1;
         }
-        printf("%s %d bytes (%.2f KiB)\n", argv[2], sz, (double)sz / 1024.0);
+        printf("%s %d bytes (%.2f KiB)\n", real, sz, (double)sz / 1024.0);
         return 0;
     }
     if (!strcmp(cmd, "query")) {
