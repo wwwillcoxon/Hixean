@@ -1,0 +1,19 @@
+"TEST: un bloque que se lee y se salta, para dejar la prueba a mano"
+FUNCTION Cuadrado(n AS INT) AS INT
+  RETURN n * n
+END FUNCTION
+
+"lo de dentro no se ejecuta ni se compila: es una nota para quien prueba"
+TEST Cuadrado(2) AS INT
+  PRINT "esto no se imprime"
+  DIM dentro AS STRING = "tampoco"
+END TEST
+
+"y el programa sigue"
+PRINT Cuadrado(3)
+
+TEST ConTipo(1) AS STRING
+  PRINT "otro bloque"
+END TEST
+
+PRINT Cuadrado(4)

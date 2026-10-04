@@ -812,7 +812,7 @@ static int hx_at_block_end(HxParser *p) {
            !hx_ascii_casecmp(text, "for") || !hx_ascii_casecmp(text, "arena") ||
            !hx_ascii_casecmp(text, "function") || !hx_ascii_casecmp(text, "match") ||
            !hx_ascii_casecmp(text, "metodo") || !hx_ascii_casecmp(text, "method") ||
-           !hx_ascii_casecmp(text, "func");
+           !hx_ascii_casecmp(text, "func") || !hx_ascii_casecmp(text, "test");
 }
 
 static void hx_block_body(HxParser *p, HxStmtVec *out) {
@@ -1638,7 +1638,9 @@ void hx_parse_module(HxUnit *unit, HxModule *m, const char *src, const char *fil
             }
             if (hx_eat_kw(&p, TK_KW_AS)) hx_type(&p);
             hx_skip_nl(&p);
-            HxStmtVec body;
+            /* sin inicializar, el primer push escribia por un puntero basura:
+               cualquier bloque TEST tumbaba el compilador */
+            HxStmtVec body = {0, 0, 0};
             hx_block_body(&p, &body);
             hx_expect_kw(&p, TK_KW_END, "END");
             hx_expect_kw(&p, TK_KW_TEST, "TEST");

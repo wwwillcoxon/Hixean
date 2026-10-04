@@ -84,6 +84,11 @@ dice qué formato y qué abi entiende este `hxc`.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **Un bloque `TEST` tumbaba el compilador**: el `HxStmtVec` del cuerpo se
+  declaraba sin inicializar, así que el primer `push` escribía por un puntero
+  basura. Y `END TEST` tampoco era un final de bloque reconocido, así que el
+  cuerpo se comía el resto del archivo. Ahora un bloque `TEST` se lee y se
+  salta, que es lo que el parser siempre pretendió.
 - **Los `switch` por tipo, expresión, sentencia y patrón ya no admiten
   `default`**, así que añadir un `TY_*`, `EX_*` o `ST_*` rompe la compilación en
   vez de colarse por un retorno por defecto. El que moría en silencio era
