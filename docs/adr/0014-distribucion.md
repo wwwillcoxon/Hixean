@@ -25,7 +25,7 @@ pero no tenía dónde mirar.
 
 ### El compilador: la release de GitHub es la fuente de verdad
 
-Una etiqueta `v0.1.0` dispara un workflow que compila y **pasa la suite** en las
+Una etiqueta `vX.Y.Z` dispara un workflow que compila y **pasa la suite** en las
 seis combinaciones de sistema y arquitectura, empaqueta cada una con
 `make dist` y calcula `SHA256SUMS` sobre los artefactos que subió cada runner.
 Los canales de arriba —instalador, Homebrew, winget— solo saben leer de ahí.

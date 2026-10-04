@@ -175,9 +175,16 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
 
 ## [0.1.0] — 2026-10-03
 
-Primera versión pública. Compilador `hxc` en C11 sin dependencias, biblioteca
-estándar mínima y gramática documentada. Lo que hay aquí se puede comprobar
-con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
+**No se publicó nunca.** El número de versión estaba en el binario y en este
+changelog, pero no había forma de instalar nada: `tools/dist.sh`,
+`tools/install.sh` y el workflow que adjunta los tarballs llegaron tres commits
+después, así que 0.1.0 solo era un árbol de código. No hay etiqueta `v0.1.0`, y
+el enlace de abajo apunta al commit, no a una release. La primera release
+descargable es 0.2.0.
+
+Compilador `hxc` en C11 sin dependencias, biblioteca estándar mínima y gramática
+documentada. Lo que hay aquí se puede comprobar con `make test` (22 programas) y
+`make size` (hola mundo ≤ 12 KiB).
 
 ### Añadido
 
@@ -251,4 +258,4 @@ con `make test` (22 programas) y `make size` (hola mundo ≤ 12 KiB).
   promesa que no se pueda cumplir.
 - El compilador se compila a sí mismo en C, no en Hixean.
 [0.2.0]: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.2.0
-[0.1.0]: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.1.0
+[0.1.0]: https://github.com/wwwillcoxon/Hixean/commit/402127b

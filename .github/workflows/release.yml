@@ -3,7 +3,7 @@ name: release
 # La release de GitHub es la fuente de verdad de la distribucion: Homebrew,
 # winget e install.sh solo saben leer de aqui.
 #
-#   git tag v0.1.0 && git push --tags
+#   git tag v0.2.0 && git push --tags
 #
 on:
   push:
