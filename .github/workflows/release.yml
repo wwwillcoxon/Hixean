@@ -120,7 +120,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       # La segunda subida es la de SHA256SUMS: gh release upload es mas simple
       # de encadenar que volver a crear la release.
+      # gh release upload busca el repositorio en el directorio de trabajo, y este
+      # job no hace checkout (los artefactos ya vienen descargados): sin --repo
+      # falla con «not a git repository» y la release se queda sin SHA256SUMS, que
+      # es justo el fichero que install.sh verifica antes de instalar nada.
       - name: adjuntar los checksums
-        run: gh release upload "${GITHUB_REF_NAME}" todos/SHA256SUMS --clobber
+        run: >-
+          gh release upload "${GITHUB_REF_NAME}" todos/SHA256SUMS --clobber
+          --repo "${GITHUB_REPOSITORY}"
         env:
           GH_TOKEN: ${{ github.token }}
