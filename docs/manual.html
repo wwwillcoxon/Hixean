@@ -1503,8 +1503,10 @@ base 0.2.0  registro/base/base.hxk</code></pre>
         <li><code>audio</code> y <code>gpu</code>: no existen. Necesitan un
         dispositivo o un compilador por objetivo, y no hay forma honesta de
         probarlos aquí. No hay capacidad declarada que no abra nada.</li>
-        <li><code>COMPTIME</code>, <code>DYN</code> y el resto de palabras clave
-        reservadas sin uso: están en el lexer, no en el lenguaje.</li>
+        <li><code>COMPTIME</code>, <code>DYN</code> y otras trece palabras clave
+        que estuvieron reservadas sin uso: en 0.2.0 dejaron de estarlo. Ahora son
+        identificadores corrientes, porque una palabra clave que no hace nada
+        solo quita un nombre al que un programa pueda querer.</li>
         <li>Sin <em>unwinding</em> a propósito; sin <code>async</code>, sin
         concurrencia, sin red más allá de <code>127.0.0.1</code>.</li>
         <li>Sin empaquetado <code>.hxv</code>/<code>.hxa</code>: hay un ELF

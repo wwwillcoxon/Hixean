@@ -728,6 +728,10 @@ paquete ajeno.
 
 ## 22. Lo que este documento *no* cubre todavía
 
-`COMPTIME` y las capacidades `audio` y `gpu`, que siguen sin existir: necesitan
-un dispositivo o un compilador por objetivo, y no hay forma honesta de probarlos
-aquí.
+Las capacidades `audio` y `gpu`, que siguen sin existir: necesitan un dispositivo
+o un compilador por objetivo, y no hay forma honesta de probarlos aquí.
+
+Las palabras clave `COMPTIME`, `DYN`, `IMPL`, `PUBLIC`, `SHADER`, `VERTEX`,
+`FRAGMENT`, `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y
+`ENTRY` tampoco están aquí, pero no por falta de soporte: nunca hicieron nada y se
+quitaron en 0.2.0, así que ahora son identificadores corrientes.
