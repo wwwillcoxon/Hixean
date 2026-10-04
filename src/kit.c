@@ -9,6 +9,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <direct.h>   /* _mkdir: en Windows el modo lo pone el padre */
 #else
 #include <dirent.h>
 #endif
@@ -575,10 +576,43 @@ static int hx_kit_copy_file(HxArena *arena, const char *from, const char *to) {
     return hx_write_file(to, data, n) == 0 ? 0 : 1;
 }
 
+/* Crear un directorio. En POSIX el modo se pasa como segundo argumento y en
+   Windows no existe: el permiso lo pone el padre, no quien crea. */
+#ifdef _WIN32
+#define hx_kit_mkdir(ruta, modo) _mkdir(ruta)
+#else
+#define hx_kit_mkdir(ruta, modo) mkdir((ruta), (modo))
+#endif
+
 /* Copia recursivamente un directorio. El registro es un arbol de archivos
-   pequenos y no lleva enlaces, asi que con stat basta. */
+   pequenos y no lleva enlaces, asi que con stat basta.
+
+   Windows no tiene dirent, asi que el recorrido se hace con FindFirstFile, que
+   devuelve el propio directorio entre los resultados: hay que filtrar "." y
+   ".." en vez de quedarse con lo que empieza por punto. Losincludes de este
+   fichero ya estaban condicionados; el recorrido, no, y por eso la compilacion
+   en windows fallaba. */
+#ifdef _WIN32
 static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
-    mkdir(to, 0755);
+    hx_kit_mkdir(to, 0755);
+    char *patron = hx_arena_sprintf(arena, "%s/*", from);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(patron, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, "..")) continue;
+        char *src = hx_arena_sprintf(arena, "%s/%s", from, fd.cFileName);
+        char *dst = hx_arena_sprintf(arena, "%s/%s", to, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            hx_kit_copy_dir(arena, src, dst);
+        else
+            hx_kit_copy_file(arena, src, dst);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+#else
+static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
+    hx_kit_mkdir(to, 0755);
     DIR *d = opendir(from);
     if (!d) return;
     struct dirent *ent;
@@ -593,6 +627,7 @@ static void hx_kit_copy_dir(HxArena *arena, const char *from, const char *to) {
     }
     closedir(d);
 }
+#endif
 
 int hx_kit_install(HxArena *arena, const char *name, const char *registry, const char *into,
                    HxDiagBag *diags, char *installed_dir, size_t installed_cap) {
