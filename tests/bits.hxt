@@ -1,0 +1,69 @@
+"bits: lo que hacia falta para un hash, una bandera o un protocolo"
+
+FUNCTION Hash(valor AS INT, vueltas AS INT) AS INT
+  "las mascaras son la cuenta de siempre, pero con AND, OR y XOR de verdad"
+  DIM h AS INT = valor
+  h = h AND 65535
+  h = h XOR 255
+  h = h OR 1
+  h = ~h
+  "y el desplazamiento con cuenta variable lo comprueba el runtime"
+  RETURN h << vueltas
+END FUNCTION
+
+DIM mascara AS INT = 255
+DIM permisos AS INT = 4
+
+"AND enciende los bits que estan en los dos"
+PRINT 12 AND 10
+"OR enciende los que estan en alguno"
+PRINT 12 OR 10
+"XOR enciende los que estan en uno solo"
+PRINT 12 XOR 10
+"NOT es la negacion booleana"
+PRINT NOT TRUE
+PRINT TRUE AND FALSE
+PRINT TRUE OR FALSE
+PRINT TRUE XOR TRUE
+
+"~ es el complemento a bits: los signos se invierten y no queda ningun 1 de los 32"
+PRINT ~0
+PRINT ~12
+
+"los desplazamientos se pegan a * y /, como en C"
+PRINT 1 << 4
+PRINT 256 >> 4
+
+"y con cuenta variable, que es donde el C no dice nada"
+DIM n AS INT = 3
+PRINT Hash(12345, n)
+PRINT Hash(12345, 3)
+
+"los signos de bits no se mezclan con los booleanos: sale E0307, no un 1"
+"y un desplazamiento con cuenta constante que no cabe es E0316"
+
+"un bit a bit se puede usar como mascara sobre un TYPE"
+TYPE Permisos
+  lectura AS BOOL
+  escritura AS BOOL
+  ejecucion AS BOOL
+END TYPE
+
+FUNCTION ACTIVAR(p AS Permisos, bit AS INT) AS Permisos
+  DIM r AS Permisos
+  r.lectura = p.lectura
+  r.escritura = p.escritura
+  r.ejecucion = p.ejecucion
+  "los parentesis hacen falta: como en C, `==` se ata mas que `AND`"
+  IF (bit AND 1) == 1 THEN r.lectura = TRUE
+  IF (bit AND 2) == 2 THEN r.escritura = TRUE
+  IF (bit AND 4) == 4 THEN r.ejecucion = TRUE
+  RETURN r
+END FUNCTION
+
+DIM base AS Permisos
+base.lectura = TRUE
+DIM con_escritura AS Permisos = ACTIVAR(base, 2)
+PRINT con_escritura.lectura
+PRINT con_escritura.escritura
+PRINT con_escritura.ejecucion

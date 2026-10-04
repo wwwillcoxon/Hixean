@@ -78,7 +78,9 @@ typedef enum {
     OP_GE,
     OP_AND,
     OP_OR,
-    OP_XOR
+    OP_XOR,
+    OP_SHL,
+    OP_SHR
 } HxBinOp;
 
 typedef enum { UOP_NEG, UOP_NOT, UOP_ADDR } HxUnOp;

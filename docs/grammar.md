@@ -259,6 +259,35 @@ Reglas aritméticas actuales:
 
 Un desbordamiento en `+`/`-` aborta con `hx: error: desbordamiento de Entero en +`.
 
+### Bits
+
+`AND` `OR` `XOR` leen de dos maneras y el tipo de los operandos dice cuál: con
+`BOOL` son los operadores booleanos, y con `INT` o `I64` son la operación de
+bits. Mezclar un `BOOL` con un entero es `E0307`, con la nota de que a un lado le
+falta el otro: el lenguaje no convierte un `BOOL` a entero ni al revés por su
+cuenta.
+
+`~` es el complemento a bits y `NOT` la negación booleana. Se escriben igual a
+propósito: `NOT` sobre un entero también es el complemento, y el verificador no
+distingue uno de otro porque el símbolo es el mismo.
+
+`<<` y `>>` mueven bits. Se pegan a `*` y `/` en precedencia, como en C, así que
+`x AND 1 == 1` se lee como `x AND (1 == 1)` y hay que poner paréntesis.
+
+El C no dice nada de mover 32 posiciones un `INT`, ni de mover a la izquierda un
+número negativo: es indefinido. Aquí no lo es. Con cuenta constante lo dice el
+verificador (`E0316`, "no cabe en un INT"), y con cuenta variable el runtime
+comprueba y aborta con el mismo código 70 que el desbordamiento de la suma.
+
+```
+DIM mascara AS INT = 255
+IF (p.bits AND 4) == 4 THEN p.ejecucion = TRUE
+h = h XOR 255
+h = ~h
+PRINT h << vueltas
+```
+
+
 ## 7. Tipos de línea
 
 | sufijo | rol |

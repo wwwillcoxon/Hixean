@@ -116,6 +116,22 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **Operadores de bits.** No había ninguno: `AND` `OR` `XOR` eran `BOOL` a secas
+  (`E0307`), `&` es dirección de, `|` es alternancia de patrón y `^` es
+  desreferencia. Sin una forma de calcular un hash, una bandera o un protocolo con
+  bits, en un lenguaje con perfil `freestanding` y syscalls directas.
+  - `AND` `OR` `XOR` leen de dos maneras según el tipo de los operandos: con
+    `BOOL` son booleanos y con `INT`/`I64` son la operación de bits. Mezclarlos es
+    `E0307` con la nota de que a un lado le falta el otro, porque el lenguaje no
+    convierte un `BOOL` a entero ni al revés por su cuenta.
+  - `~` es el complemento a bits. `~` ya era un token del lexer y no significaba
+    nada. `NOT` hace lo mismo sobre un entero.
+  - `<<` y `>>` mueven bits, con la precedencia de C (`==` se ata más que `AND`,
+    así que `x AND 1 == 1` es `x AND (1 == 1)`).
+  - **El desplazamiento está comprobado.** El C no dice nada de mover 32
+    posiciones un `INT` ni de mover a la izquierda un negativo. Con cuenta
+    constante lo dice el verificador (`E0316`) y con cuenta variable lo dice el
+    runtime, que aborta con el mismo código 70 que el desbordamiento de la suma.
 - **Se pueden sobrecargar los operadores que faltaban.** Se anunciaban
   `+ - * / MOD ++ == <> < <= > >=`, y de ellos solo funcionaban `+ - * / == <`:
   - `<>` y `!=` no se sobrecargaban. El parser acepta las dos grafías pero el

@@ -41,6 +41,7 @@ typedef struct {
     int uses_exit;
     int uses_result;
     int uses_vec;
+    int uses_shift;
     int ret_is_result;
     int epilogue;
     const char *ret_field;
@@ -749,6 +750,29 @@ static const char *HX_RT_RAWALLOC_LIBC =
     "static inline void *hx_heap_alloc(int64_t n) { return malloc((size_t)n); }\n"
     "static inline void hx_heap_free(void *p) { free(p); }\n";
 
+/* El C no dice nada de mover 32 bits un INT, ni de mover a la izquierda un
+   numero negativo: es indefinido, y en un lenguaje que verifica la division por
+   cero y el desbordamiento de la suma, dejarlo asi seria una incoherencia. Con
+   una cuenta constante lo dice el verificador (E0316); con una cuenta variable
+   lo dice esto, y aborta con el mismo codigo 70 que el resto. */
+static const char *HX_RT_SHIFT =
+    "static inline int32_t hx_shl32(int32_t a, int32_t n) {\n"
+    "  if (n < 0 || n >= 32) hx_panic(\"desplazamiento a la izquierda fuera de rango\", 44);\n"
+    "  return (int32_t)((uint32_t)a << n);\n"
+    "}\n"
+    "static inline int32_t hx_shr32(int32_t a, int32_t n) {\n"
+    "  if (n < 0 || n >= 32) hx_panic(\"desplazamiento a la derecha fuera de rango\", 42);\n"
+    "  return a >> n;\n"
+    "}\n"
+    "static inline int64_t hx_shl64(int64_t a, int64_t n) {\n"
+    "  if (n < 0 || n >= 64) hx_panic(\"desplazamiento a la izquierda fuera de rango\", 44);\n"
+    "  return (int64_t)((uint64_t)a << n);\n"
+    "}\n"
+    "static inline int64_t hx_shr64(int64_t a, int64_t n) {\n"
+    "  if (n < 0 || n >= 64) hx_panic(\"desplazamiento a la derecha fuera de rango\", 42);\n"
+    "  return a >> n;\n"
+    "}\n";
+
 static const char *HX_RT_VEC_PRE =
     "static inline long long hx_pow10(int k) {\n"
     "  long long r = 1;\n"
@@ -1071,6 +1095,10 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
             for (int i = 0; i < x->call.args.len; i++) hx_scan_expr(e, x->call.args.data[i].value);
             break;
         case EX_BIN:
+            /* el runtime se escribe despues de escanear, no de emitir: los
+               ayudantes de desplazamiento tienen que quedarse pedidos aqui */
+            if ((x->bin.op == OP_SHL || x->bin.op == OP_SHR) && x->bin.rhs->kind != EX_INT)
+                e->uses_shift = 1;
             hx_scan_expr(e, x->bin.lhs);
             hx_scan_expr(e, x->bin.rhs);
             break;
@@ -1793,9 +1821,35 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             if (x->bin.op == OP_MULS) cop = "*";
             if (x->bin.op == OP_NE) cop = "!=";
             if (x->bin.op == OP_EQ) cop = "==";
-            if (x->bin.op == OP_AND) cop = "&&";
-            if (x->bin.op == OP_OR) cop = "||";
-            if (x->bin.op == OP_XOR) cop = "^";
+            /* AND, OR y XOR leen de dos maneras y el tipo del operando izquierdo
+               dice cual: con BOOL son los operadores booleanos de C, con entero
+               son la operacion de bits. El verificador ya ha comprobado que los
+               dos lados son del mismo bando. */
+            if (x->bin.lhs->ty && x->bin.lhs->ty->kind == TY_BOOL) {
+                if (x->bin.op == OP_AND) cop = "&&";
+                if (x->bin.op == OP_OR) cop = "||";
+                if (x->bin.op == OP_XOR) cop = "!=";
+            } else {
+                if (x->bin.op == OP_AND) cop = "&";
+                if (x->bin.op == OP_OR) cop = "|";
+                if (x->bin.op == OP_XOR) cop = "^";
+            }
+            if (x->bin.op == OP_SHL || x->bin.op == OP_SHR) {
+                /* con cuenta constante el verificador ya ha comprobado que cabe,
+                   y el C directo es el codigo mas pequeño */
+                int cuenta_constante = x->bin.rhs->kind == EX_INT;
+                int i64 = x->bin.lhs->ty && x->bin.lhs->ty->kind == TY_I64;
+                if (!cuenta_constante) {
+                    e->uses_shift = 1;
+                    hx_buf_printf(b, "hx_%s%d(", x->bin.op == OP_SHL ? "shl" : "shr", i64 ? 64 : 32);
+                    hx_expr_str(e, x->bin.lhs, 5, b);
+                    hx_buf_str(b, ", ");
+                    hx_expr_str(e, x->bin.rhs, 0, b);
+                    hx_buf_str(b, ")");
+                    break;
+                }
+                cop = x->bin.op == OP_SHL ? "<<" : ">>";
+            }
             if (x->bin.op == OP_MOD) cop = "%";
             if (x->ty && hx_vec_len(x->ty)) {
                 e->uses_vec = 1;
@@ -1872,7 +1926,8 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 break;
             }
             if (x->un.op == UOP_NOT) {
-                hx_buf_str(b, "!");
+                /* `~x` sobre un entero es el complemento a bits, no una negacion */
+                hx_buf_str(b, x->un.operand->ty && x->un.operand->ty->kind == TY_BOOL ? "!" : "~");
                 hx_expr_str(e, x->un.operand, 7, b);
             } else {
                 hx_buf_str(b, "-");
@@ -3077,6 +3132,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_VEC_PRE);
         hx_buf_str(b, HX_RT_VEC);
     }
+    if (e->uses_shift) hx_buf_str(b, HX_RT_SHIFT);
     if (e->uses_string) hx_buf_str(b, HX_RT_STRING);
     hx_buf_str(b, HX_RT_ZERO);
     if (e->uses_result) hx_buf_str(b, HX_RT_RESULT);

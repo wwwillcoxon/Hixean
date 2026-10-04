@@ -213,6 +213,8 @@ const char *hx_binop_symbol(HxBinOp op) {
         case OP_AND: return "AND";
         case OP_OR: return "OR";
         case OP_XOR: return "XOR";
+        case OP_SHL: return "<<";
+        case OP_SHR: return ">>";
     }
     return "?";
 }

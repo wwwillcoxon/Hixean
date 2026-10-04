@@ -463,7 +463,9 @@ static int hx_binop_for(HxParser *p, int prec, HxBinOp *out) {
         {"-", 4, OP_SUB},   {"++", 4, OP_CONCAT},{"+%", 4, OP_ADDW},
         {"-%", 4, OP_SUBW}, {"+|", 4, OP_ADDS},  {"-|", 4, OP_SUBS},
         {"*", 5, OP_MUL},   {"*%", 5, OP_MUL},   {"*|", 5, OP_MULS},
-        {"/", 5, OP_DIV},   {"mod", 5, OP_MOD},  {NULL, 0, OP_ADD},
+        {"/", 5, OP_DIV},   {"mod", 5, OP_MOD},
+        /* los desplazamientos se pegan a * y /, como en C */
+        {"<<", 5, OP_SHL},   {">>", 5, OP_SHR},   {NULL, 0, OP_ADD},
     };
     size_t sl = (t->kind == TK_PUNCT) ? (size_t)t->str_len : strlen(s);
     for (int i = 0; table[i].text; i++) {
@@ -604,7 +606,7 @@ static HxExpr *hx_primary(HxParser *p) {
         }
         return e;
     }
-    if (t->kind == TK_KW_NOT) {
+    if (t->kind == TK_KW_NOT || hx_is_punct(p, "~")) {
         hx_bump(p);
         HxExpr *operand = hx_primary(p);
         HxExpr *e = hx_expr_new(p, EX_UN, hx_join(sp, operand->span));

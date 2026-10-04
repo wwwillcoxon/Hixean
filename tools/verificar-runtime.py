@@ -41,18 +41,33 @@ def largo(literal):
     return total
 
 
+# El recuento no puede bajar sin que alguien haya cambiado un literal por otro y el
+# patron ya no case. Cuando se anada una comprobacion se sube este numero.
+MINIMOS = 16
+
+
 def main():
     with open("src/emit.c", encoding="utf-8") as f:
         fuente = f.read()
     # dentro de las cadenas del runtime todo va escapado: "\\n" aqui es "\n" en el
     # C generado, y ahi "\n" son 2 caracteres que en C son 1 byte
     plano = fuente.replace(chr(92) * 2, chr(92)).replace(chr(92) + chr(34), chr(34))
-    patron = re.compile(r'hx_(?:write|out)\(\s*(\w+)\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*(\d+)')
+    # hx_out/hx_write con un literal y su longitud, y hx_panic, que lleva la
+    # longitud a mano en el segundo argumento
+    patron = re.compile(
+        r'hx_(?:write|out)\(\s*(\w+)\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*(\d+)'
+        r'|hx_panic\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*sizeof\(\s*"\4"\s*\)\s*-\s*1\s*\)')
     revistos = 0
     fallos = []
     for m in patron.finditer(plano):
-        literal, declarado = m.group(2), int(m.group(3))
         revistos += 1
+        if m.group(2) is not None:
+            literal, declarado = m.group(2), int(m.group(3))
+        else:
+            # hx_panic("texto", sizeof("texto") - 1)
+            literal = m.group(4)
+            real = largo(literal)
+            declarado = real
         real = largo(literal)
         if real != declarado:
             fallos.append((m.group(0), real, declarado))
@@ -60,6 +75,12 @@ def main():
         print("FALLO: %s -> %d bytes reales, %d declarados" % (texto[:80], real, declarado))
     if not revistos:
         print("FALLO: no se ha encontrado ninguna llamada hx_write/hx_out: el runtime ha cambiado")
+        return 1
+    # El patron de hx_panic comprueba que el literal y el sizeof sean el mismo, asi
+    # que si alguien cambia uno de los dos el recuento baja en vez de fallar. Un
+    # numero que solo baja es un runtime al que le han quitado una comprobacion.
+    if revistos < MINIMOS:
+        print("FALLO: solo %d literales con longitud fija; se esperaban %d" % (revistos, MINIMOS))
         return 1
     if fallos:
         return 1

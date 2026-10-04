@@ -1416,9 +1416,61 @@ static HxExpr *hx_bin_check(HxChecker *c, HxExpr *e) {
                    op == OP_ADDW || op == OP_SUBW || op == OP_ADDS || op == OP_SUBS ||
                    op == OP_MULS;
     if (is_logic) {
-        if ((l && l->kind != TY_BOOL) || (r && r->kind != TY_BOOL))
-            hx_error(c->diags, e->span, "E0307", "AND, OR y XOR requieren operandos BOOL");
+        int l_bits = l && (l->kind == TY_INT || l->kind == TY_I64);
+        int r_bits = r && (r->kind == TY_INT || r->kind == TY_I64);
+        /* AND, OR y XOR leen como booleanos si los dos operandos son BOOL y
+           como operacion de bits si los dos son enteros. Mezclar los dos es un
+           error y se dice cual de las dos lecturas falta: convertir un BOOL a
+           entero sin querer es justo lo que este lenguaje no hace. */
+        if (l_bits && r_bits) {
+            hx_coerce(c, r, l, e->span, NULL);
+            e->ty = l;
+            return e;
+        }
+        if ((l && l->kind != TY_BOOL) || (r && r->kind != TY_BOOL)) {
+            hx_diag_note(c->diags, e->span, "E0307",
+                         "AND, OR y XOR requieren dos operandos BOOL o dos enteros",
+                         hx_arena_sprintf(c->arena, "%s y %s", hx_ty_name(l), hx_ty_name(r)),
+                         "a un lado le falta el otro: no se convierte un BOOL a entero "
+                         "ni al reves");
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
         e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+        return e;
+    }
+    /* `<<` y `>>`: los dos operandos enteros, y el segundo es cuantas posiciones
+       se mueve. El C no dice nada de un desplazamiento negativo o mayor que el
+       ancho, asi que el runtime lo comprueba. */
+    if (op == OP_SHL || op == OP_SHR) {
+        const char *signo = hx_binop_symbol(op);
+        int l_int = l && (l->kind == TY_INT || l->kind == TY_I64);
+        int r_int = r && (r->kind == TY_INT || r->kind == TY_I64);
+        if (!l_int || !r_int) {
+            hx_diag_note(c->diags, e->span, "E0307",
+                         hx_arena_sprintf(c->arena,
+                                          "'%s' necesita dos operandos enteros, no %s y %s",
+                                          signo, hx_ty_name(l), hx_ty_name(r)),
+                         "un desplazamiento mueve bits: no tiene sentido sobre BOOL, "
+                         "STRING ni un registro", NULL);
+            e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+            return e;
+        }
+        /* con un desplazamiento constante se comprueba aqui, que es donde se
+           puede; con uno variable lo comprueba el runtime */
+        HxExpr *cuenta = e->bin.rhs;
+        if (cuenta->kind == EX_INT) {
+            int ancho = l->kind == TY_I64 ? 64 : 32;
+            if (cuenta->ival < 0 || cuenta->ival >= ancho)
+                hx_error(c->diags, cuenta->span, "E0316",
+                         hx_arena_sprintf(c->arena, "'%s' con %lld no cabe en un %s", signo,
+                                          (long long)cuenta->ival,
+                                          l->kind == TY_I64 ? "I64" : "INT"),
+                         "un desplazamiento mueve bits: mover 32 en un INT no es un "
+                         "resultado raro, es indefinido");
+        }
+        hx_coerce(c, r, l, e->span, NULL);
+        e->ty = l;
         return e;
     }
     /* OPERATOR + en un TYPE convierte la expresion binaria en una llamada: el
@@ -1879,10 +1931,15 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
                 return e;
             }
             if (e->un.op == UOP_NOT) {
-                if (e->un.operand->ty && e->un.operand->ty->kind != TY_BOOL)
+                /* `NOT x` es la negacion booleana y `~x` el complemento a
+                   bits: los dos se escriben igual, asi que el tipo del operando
+                   decide cual de los dos es. */
+                HxTyKind k = e->un.operand->ty ? e->un.operand->ty->kind : TY_UNKNOWN;
+                if (k != TY_BOOL && k != TY_INT && k != TY_I64)
                     hx_error(c->diags, e->un.operand->span, "E0307",
-                             "NOT requiere un operando BOOL");
-                e->ty = hx_ty_builtin(c->arena, TY_BOOL);
+                             "NOT y ~ necesitan un operando BOOL, INT o I64, no %s",
+                             hx_ty_name(e->un.operand->ty));
+                e->ty = k == TY_BOOL ? hx_ty_builtin(c->arena, TY_BOOL) : e->un.operand->ty;
             } else {
                 if (e->un.operand->ty && !hx_ty_is_numeric(e->un.operand->ty))
                     hx_error(c->diags, e->un.operand->span, "E0307",
