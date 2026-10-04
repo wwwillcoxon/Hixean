@@ -28,6 +28,10 @@ static char *hx_arg(HxArena *a, const char *s);
 static HxArena g_arena_scratch;
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h> /* CreateProcess y companhia, para hx_exec */
 #include <process.h>
 #define HX_EXEC(p, a) _spawnvp(_P_WAIT, p, a)
 #define HX_STRCPY_STRDUP(d, s) ((d) = _strdup(s))
