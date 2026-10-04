@@ -1,0 +1,3 @@
+"el nombre del modulo tiene que ser el de la ruta del IMPORT"
+IMPORT mate
+PRINT mate.Doble(2)

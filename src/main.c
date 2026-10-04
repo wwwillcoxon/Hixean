@@ -205,21 +205,66 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                                            const char *use_hxc) {
 
     HX_VEC(pending, const char *);
+    /* el nombre que pedia el IMPORT de cada archivo pendiente y donde estaba
+       escrito: sin esto se carga cualquier hxs que coincida con el nombre
+       corto y no se dice nada */
+    HX_VEC(esperado, const char *);
+    HX_VEC(pedido_span, HxSpan);
+    /* el fuente del módulo que hizo el IMPORT, para señalar en su sitio */
+    HX_VEC(pedido_src, const char *);
+    HX_VEC(pedido_file, const char *);
     HX_VEC(done, const char *);
     char *dir = hx_path_dirname(&s->arena, entry_path);
     HX_VEC_PUSH(pending, entry_path);
+    HX_VEC_PUSH(esperado, NULL);
+    HX_VEC_PUSH(pedido_span, ((HxSpan){0, 0}));
+    HX_VEC_PUSH(pedido_src, NULL);
+    HX_VEC_PUSH(pedido_file, NULL);
     HX_VEC_PUSH(done, entry_path);
     (void)dir;
     int entry_loaded = 0;
 
     while (pending.len) {
         const char *path = pending.data[0];
+        const char *pedido = esperado.data[0];
+        HxSpan pedido_en = pedido_span.data[0];
+        const char *src_del_import = pedido_src.data[0];
+        const char *file_del_import = pedido_file.data[0];
         int is_entry = path == entry_path;
         memmove(pending.data, pending.data + 1,
                 (pending.len - 1) * sizeof(pending.data[0]));
         pending.len--;
+        memmove(esperado.data, esperado.data + 1,
+                (esperado.len - 1) * sizeof(esperado.data[0]));
+        esperado.len--;
+        memmove(pedido_span.data, pedido_span.data + 1,
+                (pedido_span.len - 1) * sizeof(pedido_span.data[0]));
+        pedido_span.len--;
+        memmove(pedido_src.data, pedido_src.data + 1,
+                (pedido_src.len - 1) * sizeof(pedido_src.data[0]));
+        pedido_src.len--;
+        memmove(pedido_file.data, pedido_file.data + 1,
+                (pedido_file.len - 1) * sizeof(pedido_file.data[0]));
+        pedido_file.len--;
         HxModule *m = hx_load_module(s, path, is_entry);
         if (!m) continue;
+        if (pedido && hx_ascii_casecmp(hx_sym_str(m->name), pedido)) {
+            /* el error es del IMPORT, no del módulo: el archivo que seImprime
+               tiene que ser el que lo escribio, no el que se acaba de cargar */
+            const char *src_previo = s->diags.ctx_src;
+            const char *file_previo = s->diags.ctx_file;
+            s->diags.ctx_src = src_del_import;
+            s->diags.ctx_file = file_del_import;
+            hx_diag_note(&s->diags, pedido_en, "E0501",
+                         hx_arena_sprintf(&s->arena,
+                                          "se pidió el módulo '%s' y '%s' declara '%s'",
+                                          pedido, path, hx_sym_str(m->name)),
+                         "el nombre del módulo tiene que ser el de la ruta del IMPORT; "
+                         "si el fichero no lleva MODULE, se toma del nombre del archivo",
+                         NULL);
+            s->diags.ctx_src = src_previo;
+            s->diags.ctx_file = file_previo;
+        }
         if (is_entry) entry_loaded = 1;
         for (int i = 0; i < m->imports.len; i++) {
             HxImport *im = &m->imports.data[i];
@@ -245,6 +290,10 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                 if (!seen) {
                     HX_VEC_PUSH(done, encontrado);
                     HX_VEC_PUSH(pending, encontrado);
+                    HX_VEC_PUSH(esperado, sp);
+                    HX_VEC_PUSH(pedido_span, im->path_span);
+                    HX_VEC_PUSH(pedido_src, m->src);
+                    HX_VEC_PUSH(pedido_file, m->file);
                 }
             } else {
                 char *cand2 = hx_arena_sprintf(&s->arena, "%s/%s.hxf", dir, stem);
@@ -255,6 +304,11 @@ static void hx_collect_modules2(HxSession *s, const char *entry_path,
                     if (!seen) {
                         HX_VEC_PUSH(done, cand2);
                         HX_VEC_PUSH(pending, cand2);
+                        HX_VEC_PUSH(esperado, sp);
+                        HX_VEC_PUSH(pedido_span, im->path_span);
+                        HX_VEC_PUSH(pedido_src, m->src);
+                        HX_VEC_PUSH(pedido_file, m->file);
+                    HX_VEC_PUSH(pedido_file, m->file);
                     }
                 } else if (use_hxc) {
                     char *hxc = hx_arena_sprintf(&s->arena, "%s/%s.hxc", use_hxc, stem);

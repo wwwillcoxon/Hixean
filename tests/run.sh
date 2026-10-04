@@ -247,6 +247,14 @@ fi
   && echo "ok     MAYBE INT y MAYBE STRING no se confunden entre si" \
   || { echo "FALLO: dos MAYBE distintos se estan tomando por el mismo tipo"; exit 1; }
 # MAYBE: un valor no se desempaqueta solo, NIL fuera de sitio y MATCH incompleto
+# el nombre del módulo tiene que ser el de la ruta del IMPORT
+rm -rf build/modulo_mal && mkdir -p build/modulo_mal
+cp tests/malos/mate_equivocado.hxs build/modulo_mal/mate.hxs
+cp tests/malos/modulo_mal.hxe build/modulo_mal/
+./build/hxc check build/modulo_mal/modulo_mal.hxe 2>&1 | grep -q "se pidió el módulo 'mate'" \
+  && ./build/hxc check build/modulo_mal/modulo_mal.hxe 2>&1 | grep -q "declara 'otro_mate'" \
+  && echo "ok     un modulo que declara otro nombre que su ruta se rechaza" \
+  || { echo "FALLO: el nombre del modulo no se comprueba"; exit 1; }
 # ARRAY[T]: Set y Push son de los que crecen, y el tamaño no va detrás
 ./build/hxc check tests/malos/arreglos_dinamicos.hxe 2>&1 | grep -q "E0306" \
   && ./build/hxc check tests/malos/arreglos_dinamicos.hxe 2>&1 | grep -q "no lleva tamaño" \
