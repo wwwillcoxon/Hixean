@@ -269,6 +269,13 @@ MATCH expr [ AS nombre ]
 Un `MATCH` cuyo sujeto es un `Result` no necesita `CASE ELSE` si cubre `Ok`
 y `Err`; en cualquier otro caso es obligatorio (`E0405`).
 
+El guard de un `CASE` ve lo que el patrón liga: `CASE n WHEN n > 10 THEN` es
+legítimo y `n` está disponible dentro del cuerpo. Como las ligaduras de un
+`CASE` no sobreviven al siguiente, dos alternativas de un mismo patrón no pueden
+ligar el mismo nombre: `CASE Ok(v) | Err(v)` da `E0217`, porque el cuerpo no
+podría saber de cuál de las dos habla `v`. Un `CASE` por alternativa lo dice
+mejor.
+
 ## 9. Módulos y unidades `.hxc`
 
 ```

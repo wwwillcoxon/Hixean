@@ -2513,10 +2513,26 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_printf(b, "%s %s = ", hx_c_ty(e, s->match.subject->ty), subj);
             hx_expr_str(e, s->match.subject, 0, b);
             hx_buf_str(b, ";\n");
+            /* Cada CASE necesita sus ligaduras en su propio ambito: el guard
+               las usa (`CASE x WHEN x > 10`) y las del CASE siguiente no pueden
+               pisarlas. El `else if` encadenado no vale, porque al terminar un
+               CASE sus ligaduras ya estan muertas y el siguiente las necesita
+               vivas. Con una bandera los brazos quedan planos, en el orden del
+               fuente, y solo corre el primero que cumple: que es lo que hace un
+               `else if`, sin anidar el C. */
+            int hay_casos = s->match.cases.len > 0;
+            char *flag = hay_casos ? hx_arena_sprintf(e->arena, "hx_match%d", id) : NULL;
+            if (hay_casos) {
+                hx_indent(b, ind);
+                hx_buf_printf(b, "int %s = 0;\n", flag);
+            }
             for (int i = 0; i < s->match.cases.len; i++) {
                 HxMatchCase *mc = &s->match.cases.data[i];
                 hx_indent(b, ind);
-                hx_buf_str(b, i == 0 ? "if (" : "else if (");
+                hx_buf_printf(b, "if (!%s) {\n", flag);
+                hx_emit_pattern_bind(e, mc->pattern, subj, s->match.subject->ty, ind + 1);
+                hx_indent(b, ind + 1);
+                hx_buf_str(b, "if (");
                 hx_emit_pattern_test(e, mc->pattern, subj, s->match.subject->ty);
                 if (mc->guard) {
                     hx_buf_str(b, " && (");
@@ -2524,17 +2540,24 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
                     hx_buf_str(b, ")");
                 }
                 hx_buf_str(b, ") {\n");
-                hx_emit_pattern_bind(e, mc->pattern, subj, s->match.subject->ty, ind + 1);
-                hx_block(e, &mc->body, ind + 1);
+                hx_block(e, &mc->body, ind + 2);
+                hx_indent(b, ind + 2);
+                hx_buf_printf(b, "%s = 1;\n", flag);
+                hx_indent(b, ind + 1);
+                hx_buf_str(b, "}\n");
                 hx_indent(b, ind);
                 hx_buf_str(b, "}\n");
             }
             if (s->match.has_else) {
                 hx_indent(b, ind);
-                hx_buf_str(b, s->match.cases.len ? "else {\n" : "{");
+                hx_buf_printf(b, "if (!%s) {\n", flag);
                 hx_block(e, &s->match.else_body, ind + 1);
                 hx_indent(b, ind);
                 hx_buf_str(b, "}\n");
+            }
+            if (hay_casos) {
+                hx_indent(b, ind);
+                hx_buf_printf(b, "(void)%s;\n", flag);
             }
             break;
         }

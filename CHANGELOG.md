@@ -116,6 +116,19 @@ cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba literal, la prueba `[ -d ]` fallaba y el script salía con éxito sin
   haber copiado nada. Ahora el directorio se recorre con un `for`, y si no
   aparece `bin/hxc` se dice con un error.
+- **El guard de un `CASE` se emitía antes que las ligaduras del patrón**:
+  `CASE x WHEN x > 10` generaba C que no compilaba, con `hx_v_x` sin declarar.
+  Ahora cada `CASE` declara sus ligaduras antes de evaluar su condición. El
+  `else if` encadenado no servía (al terminar un `CASE` sus ligaduras ya están
+  muertas y el siguiente las necesita vivas), así que los brazos van planos con
+  una bandera: mismo orden, mismo resultado.
+- **`AS Result` sin escribir `<T,E>` daba el diagnóstico más inútil del
+  lenguaje**: «se esperaba Result, se encontró Result». `Ok(n)` sabe su carga y
+  la anotación vacía no dice cuál esperaba, así que ahora un `Result` sin
+  parámetros acepta cualquier `Result`.
+- **`CASE Ok(v) | Err(v)` generaba dos declaraciones del mismo nombre en C** y
+  el compilador moría con un conflicto de tipos. Es `E0217` ahora, con el
+  nombre que choca y la recomendación de escribir un `CASE` por alternativa.
 - **Un bloque `TEST` tumbaba el compilador**: el `HxStmtVec` del cuerpo se
   declaraba sin inicializar, así que el primer `push` escribía por un puntero
   basura. Y `END TEST` tampoco era un final de bloque reconocido, así que el

@@ -1,0 +1,79 @@
+"MATCH: alternativas, guards y un Result sin escribir sus dos parametros"
+
+TYPE Resultado
+  codigo AS INT
+  texto AS STRING
+END TYPE
+
+FUNCTION par(n AS INT) AS Result
+  IF n MOD 2 == 0 THEN RETURN Ok(n)
+  RETURN Err("impar")
+END FUNCTION
+
+FUNCTION signo(n AS INT) AS STRING
+  "el guard ve lo que el patron liga: aqui n es el valor ligado"
+  MATCH n
+    CASE x WHEN x > 100 THEN
+      RETURN "muy grande"
+    CASE x WHEN x > 10 THEN
+      RETURN "grande"
+    CASE 0 THEN
+      RETURN "cero"
+    CASE x WHEN x < 0 THEN
+      RETURN "negativo"
+    CASE ELSE THEN
+      RETURN "normal"
+  END MATCH
+END FUNCTION
+
+FUNCTION banda(c AS INT) AS STRING
+  "alternativas con literales: los tres brazos comparten patron"
+  MATCH c
+    CASE 1 | 2 | 3 THEN
+      RETURN "bajo"
+    CASE 4 | 5 THEN
+      RETURN "medio"
+    CASE ELSE THEN
+      RETURN "alto"
+  END MATCH
+END FUNCTION
+
+FUNCTION describe(n AS INT) AS STRING
+  "AS Result sin <T,E>: el payload se deduce del Ok, no hace falta escribirlo"
+  MATCH par(n)
+    CASE Ok(v) WHEN v > 100 THEN
+      RETURN "par grande"
+    CASE Ok(v) THEN
+      RETURN "par"
+    CASE Err(m) THEN
+      RETURN "impar: " ++ m
+  END MATCH
+END FUNCTION
+
+FUNCTION ruta(r AS Result) AS STRING
+  "cubrir Ok y Err quita la necesidad de CASE ELSE"
+  MATCH r
+    CASE Ok(v) THEN
+      RETURN "ok"
+    CASE Err(m) THEN
+      RETURN "error: " ++ m
+  END MATCH
+END FUNCTION
+
+PRINT signo(1000)
+PRINT signo(42)
+PRINT signo(0)
+PRINT signo(-5)
+PRINT signo(7)
+
+PRINT banda(1)
+PRINT banda(3)
+PRINT banda(5)
+PRINT banda(9)
+
+PRINT describe(200)
+PRINT describe(8)
+PRINT describe(7)
+
+PRINT ruta(Ok(3))
+PRINT ruta(Err("no"))

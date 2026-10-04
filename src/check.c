@@ -345,6 +345,10 @@ static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *
         return 0;
     }
     if (hx_ty_equal(from, to)) return 1;
+    /* `AS Result` sin escribir los dos parametros no dice que lleva: es un
+       Result, sea cual sea su carga. Sin esta regla sale el diagnostico mas
+       inutil del lenguaje, «se esperaba Result, se encontró Result». */
+    if (hx_ty_is_result(from) && hx_ty_is_result(to) && !to->n_targs) return 1;
     int fr = hx_ty_rank(from), tr = hx_ty_rank(to);
     if (fr && tr && from->kind == to->kind) return 1;
     if (fr && tr && fr < tr) return 1;
@@ -2067,6 +2071,17 @@ static int hx_body_defer(HxStmtVec *body) {
     return 0;
 }
 
+/* Los nombres que un patron liga. Un `__or__` los junta todos, y por eso dos
+   alternativas con el mismo nombre chocan al emitir. */
+static void hx_pat_ligas(const HxPattern *pat, HxSym *out, int *n, int cap) {
+    if (!pat || *n >= cap) return;
+    if (pat->kind == PAT_BIND) {
+        out[(*n)++] = pat->name;
+        return;
+    }
+    for (int i = 0; i < pat->args.len; i++) hx_pat_ligas(&pat->args.data[i], out, n, cap);
+}
+
 static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
     if (!pat) return;
     /* En un MATCH sobre un ENUM, un nombre desnudo es una variante si existe;
@@ -2112,6 +2127,28 @@ static void hx_check_pattern(HxChecker *c, HxPattern *pat, HxTy *subj) {
         case PAT_CONSTRUCTOR: {
             int is_or = !hx_ascii_casecmp(hx_sym_str(pat->ctor), "__or__");
             if (is_or) {
+                /* `CASE Ok(v) | Err(v)` liga v dos veces: el cuerpo no podria
+                   saber si habla del Ok o del Err, y el C tendria dos
+                   declaraciones del mismo nombre. Se dice aqui, con el nombre
+                   que choca, en vez de dejar que reviente al compilar el C. */
+                HxSym l1[8], l2[8];
+                int n2 = 0;
+                for (int i = 0; i < pat->args.len && i < 8; i++) {
+                    int n = 0;
+                    hx_pat_ligas(&pat->args.data[i], l1, &n, 8);
+                    for (int a = 0; a < n; a++)
+                        for (int b = 0; b < n2; b++)
+                            if (l1[a] == l2[b] || !hx_ascii_casecmp(hx_sym_str(l1[a]),
+                                                                    hx_sym_str(l2[b])))
+                                hx_diag_note(c->diags, pat->span, "E0217",
+                                             "las dos alternativas de un | ligan el mismo nombre",
+                                             hx_arena_sprintf(c->arena,
+                                                              "'%s' sale dos veces en el mismo patron",
+                                                              hx_sym_str(l1[a])),
+                                             "un CASE por alternativa lo dice mejor: el cuerpo "
+                                             "no puede saber de cual de las dos habla");
+                    for (int b = 0; b < n && n2 < 8; b++) l2[n2++] = l1[b];
+                }
                 for (int i = 0; i < pat->args.len; i++) hx_check_pattern(c, &pat->args.data[i], subj);
                 return;
             }

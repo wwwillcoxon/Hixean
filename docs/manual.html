@@ -130,7 +130,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>30/30</b><span>pruebas del corpus</span></li>
+        <li><b>31/31</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -1307,6 +1307,7 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
       </div>
       <table id="tabla-errores">
         <tr><th>Código</th><th>Qué significa</th></tr>
+        <tr class="fila" data-codigo="E0217"><td><code>E0217</code></td><td>las dos alternativas de un <code>|</code> ligan el mismo nombre</td></tr>
         <tr class="fila" data-codigo="E0216"><td><code>E0216</code></td><td>UNIQUE sólo puede ir en un campo REF, y '…' es '…'</td></tr>
         <tr class="fila" data-codigo="E0218"><td><code>E0218</code></td><td>'…' ya está en '….…' ? ? · a un campo UNIQUE sólo se puede mover una variable REF</td></tr>
         <tr class="fila" data-codigo="E0000"><td><code>E0000</code></td><td>demasiados errores, se detiene la compilación</td></tr>
@@ -1597,7 +1598,7 @@ PRINT "prefijo {corte}, segmentos {partes}"</code></pre>
     <footer>
       <p>Manual generado a mano sobre <code>docs/grammar.md</code> y el corpus
       <code>tests/</code>. Lo que aquí se afirma se puede comprobar:
-      <code>make test</code> ejecuta los 30 programas del corpus, y
+      <code>make test</code> ejecuta los 31 programas del corpus, y
       <code>make size</code> la puerta de 12 KiB.</p>
       <p>Pulsa <span class="kbd">/</span> para buscar, <span class="kbd">Esc</span>
       para limpiar, y «Guardar PDF» para imprimir o exportar con el diálogo del
