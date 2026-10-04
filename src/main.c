@@ -70,7 +70,9 @@ static double hx_now_ms(void) {
 #endif
 }
 
+#ifndef _WIN32
 static void hx_execvp(const char *const argv[]);
+#endif
 
 /* Los vectores de argumentos son const de principio a fin: execvp es la unica
    llamada que no los admite, y ahi se copia el vector de punteros una vez. */
@@ -115,8 +117,6 @@ static void hx_execvp(const char *const argv[]) {
     ejecucion[n] = NULL;
     execvp(ejecucion[0], ejecucion);
 }
-#else
-static void hx_execvp(const char *const argv[]) { (void)argv; }
 #endif
 
 /* Lanza cc sin esperar: permite compilar varias unidades a la vez. */
@@ -657,10 +657,17 @@ static int hx_build_main(HxSession *s, const char *entry, HxBuildOpts *o, const 
 #ifdef _WIN32
     jobs = 1; /* sin waitpid: se compila en serie */
 #else
-    /* una compilacion por nucleo; cc ya usa varios hilos por dentro */
-    if (o->jobs > 0) jobs = o->jobs;
-    else {
-        long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    /* una compilacion por nucleo; cc ya usa varios hilos por dentro.
+       _SC_NPROCESSORS_ONLN es de Linux y en macOS no existe, asi que alli el
+       numero se pide por sysctl y, si tampoco se puede, se compila en serie:
+       fewer es mejor que un numero inventado. */
+    if (o->jobs > 0) {
+        jobs = o->jobs;
+    } else {
+        long ncpu = 0;
+#ifdef _SC_NPROCESSORS_ONLN
+        ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
         jobs = (int)(ncpu > 0 ? ncpu : 2);
     }
     if (jobs > 8) jobs = 8;
