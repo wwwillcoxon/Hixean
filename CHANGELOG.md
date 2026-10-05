@@ -103,6 +103,21 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   … siguiente AS Nodo<T> …` se instanciaba, el clon se volvía a instanciar, y así
   hasta que la pila se desbordaba. Con un valor directo no hay forma de cortarlo, así
   que ahora el tipo queda desconocido y se dice por qué.
+- **`2.5.ToString()` daba `2.0`.** El camino de texto a número —el de `ToString()` y el
+  de `++` dentro de un texto— casteaba el valor a `int64_t` antes de formatearlo, y
+  `(int64_t)2.5` es 2: la fracción se pierde en el cast, no en el formateo. El cast
+  estaba ahí a propósito para los `INT` de 32 bits, que sin convertir no compilan en
+  una llamada sin prototipo, pero se aplicaba a todos los tipos. Ahora solo castea el
+  ayudante que toma un entero.
+  `PRINT 2.5` siempre dio bien, porque ese camino no lleva cast, y por eso el bug se
+  escondió: **el `.out` esperado se había regenerado con el bug dentro**, así que el
+  corpus daba luz verde sobre un `2.0` que nunca debió imprimirse.
+- **Una puerta que compara `PRINT` y `ToString` en vez de fiarse del `.out`.**
+  Con el esperado arreglado el corpus ya sirve, pero la lección es que un `.out`
+  regenerado sin mirar no prueba nada: cuadra con lo que el programa haga, para bien o
+  para mal. Esta puerta imprime el mismo número por los dos caminos y compara las
+  columnas, así que un cast que se cuele en uno de los dos sale aunque el esperado
+  vuelva a mentir.
 - **Encadenar verbos sobre un `ARRAY[T]` no compilaba.** El `ARRAY` se convierte en
   iterador, y su `Map` y su `Filter` llevan nombres propios —`MapD` y `FilterD`— que
   la cadena de iteradores no conocía. La cadena los tomaba por una llamada más y le

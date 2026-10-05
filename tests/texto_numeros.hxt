@@ -34,3 +34,30 @@ uno: lo que se puede liberar se libera a mano con un ARENA."
 
 "y todavia no hay tipos de funcion, asi que no se puede pasar una FUNC
 como parametro: eso es lo que dice ADR 0008 y lo que falta por hacer."
+
+"Una fraccion se pierde si el camino de texto castea a entero antes de formatear: este
+   PRINT daba bien y el ToString de al lado daba «2.0» con el mismo 2.5, porque PRINT
+   pasa el valor a hx_print_f64 y el ToString lo pasaba por (int64_t) antes de llegar a
+   hx_f64_str. Los dos caminos tienen que ver el mismo numero."
+DIM fraccion AS FLOAT = 2.5
+DIM casi AS FLOAT = 19.99
+DIM pico AS FLOAT = 0.5
+DIM negativo AS FLOAT = -2.5
+DIM entera AS FLOAT = 7.0
+PRINT fraccion.ToString()
+PRINT casi.ToString()
+PRINT pico.ToString()
+PRINT negativo.ToString()
+PRINT entera.ToString()
+PRINT fraccion
+PRINT casi
+PRINT "concatenado: " ++ fraccion.ToString() ++ " y " ++ negativo.ToString()
+' y un FLOAT dentro de un ARRAY, que va por otro camino de conversion
+DIM varios AS ARRAY[FLOAT]
+varios.Push(2.5)
+varios.Push(19.99)
+FOR v IN varios.Map(FUNC(f AS FLOAT) AS STRING
+  RETURN f.ToString()
+END FUNC)
+  PRINT v
+NEXT

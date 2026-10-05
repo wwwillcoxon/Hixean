@@ -347,6 +347,36 @@ else
   echo "ok     prueba de la pagina omitida: no hay node"
 fi
 
+echo "== un numero es el mismo por PRINT y por ToString =="
+# PRINT de un FLOAT pasa el valor a hx_print_f64; ToString pasa por hx_f64_str. Son
+# dos caminos distintos y los dos tienen que ver el mismo numero. No lo veian: el de
+# ToString casteaba a int64_t antes de formatear, y (int64_t)2.5 es 2, asi que un
+# `PRINT 2.5` decia 2.5 y un `2.5.ToString()` decia 2.0. El corpus no lo dira, porque
+# el `.out` esperado se habia regenerado con el bug dentro y las dos cosas cuadraban:
+# una expectativa equivocada da luz verde sobre un bug. Por eso esta puerta compara
+# los dos caminos en vez de fiarse del `.out`.
+cat > build/mismos_valores.hxe <<'HXE'
+DIM a AS FLOAT = 2.5
+DIM b AS FLOAT = 19.99
+DIM c AS FLOAT = 0.5
+DIM d AS FLOAT = -2.5
+DIM e AS FLOAT = 1234.0625
+PRINT a
+PRINT a.ToString()
+PRINT b
+PRINT b.ToString()
+PRINT c
+PRINT c.ToString()
+PRINT d
+PRINT d.ToString()
+PRINT e
+PRINT e.ToString()
+HXE
+./build/hxc run build/mismos_valores.hxe > build/mismos_valores.out 2>&1
+awk 'NR % 2 == 1' build/mismos_valores.out > build/por_print.out
+awk 'NR % 2 == 0' build/mismos_valores.out > build/por_texto.out
+comprobar build/por_print.out build/por_texto.out "PRINT y ToString ven el mismo FLOAT"
+
 echo "== arreglos: honestidad y acceso comprobado =="
 if ./build/hxc check tests/malos/rangos.hxe >/dev/null 2>&1; then
   echo "FALLO: un rango en un indice deberia rechazarse"; exit 1

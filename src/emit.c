@@ -1792,12 +1792,24 @@ static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {
     }
     HxBuf inner = {e->arena, NULL, 0, 0};
     hx_expr_str(e, h, 0, &inner);
-    /* ElConversion toma int64_t. Con un INT de 32 bits dentro del argumento se
-       pasaba un int32_t y el C protestaba, porque no hay prototipo que convierta:
-       en C el entero se promueve al entero menor de los dos. Se convierte aqui, y
-       con la conversion explicita el Cgenerated compila en los tres sistemas. */
-    hx_buf_printf(b, "%s((int64_t)(%s))", hx_str_of_fn(h->ty),
-                  inner.data ? inner.data : "0");
+    /* hx_str_of_i64 toma un int64_t. Con un INT de 32 bits dentro del argumento se
+       pasaba un int32_t y el C protestaba, porque no hay prototipo que convierta: en
+       una llamada sin prototipo el entero se promueve al entero menor de los dos.
+       Con la conversion explicita el C generado compila en los tres sistemas.
+
+       Solo para los tipos que de verdad van a hx_str_of_i64. Con un FLOAT sobra, y
+       no es que sobre: lo rompe. El cast se aplicaba a todos los tipos y
+       `(int64_t)2.5` es 2, asi que un `2.5.ToString()` daba «2.0» —la fraccion se
+       pierde en el cast, no en el formateo— mientras que `PRINT 2.5` daba bien, porque
+       ese camino no lleva cast. Lo vio el corpus, que tenia «2.0» como salida
+       esperada: una expectativa equivocada da luz verde sobre un bug. */
+    const char *fn = hx_str_of_fn(h->ty);
+    int castea = !strcmp(fn, "hx_str_of_i64");
+    hx_buf_printf(b, "%s(", fn);
+    if (castea) hx_buf_str(b, "(int64_t)(");
+    hx_buf_str(b, inner.data ? inner.data : "0");
+    if (castea) hx_buf_str(b, ")");
+    hx_buf_str(b, ")");
     free(inner.data);
 }
 
@@ -2299,18 +2311,26 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 /* ToString: el texto vive en memoria propia, no en la pila */
                 e->uses_tostring = 1;
                 e->uses_string = 1;
-                /* Los Conversion de numero toman int64_t. Con un INT de 32 bits
+                /* Las conversiones de numero toman int64_t. Con un INT de 32 bits
                    dentro se pasaba un int32_t y el C protestaba, porque sin
                    prototipo el entero se promueve al menor de los dos. Con un
                    STRING no hay conversion que hacer: str_dup ya recibe un hx_str
-                   y el cast a entero no compila. */
+                   y el cast a entero no compila.
+
+                   Y con un FLOAT el cast no sobra, rompe: hx_f64_str toma un double,
+                   y `(int64_t)2.5` es 2, asi que la fraccion se pierde antes de
+                   llegar al formateo. PRINT no lleva cast, y por eso `PRINT 2.5`
+                   salia bien mientras que `2.5.ToString()` daba «2.0». */
                 HxTy *rt = x->recv ? x->recv->ty : NULL;
                 if (rt && rt->kind == TY_STRING) {
                     hx_buf_printf(b, "hx_str_dup(");
                     hx_expr_str(e, x->recv, 0, b);
                     hx_buf_str(b, ")");
                 } else {
-                    hx_buf_printf(b, "hx_%s((int64_t)", hx_tostring_cname(rt));
+                    const char *cn = hx_tostring_cname(rt);
+                    hx_buf_printf(b, "hx_%s(", cn);
+                    /* Solo castea el ayudante que toma un entero. */
+                    if (!hx_ascii_casecmp(cn, "i64_str")) hx_buf_str(b, "(int64_t)");
                     hx_expr_str(e, x->recv, 0, b);
                     hx_buf_str(b, ")");
                 }
