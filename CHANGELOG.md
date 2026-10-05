@@ -5,7 +5,7 @@ versionado semántico. El número de versión es el del compilador y del
 lenguaje a la vez: `hxc version` lo imprime y los manifiestos lo comparan
 con `TARGET hixe >= 0.2`.
 
-## [0.3.0] — sin publicar
+## [0.3.0] — 2026-10-05
 
 La sección de una versión publicada no se toca: es exactamente lo que hay en su
 `tag`, y lo que va después de publicar va aquí. No es una regla de estilo, la

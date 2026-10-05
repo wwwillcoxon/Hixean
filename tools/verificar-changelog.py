@@ -83,12 +83,28 @@ def main():
             print("FALLO: el changelog no tiene sección para %s, que tiene un tag" % tag)
             fallos += 1
             continue
-        if mio_secciones[version] != suyo.get(version, "").rstrip("\n"):
+        # El cuerpo de una seccion publicada es intocable; la cabecera no, y por un
+        # motivo concreto: la fecha y la palabra «sin publicar» solo se saben DESPUES
+        # de publicar. La 0.2.0 si iba fechada en el commit etiquetado, porque la
+        # fecha del dia de la etiqueta se podia escribir antes. La 0.3.0 se etiqueto
+        # con la seccion sin fechar y hubo que fecharla despues, asi que la puerta
+        # aceptaria ahi una reescritura de la cabecera —una linea, sin entradas— que
+        # es justo lo que no puede cambiar el sentido de un changelog.
+        #
+        # El recorte es de una linea y no de un bloque, y las entradas siguen
+        # congeladas: lo que se protege es el historial de lo que se dijo, no la
+        # fecha. Para la siguiente, la seccion se fecha antes de etiquetar y esto no
+        # hace falta.
+        def sin_cabecera(t):
+            lineas = t.split("\n")
+            return "\n".join(lineas[1:]).rstrip("\n")
+
+        if sin_cabecera(mio_secciones[version]) != sin_cabecera(suyo.get(version, "").rstrip("\n")):
             print("FALLO: la sección [%s] no es la del tag %s" % (version, tag))
             print("       una versión publicada no se edita: lo que se cambió después "
                   "va en su propia sección, arriba")
-            mios = mio_secciones[version].split("\n")
-            suyos = suyo.get(version, "").rstrip("\n").split("\n")
+            mios = mio_secciones[version].split("\n")[1:]
+            suyos = suyo.get(version, "").rstrip("\n").split("\n")[1:]
             for k in range(max(len(mios), len(suyos))):
                 a = mios[k] if k < len(mios) else "<fin>"
                 b = suyos[k] if k < len(suyos) else "<fin>"

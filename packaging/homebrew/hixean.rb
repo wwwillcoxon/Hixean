@@ -31,15 +31,13 @@ class Hixean < Formula
       # es identico a x64 en cuanto exista.
       odie "sin artefacto para linux-arm64 todavia: falta el compilador cruzado"
     else
-      # El sha256 va aqui, y todavia no es el de 0.3.0: se copia de SHA256SUMS
-      # despues de que la release exista, en un commit aparte, porque el hash del
-      # artefacto no se conoce antes de construirlo. Hasta entonces el sha de
-      # 0.2.0 es el valor real de 0.2.0 y no el de esta URL, asi que un `brew install`
-      # en este ventana falla —con un 404 antes, porque el tarball aun no esta— y se
-      # arregla en cuanto la release sale. Se dice en el changelog en vez de dejar
-      # un hash inventado, que instala y no compila.
+      # sha256 copiado de SHA256SUMS de la release v0.3.0, y comprobado bajando el
+      # tarball aparte y pasarle `sha256sum -c`: copiarlo sin comprobar seria una
+      # cadena de fe. La release publica un solo artefacto, el de linux-x64; las otras
+      # tres casillas se esconden porque Homebrew exige una URL que exista para cada
+      # arquitectura.
       url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.3.0/hixean-0.3.0-linux-x64.tar.gz"
-      sha256 "48ee116da344853cdd6777c9f971e7498c725b485ffe1716cce57cdace92a080"
+      sha256 "5d109e86d40f08f0deb8034e7f52f889c3b388d77ddb7b1cedfbf3e9b9354639"
     end
   end
 
