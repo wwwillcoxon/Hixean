@@ -32,8 +32,11 @@ PRINT Etiqueta("alto", -1)
 deberia meter un ARENA alrededor. Hixean no tiene recolector, y no va a fingir
 uno: lo que se puede liberar se libera a mano con un ARENA."
 
-"y todavia no hay tipos de funcion, asi que no se puede pasar una FUNC
-como parametro: eso es lo que dice ADR 0008 y lo que falta por hacer."
+"Y sigue sin haber tipos de funcion: una FUNC no se puede pasar como parametro de una
+  FUNCTION propia, porque no hay un tipo que lo describa. Donde si se acepta una lambda
+  es donde el lenguaje ya sabe que espera una funcion, que son MAP, FILTER y FOLD —y
+  ahora tambien cuando captura. Eso es lo que dice ADR 0008, y lo que falta por hacer
+  es guardar una lambda en una variable."
 
 "Una fraccion se pierde si el camino de texto castea a entero antes de formatear: este
    PRINT daba bien y el ToString de al lado daba «2.0» con el mismo 2.5, porque PRINT

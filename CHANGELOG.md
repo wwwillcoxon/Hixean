@@ -97,6 +97,13 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   Está escrito desde el código: los ejemplos del documento compilan, y cada
   afirmación sobre lo que hay se comprobó contra el fuente.
 
+- **`docs/metadatos-repo.md`.** La descripción, la homepage y los topics del
+  repositorio en GitHub son lo único del proyecto que vive fuera de los ficheros y
+  que ninguna puerta puede leer, así que aquí está escrito qué poner y por qué.
+  Queda pendiente porque el token de este entorno es de instalación de GitHub App y
+  no tiene permiso de administración sobre el repositorio: el 403 es al escribir, no
+  al leer.
+
 ### Arreglado
 
 - **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>
