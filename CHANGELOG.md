@@ -5,63 +5,19 @@ versionado semántico. El número de versión es el del compilador y del
 lenguaje a la vez: `hxc version` lo imprime y los manifiestos lo comparan
 con `TARGET hixe >= 0.2`.
 
-## [0.2.0] — 2026-10-04
+## [0.3.0] — sin publicar
 
-Veintiún hitos después de 0.1.0, más todo lo que hay debajo. Sigue siendo `0.x`:
-el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
+La sección de una versión publicada no se toca: es exactamente lo que hay en su
+`tag`, y lo que va después de publicar va aquí. No es una regla de estilo, la
+comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
-### Cambios incompatibles
-
-- **El `.hxc` es ahora formato 2.** Una unidad publicada con 0.1.0 no la lee este
-  `hxc`: `E0603` dice qué formato trae la unidad, cuál entiende este compilador y
-  qué abi espera. Publicar una biblioteca es una cosa que hay que rehacer con
-  cada `hxc` nuevo.
-- **Los paquetes de este repositorio piden `TARGET hixe >= 0.2`.** El
-  comparador acepta versiones numéricas, así que un paquete con `>= 0.1` seguiría
-  compilando con 0.2.0; lo que ya no compila es al revés. Un paquete construido
-  aquí lleva un `.hxc` de formato 2 y un `hxc` 0.1.0 no lo entendería.
-- **Quince palabras clave que existían sin uso ya no están reservadas**:
-  `IMPL`, `COMPTIME`, `DYN`, `PUBLIC`, `SHADER`, `VERTEX`, `FRAGMENT`,
-  `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y `ENTRY`.
-  No hacían nada y reservaban nombres que un programa debería poder usar. La
-  entrada `ENTRY` de los manifiestos `.hxk` no es esta palabra clave: la lee
-  `kit.c` como texto. Un programa que usara uno de esos quince nombres como
-  variable ahora compila; uno que esperara que estuvieran reservados, no.
-- **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
-  errores de `UNIQUE` son `E0216` y `E0218`, y los dos llevan una nota que
-  menciona `E0212`, como pide la política de códigos de diagnóstico. El código
-  vuelve a estar libre para reutilizar.
-- **`^` ahora atraviesa un `REF`.** Antes `p^.campo` sobre un `REF` era `E0722`;
-  lo que no se puede hacer es llamar métodos a través de un `REF`, y eso sigue
-  siendo un error.
-- **Reasignar un `REF` que es una variable es `E0408`.** Antes escribía a través
-  del puntero, que al principio es `NULL`, y el programa moría en silencio. El
-  préstamo se hace al declarar, no al reasignar.
-- **Un método sobre el resultado de una llamada se resuelve.** `f(x).Metodo` era
-  `E0305` porque el emisor solo miraba el nombre; ahora compila.
-- **Un arreglo dentro de un registro reserva su memoria al construirlo.** Antes
-  las celdas eran un `hx_span` con el puntero a `NULL`, y escribir en
-  `t.celdas[0]` escribía en el vacío.
+### Añadido
 
 - **Publicada la release `v0.2.0`**, con un artefacto (`linux-x64`) y su
   `SHA256SUMS`. Probada de punta a punta contra la release real, no en local: el
   instalador descarga, verifica el hash, extrae y el binario instalado compila un
   programa que importa `std.texto`. El `sha256` de la fórmula de Homebrew está
   copiado del fichero publicado y comprobado descargando el tarball aparte.
-- **La release publica un artefacto, el de `linux-x64`.** Es el único camino de
-  extremo a extremo que está verde: el perfil `freestanding` es de Linux, y la
-  puerta de 12 KiB solo se mide ahí. En `release.yml` está escrito qué falta para
-  cada una de las otras cinco. La fórmula de Homebrew dice en voz alta que no hay
-  artefacto para macOS y arm64 en vez de apuntar a un 404, y el manifiesto de
-  winget se marca como no publicable porque sus dos zip no existen.
-  - Windows: el corpus pasa entero (33 pruebas; la de sockets se omite porque el
-    net del runtime son stubs). Lo que impedía comparar era el fin de línea: el
-    CRT de Windows pasa `
-` a `
-`, y un lenguaje que compara la salida byte a
-    byte no puede tolerarlo. Ahora el punto de entrada del perfil `libc` pone la
-    salida en modo binario antes de escribir nada.
-
 - **`ARRAY[T]` acepta `Map`, `Filter` y `Fold`.** Un ARRAY no era un ITER, así que
   había que escribir el bucle a mano con `Len` y `At`, y encima no se podía encadenar
   nada encima. Ahora se convierte en iterador con `hx_iter_darr` y a partir de ahí
@@ -78,7 +34,6 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   - `Fold` no produce una secuencia sino un valor, así que se emite con un ayudante
     por par de tipos: un bucle no cabe en una expresión de C, y el bucle vive en la
     función que devuelve el valor.
-
 - **ADR 0016: el perfil `freestanding` es de Linux x86-64 y solo de Linux
   x86-64.** El perfil sin libc es el que sostiene la puerta de 12 KiB, y arrastra
   una consecuencia que no se ve en la puerta: las syscalls están escritas para una
@@ -88,7 +43,6 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   mide en Linux, y por qué el error de compilación no se maquilla: el
   generador de código es correcto para su destino, lo que no se puede es hacer que
   un ejecutable de Linux arranque en Windows.
-
 - **`docs/complejos.md`.** El documento que faltaba para cuando ya no basta con
   `hxc run hola.hxe`: qué sostiene hoy un proyecto —módulos, paquetes, compilación
   incremental, interfaz sin fuentes— y qué habría que escribir para uno grande:
@@ -96,14 +50,12 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   bindings de C son una capacidad que ya existe y no una palabra clave nueva.
   Está escrito desde el código: los ejemplos del documento compilan, y cada
   afirmación sobre lo que hay se comprobó contra el fuente.
-
 - **`docs/metadatos-repo.md`.** La descripción, la homepage y los topics del
   repositorio en GitHub son lo único del proyecto que vive fuera de los ficheros y
   que ninguna puerta puede leer, así que aquí está escrito qué poner y por qué.
   Queda pendiente porque el token de este entorno es de instalación de GitHub App y
   no tiene permiso de administración sobre el repositorio: el 403 es al escribir, no
   al leer.
-
 - **Capacidad `time`: reloj, espera y azar.** `ENABLE time` da cinco funciones:
   `TIME_MS`, `TIME_NS`, `TIME_SLEEP`, `TIME_RANDOM` y `TIME_RANDOM_BETWEEN`. Es lo
   más pequeño que puede hacer falta un programa que mide algo, y sin esto no hay
@@ -140,9 +92,85 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   - `tests/tiempo.hxe` no comprueba ningún número exacto —un reloj da uno distinto
     cada vez— sino cosas que tienen que ser verdad siempre: que dormir 11 tarda al
     menos 11, que el dado reparte, que dos sorteos seguidos no coinciden.
+- **Las funciones anónimas capturan lo que usan de fuera, por valor.** Era la
+  carencia que mas limitaba a quien escribe: sin captura no hay forma de escribir
+  un filtro que dependa del dato, y habia que escribir una `FUNCTION` de nivel
+  superior con un parámetro de mas por cada dato del que dependía.
+  ```hixean
+  DIM suelo AS INT = 10
+  FOR z IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
+    RETURN n * suelo
+  END FUNC)
+    PRINT z
+  NEXT
+  ' 10, 20, 30
+  ```
+  - El verificador recorre el cuerpo de la lambda buscando los nombres libres: los
+    que resuelven en el ámbito de otra `FUNCTION`. Los del módulo no cuentan, que
+    se ven sin cerrar nada. Y lo de dentro tapa lo de fuera: un `DIM` propio, un
+    parámetro de `FOR` o un enlace de `MATCH` no se capturan.
+  - El cierre es una estructura por lambda y un parámetro oculto detrás de los
+    declarados. Los ayudantes de `MAP` y `FILTER` con cierre se emiten aparte, y
+    solo para las combinaciones de tipos que los usan: una lambda que no captura
+    sigue siendo una función normal con su puntero y no paga una llamada
+    indirecta de más. En un lenguaje con una puerta de 12 KiB, pagar eso en todos
+    los `MAP` para algo que no se usa no sería honesto.
+  - Se guarda el valor, no una referencia, en el momento en que aparece el `MAP`.
+    Con `MAP` y `FILTER` todavía no se puede distinguir, porque el iterador se
+    consume en la misma sentencia; la estructura guarda el valor y es lo correcto
+    para cuando los cierres sean valores de primer orden.
+  - 35 programas en el corpus, 8896 <= 12288 bytes, ASan y fuzzer limpios.
+- **El camino de vuelta: `s.ToInt()` y `s.ToFloat()`.** Antes solo había una
+  dirección, y un programa que lee un argumento o un fichero de configuración
+  tenía que escribir el parser a mano. Se escribe en el runtime, sin `strtol`
+  ni `strtod`, porque el perfil `freestanding` no tiene libc.
+  ```hixean
+  DIM puerto AS I64 = "8080".ToInt()
+  DIM precio AS FLOAT = "19.99".ToFloat()
+  ```
+  - Si el texto no es un número, el programa **aborta con 70** y un mensaje, en vez
+    de devolver 0. Un 0 silencioso convierte un dato malo en un dato bueno.
+  - `ToInt` devuelve `I64` y no `INT` a propósito: `INT` son 32 bits, y con `INT`
+    `"9223372036854775807"` salía como `-1` sin decir nada. Pedir un `INT` da
+    `E0301` en vez de truncar en silencio.
+- **Lo que hace falta para que Hixean se encuentre y se vea al compartir el
+  enlace.** Cuatro paginas con `canonical`, Open Graph completo y `twitter:card`;
+  un JSON-LD `SoftwareSourceCode` en el indice; `sitemap.xml` y `robots.txt`; un
+  favicon SVG y sus PNG de 16, 32, 180 y 512; una imagen de 1200x630 para la
+  tarjeta de los enlaces; y un manifest del sitio que es JSON de verdad.
+  - El canonical importa mas de lo que parece: GitHub Pages sirve `/Hixean/` y
+    `/Hixean/index.html` como dos direcciones del mismo documento, y sin esto hay
+    dos paginas con el mismo contenido de las que el buscador tiene que elegir.
+  - No hay conversor de SVG ni Pillow en el repositorio, y meter una dependencia
+    para cuatro rectangulos no compensa. `tools/generar-iconos.py` escribe los PNG
+    a mano: `zlib` de la biblioteca estandar, una fuente de mapa de bits de 5x7
+    dibujada a proposito (el sitio ya es monoespaciada, asi que pixelado encaja),
+    y `--ver` para mirar el resultado en ASCII sin abrir un visor.
+  - Todo esto lo vigila `site/test/humo.js`: que cada pagina tenga canonical
+    absoluto y distinto, las cinco etiquetas de Open Graph, twitter:card, favicon,
+    que el JSON-LD sea JSON que parsea, que los PNG tengan las medidas que
+    prometen, y que el sitemap liste lo que existe.
+- **El manual entra en el humo del sitio**, y eso destapo que tenia diez
+  `border-radius`, contra la regla del proyecto de que las cajas van rectas. No
+  se comprobaba porque el manual no estaba en la lista de paginas del test.
 
 ### Arreglado
 
+- **El changelog se estaba reescribiendo por dentro de una versión ya publicada.**
+  Veintiséis commits de trabajo posterior al tag `v0.2.0` estaban escritos dentro de su
+  bloque, así que el changelog anunciaba cosas que nadie podía descargar —la captura
+  de lambdas, `ToInt`, `ARRAY.Map`, la capacidad `time`— y anunciaba como ausentes
+  cosas que sí estaban publicadas. La sección de `0.2.0` vuelve a ser exactamente la
+  que hay en su tag, y lo de después vive en `[0.3.0] — sin publicar`.
+  No ha sido un cambio de criterio sino la aplicación de una regla mecánica, y por eso
+  no deja sitio a la duda: lo publicado es el tag, y lo que va después va en su
+  sección. `tools/verificar-changelog.py` lo comprueba comparando el fichero con
+  `git show v0.2.0:CHANGELOG.md` y dice qué línea se movió.
+
+  La regla arregla sola una contradicción que no se había visto: dentro de la sección
+  de `0.2.0` decía «el camino de vuelta (`s.ToInt()`) sigue sin existir». Al quedar
+  `s.ToInt()` en 0.3.0, la frase vuelve a ser cierta de 0.2.0. Antes no era una
+  contradicción sino una mezcla de dos versiones en el mismo sitio.
 - **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>
   … siguiente AS Nodo<T> …` se instanciaba, el clon se volvía a instanciar, y así
   hasta que la pila se desbordaba. Con un valor directo no hay forma de cortarlo, así
@@ -238,54 +266,6 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   - Un fallo que solo sea de fin de linea se dice: `hxc test` compara normalizando
     el CRLF y, si es eso, dice cuantos CRLF sobran y avisa de la causa probable. Sin
     eso decia que esperado y obtenido eran el mismo texto, que no es informacion.
-
-### Añadido
-
-- **Las funciones anónimas capturan lo que usan de fuera, por valor.** Era la
-  carencia que mas limitaba a quien escribe: sin captura no hay forma de escribir
-  un filtro que dependa del dato, y habia que escribir una `FUNCTION` de nivel
-  superior con un parámetro de mas por cada dato del que dependía.
-  ```hixean
-  DIM suelo AS INT = 10
-  FOR z IN Rango(1, 4).Map(FUNC(n AS INT) AS INT
-    RETURN n * suelo
-  END FUNC)
-    PRINT z
-  NEXT
-  ' 10, 20, 30
-  ```
-  - El verificador recorre el cuerpo de la lambda buscando los nombres libres: los
-    que resuelven en el ámbito de otra `FUNCTION`. Los del módulo no cuentan, que
-    se ven sin cerrar nada. Y lo de dentro tapa lo de fuera: un `DIM` propio, un
-    parámetro de `FOR` o un enlace de `MATCH` no se capturan.
-  - El cierre es una estructura por lambda y un parámetro oculto detrás de los
-    declarados. Los ayudantes de `MAP` y `FILTER` con cierre se emiten aparte, y
-    solo para las combinaciones de tipos que los usan: una lambda que no captura
-    sigue siendo una función normal con su puntero y no paga una llamada
-    indirecta de más. En un lenguaje con una puerta de 12 KiB, pagar eso en todos
-    los `MAP` para algo que no se usa no sería honesto.
-  - Se guarda el valor, no una referencia, en el momento en que aparece el `MAP`.
-    Con `MAP` y `FILTER` todavía no se puede distinguir, porque el iterador se
-    consume en la misma sentencia; la estructura guarda el valor y es lo correcto
-    para cuando los cierres sean valores de primer orden.
-  - 35 programas en el corpus, 8896 <= 12288 bytes, ASan y fuzzer limpios.
-
-- **El camino de vuelta: `s.ToInt()` y `s.ToFloat()`.** Antes solo había una
-  dirección, y un programa que lee un argumento o un fichero de configuración
-  tenía que escribir el parser a mano. Se escribe en el runtime, sin `strtol`
-  ni `strtod`, porque el perfil `freestanding` no tiene libc.
-  ```hixean
-  DIM puerto AS I64 = "8080".ToInt()
-  DIM precio AS FLOAT = "19.99".ToFloat()
-  ```
-  - Si el texto no es un número, el programa **aborta con 70** y un mensaje, en vez
-    de devolver 0. Un 0 silencioso convierte un dato malo en un dato bueno.
-  - `ToInt` devuelve `I64` y no `INT` a propósito: `INT` son 32 bits, y con `INT`
-    `"9223372036854775807"` salía como `-1` sin decir nada. Pedir un `INT` da
-    `E0301` en vez de truncar en silencio.
-
-### Arreglado
-
 - **Un `FLOAT` se imprimía mal de dos maneras.** `PRINT 19.99` salía
   `19.989999999`, porque el formateador multiplicaba por diez nueve veces y cada
   paso redondeaba un poco más; ahora multiplica una vez y redondea. Y `PRINT 1e20`
@@ -302,28 +282,60 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   quedaba con la última línea. Ahora el «ok» solo se imprime si no falló nada, y
   en caso contrario dice cuántos de cuántos ejemplos fallaron.
 
+## [0.2.0] — 2026-10-04
+
+Veintiún hitos después de 0.1.0, más todo lo que hay debajo. Sigue siendo `0.x`:
+el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
+
+### Cambios incompatibles
+
+- **El `.hxc` es ahora formato 2.** Una unidad publicada con 0.1.0 no la lee este
+  `hxc`: `E0603` dice qué formato trae la unidad, cuál entiende este compilador y
+  qué abi espera. Publicar una biblioteca es una cosa que hay que rehacer con
+  cada `hxc` nuevo.
+- **Los paquetes de este repositorio piden `TARGET hixe >= 0.2`.** El
+  comparador acepta versiones numéricas, así que un paquete con `>= 0.1` seguiría
+  compilando con 0.2.0; lo que ya no compila es al revés. Un paquete construido
+  aquí lleva un `.hxc` de formato 2 y un `hxc` 0.1.0 no lo entendería.
+- **Quince palabras clave que existían sin uso ya no están reservadas**:
+  `IMPL`, `COMPTIME`, `DYN`, `PUBLIC`, `SHADER`, `VERTEX`, `FRAGMENT`,
+  `COMPUTE`, `INPUT`, `UNIFORM`, `OUTPUT`, `SHADOW`, `ASSERT`, `PURE` y `ENTRY`.
+  No hacían nada y reservaban nombres que un programa debería poder usar. La
+  entrada `ENTRY` de los manifiestos `.hxk` no es esta palabra clave: la lee
+  `kit.c` como texto. Un programa que usara uno de esos quince nombres como
+  variable ahora compila; uno que esperara que estuvieran reservados, no.
+- **`E0212` queda retirado** («UNIQUE está reservado pero no implementado»). Los
+  errores de `UNIQUE` son `E0216` y `E0218`, y los dos llevan una nota que
+  menciona `E0212`, como pide la política de códigos de diagnóstico. El código
+  vuelve a estar libre para reutilizar.
+- **`^` ahora atraviesa un `REF`.** Antes `p^.campo` sobre un `REF` era `E0722`;
+  lo que no se puede hacer es llamar métodos a través de un `REF`, y eso sigue
+  siendo un error.
+- **Reasignar un `REF` que es una variable es `E0408`.** Antes escribía a través
+  del puntero, que al principio es `NULL`, y el programa moría en silencio. El
+  préstamo se hace al declarar, no al reasignar.
+- **Un método sobre el resultado de una llamada se resuelve.** `f(x).Metodo` era
+  `E0305` porque el emisor solo miraba el nombre; ahora compila.
+- **Un arreglo dentro de un registro reserva su memoria al construirlo.** Antes
+  las celdas eran un `hx_span` con el puntero a `NULL`, y escribir en
+  `t.celdas[0]` escribía en el vacío.
+
+- **La release publica un artefacto, el de `linux-x64`.** Es el único camino de
+  extremo a extremo que está verde: el perfil `freestanding` es de Linux, y la
+  puerta de 12 KiB solo se mide ahí. En `release.yml` está escrito qué falta para
+  cada una de las otras cinco. La fórmula de Homebrew dice en voz alta que no hay
+  artefacto para macOS y arm64 en vez de apuntar a un 404, y el manifiesto de
+  winget se marca como no publicable porque sus dos zip no existen.
+  - Windows: el corpus pasa entero (33 pruebas; la de sockets se omite porque el
+    net del runtime son stubs). Lo que impedía comparar era el fin de línea: el
+    CRT de Windows pasa `
+` a `
+`, y un lenguaje que compara la salida byte a
+    byte no puede tolerarlo. Ahora el punto de entrada del perfil `libc` pone la
+    salida en modo binario antes de escribir nada.
+
 ### Añadido
 
-- **Lo que hace falta para que Hixean se encuentre y se vea al compartir el
-  enlace.** Cuatro paginas con `canonical`, Open Graph completo y `twitter:card`;
-  un JSON-LD `SoftwareSourceCode` en el indice; `sitemap.xml` y `robots.txt`; un
-  favicon SVG y sus PNG de 16, 32, 180 y 512; una imagen de 1200x630 para la
-  tarjeta de los enlaces; y un manifest del sitio que es JSON de verdad.
-  - El canonical importa mas de lo que parece: GitHub Pages sirve `/Hixean/` y
-    `/Hixean/index.html` como dos direcciones del mismo documento, y sin esto hay
-    dos paginas con el mismo contenido de las que el buscador tiene que elegir.
-  - No hay conversor de SVG ni Pillow en el repositorio, y meter una dependencia
-    para cuatro rectangulos no compensa. `tools/generar-iconos.py` escribe los PNG
-    a mano: `zlib` de la biblioteca estandar, una fuente de mapa de bits de 5x7
-    dibujada a proposito (el sitio ya es monoespaciada, asi que pixelado encaja),
-    y `--ver` para mirar el resultado en ASCII sin abrir un visor.
-  - Todo esto lo vigila `site/test/humo.js`: que cada pagina tenga canonical
-    absoluto y distinto, las cinco etiquetas de Open Graph, twitter:card, favicon,
-    que el JSON-LD sea JSON que parsea, que los PNG tengan las medidas que
-    prometen, y que el sitemap liste lo que existe.
-- **El manual entra en el humo del sitio**, y eso destapo que tenia diez
-  `border-radius`, contra la regla del proyecto de que las cajas van rectas. No
-  se comprobaba porque el manual no estaba en la lista de paginas del test.
 - **`lib/` viaja en el paquete y `install.sh` lo instala** en
   `<prefijo>/lib/hixean`, que es donde el binario lo mira. `install.sh` además
   acepta un `.tar.gz` local como argumento, para instalar sin red y para poder

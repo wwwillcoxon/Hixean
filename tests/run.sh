@@ -339,6 +339,13 @@ printf 'KIT con_tiempo 1.0.0\n  TARGET hixe >= 0.2\n  ENTRY t.hxe\n  PROVIDES co
   && echo "ok     declarado, se construye" \
   || { echo "FALLO: declarado y aun asi no se construye"; exit 1; }
 
+echo "== una version publicada no se edita =="
+# El changelog announce cosas, asi que si la seccion de una version publicada cambia
+# despues de salir, el anuncio y lo que la gente puede descargar dejan de cuadrar. Y no
+# se ve: el fichero tiene la misma forma, solo hay unas lineas mas o menos. Aqui ya
+# habia pasado con 26 commits de trabajo posterior a v0.2.0.
+python3 tools/verificar-changelog.py || exit 1
+
 echo "== el runtime de la otra plataforma =="
 # Hay trozos del runtime que solo se emiten en un sistema: el reloj de Windows, el net
 # de POSIX. Aqui no se compilan nunca, porque el `if defined(_WIN32)` que los elige se
