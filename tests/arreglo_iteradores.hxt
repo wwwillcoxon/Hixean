@@ -131,3 +131,39 @@ WHILE i < a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
   i = i + 1
 END WHILE
 PRINT i
+
+' Encadenar sobre el ARRAY, que es lo que el ARRAY convierte en iterador para poder
+'   hacer. Antes solo funcionaba el primer verbo: la cadena de iteradores no conocia
+'   «MapD» y «FilterD», que son los nombres propios de un ARRAY, y le pedia un
+'   ayudante para un elemento que no conocia —«hx_iter_filter_u», con la u de
+'   desconocido—. Este caso estaba escrito en la cabecera de este fichero y nadie lo
+'   habia probado.
+FOR p IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n * 10
+END FUNC).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n >= 40
+END FUNC)
+  PRINT p
+NEXT
+PRINT "---"
+
+' tres verbos y un Take al final
+DIM total AS INT = 0
+FOR q IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n + 1
+END FUNC).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n MOD 2 == 0
+END FUNC).Take(2)
+  total = total + q
+NEXT
+PRINT total
+PRINT "---"
+
+' y con una lambda que capture en medio de la cadena
+FOR r IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n * extra
+END FUNC).Filter(FUNC(n AS INT) AS BOOL
+  RETURN n >= 6
+END FUNC)
+  PRINT r
+NEXT

@@ -103,6 +103,19 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   … siguiente AS Nodo<T> …` se instanciaba, el clon se volvía a instanciar, y así
   hasta que la pila se desbordaba. Con un valor directo no hay forma de cortarlo, así
   que ahora el tipo queda desconocido y se dice por qué.
+- **Encadenar verbos sobre un `ARRAY[T]` no compilaba.** El `ARRAY` se convierte en
+  iterador, y su `Map` y su `Filter` llevan nombres propios —`MapD` y `FilterD`— que
+  la cadena de iteradores no conocía. La cadena los tomaba por una llamada más y le
+  pedía un ayudante para un elemento que no sabía: `hx_iter_filter_u`, con la `u` de
+  desconocido. `a.Map(...).Filter(...)` no compilaba y `a.Map(...).Take(2)` tampoco,
+  aunque el comentario de la cabecera del test decía que sí.
+- **El bloque de captura de una lambda se construía con una declaración, y eso no
+  vale cuando la lambda aparece dentro de una expresión.** Era la forma que se usó
+  para el iterador de un `FOR`, y funciona porque ahí hay sitio. Ahora se construye
+  con un literal compuesto, `&(struct hx_cap_x){ hx_v_extra }`, que es una
+  expresión y vale en cualquier sitio. Con eso una lambda que captura puede ir en un
+  `MAP`, un `FILTER` o un `FOLD`, encadenados o no, y dentro de un `ARENA` con la
+  arena de ese bloque.
 - **`Fold` con una lambda que captura reventaba el programa.** El emisor calculaba si
   la lambda capturaba y luego tiraba ese dato: pasaba `(void *)&hx_call_f` sin el
   bloque, y el ayudante llamaba a la lambda con dos argumentos cuando esperaba tres.

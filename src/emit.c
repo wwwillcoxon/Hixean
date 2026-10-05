@@ -1833,7 +1833,30 @@ static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const
 /* Map, Filter y Fold sobre un ARRAY[T]: el ARRAY se convierte en iterador y se
    encadena con los mismos ayudantes que un Rango. Fold no es un iterador sino un
    bucle: no produce valores que recorrer, produce uno. */
-static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
+/* El bloque de captura de una lambda, como valor y no como declaracion.
+ *
+ * Va como literal compuesto y no como `struct ... hxcap_x = { ... };` antes de la
+ * sentencia porque un MAP o un FILTER sobre un ARRAY se puede escribir dentro de
+ * una expresion —una cadena con otro verbo encima, o el Fold de otra cosa— y en C
+ * no se declara nada dentro de una expresion. El tipo del bloque ya esta en la
+ * cabecera del modulo para toda lambda que captura, asi que aqui solo se construye
+ * el valor.
+ *
+ * Los campos se copian por su nombre: son variables de la funcion que contiene la
+ * llamada, y ahi se llaman hx_v_<nombre>. Copiar y no referenciar es lo que deja que
+ * un bucle siga su camino sin que el valor cambie debajo: dos MAP del mismo dato con
+ * la misma lambda capturan cada uno lo que valia cuando se construyeron. */
+static void hx_bloque_captura(HxEmit *e, HxBuf *b, struct HxFunc *fn) {
+    char capbuf[128];
+    hx_buf_printf(b, ", &(struct %s){ ", hx_cap_nombre(e, fn, capbuf, sizeof capbuf));
+    for (int i = 0; i < fn->captures.len; i++) {
+        if (i) hx_buf_str(b, ", ");
+        hx_buf_printf(b, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
+    }
+    hx_buf_str(b, " }");
+}
+
+static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b, const char *arena) {
     const char *nm = hx_sym_str(x->method);
     HxTy *elem = x->recv->ty->elem;
     char tag[96];
@@ -1883,15 +1906,7 @@ static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
            modulo para toda lambda que capture, asi que aqui solo se construye el
            valor. Los campos se copian por su nombre: son variables de la funcion
            que contiene la llamada, y ahi se llaman hx_v_<nombre>. */
-        if (capta) {
-            char capbuf[128];
-            hx_buf_printf(b, ", &(struct %s){ ", hx_cap_nombre(e, fn, capbuf, sizeof capbuf));
-            for (int i = 0; i < fn->captures.len; i++) {
-                if (i) hx_buf_str(b, ", ");
-                hx_buf_printf(b, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
-            }
-            hx_buf_str(b, " }");
-        }
+        if (capta) hx_bloque_captura(e, b, fn);
         hx_buf_str(b, ")");
         free(src.data);
         return;
@@ -1914,12 +1929,12 @@ static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
         hx_buf_str(b, "_to_");
         hx_iter_suffix(e, salida, b);
     }
-    hx_buf_str(b, "(&hx_static_arena, hx_iter_darr(&hx_static_arena, ");
+    hx_buf_printf(b, "(&%s, hx_iter_darr(&%s, ", arena, arena);
     hx_buf_str(b, src.data);
     hx_buf_str(b, "), (void *)&hx_call_");
     hx_buf_str(b, hx_sym_str(fn ? fn->name : "?"));
-    if (capta) hx_buf_printf(b, ", &hxcap_%s)", hx_sym_str(fn->name));
-    else hx_buf_str(b, ")");
+    if (capta) hx_bloque_captura(e, b, fn);
+    hx_buf_str(b, ")");
     free(src.data);
 }
 static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
@@ -2167,7 +2182,7 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 /* Map, Filter y Fold sobre ARRAY[T]. El ARRAY se pasa a iterador
                    con hx_iter_darr y a partir de ahi se encadena igual que un
                    Rango, reutilizando los mismos ayudantes. */
-                hx_emit_darr_iter(e, x, b);
+                hx_emit_darr_iter(e, x, b, "hx_static_arena");
                 break;
             }
             if (x->is_intrin == 9) { /* m.Or(x) */
@@ -3831,6 +3846,15 @@ static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name) {
 /* Emite una cadena de iteradores dentro de la arena `arena` y devuelve el
    nombre de la variable C que la contiene. El recorrido es perezoso: sólo se
    construye el estado, nunca la secuencia. */
+/* Un ARRAY[T] con Map o Filter lleva su propio nombre —MapD, FilterD— y no entra en
+   la cadena de iteradores, que solo conoce Rango y los adaptadores. Preguntar por el
+   aqui evita que la cadena lo trate como una llamada mas y le saque un ayudante
+   equivocado. */
+static int hx_es_iter_darr(HxExpr *x) {
+    return x && x->kind == EX_CALL && x->is_intrin == 9 && x->recv && x->recv->ty &&
+           x->recv->ty->kind == TY_ARRAY;
+}
+
 static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int cap, int ind) {
     const char *nm = hx_sym_str(x->method);
     e->uses_iter = 1;
@@ -3849,7 +3873,16 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
         return;
     }
     char inner[64];
-    if (x->recv && x->recv->kind == EX_CALL) {
+    if (hx_es_iter_darr(x->recv)) {
+        /* El ARRAY ya produce su iterador entero, asi que no hace falta bajar por la
+           cadena: se construye aqui y se le da nombre, porque el verbo de encima lo
+           necesita como valor y no como una expresion metida dentro de la suya. */
+        snprintf(inner, sizeof(inner), "hx_it%d", e->iter_n++);
+        hx_indent(&e->out, ind);
+        hx_buf_printf(&e->out, "hx_iter %s = ", inner);
+        hx_emit_darr_iter(e, x->recv, &e->out, arena);
+        hx_buf_str(&e->out, ";\n");
+    } else if (x->recv && x->recv->kind == EX_CALL) {
         hx_iter_ctor(e, x->recv, arena, inner, sizeof(inner), ind);
     } else {
         snprintf(inner, sizeof(inner), "hx_it%d", e->iter_n++);
@@ -3877,7 +3910,6 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
         fn = hx_find_func_named(e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
     int es_map = !hx_ascii_casecmp(nm, "Map");
     int capta = fn && fn->captures.len > 0;
-    char capbuf[128];
 
     /* Se avisa de que tipo necesita el ayudante con cierre. El par (origen,
        resultado) se registra aqui y no antes porque es el unico sitio donde se
@@ -3887,22 +3919,6 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
         else if (!es_map && t) hx_iter_note_cap_elem(e, t);
     }
 
-    if (capta) {
-        /* El cierre se construye aqui, con el valor que tienen las variables de
-           fuera en este momento. Copiar y no referenciar es lo que deja que el
-           bucle que creo la lambda siga su camino sin que el valor cambie debajo:
-           dos MAP del mismo dato con la misma lambda capturan cada uno lo que
-           valia cuando se construyeron, no el del ultimo. */
-        hx_cap_nombre(e, fn, capbuf, sizeof capbuf);
-        hx_buf_printf(&e->out, "struct %s hxcap_%s = { ", capbuf, hx_sym_str(fn->name));
-        for (int i = 0; i < fn->captures.len; i++) {
-            if (i) hx_buf_str(&e->out, ", ");
-            /* El valor se copia por su nombre: alqui sigue siendo una variable de
-               la funcion que contiene la llamada, y ahi se llama hx_v_<nombre>. */
-            hx_buf_printf(&e->out, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
-        }
-        hx_buf_str(&e->out, " };\n");
-    }
     /* El nombre del ayudante: hx_iter_map_<origen>_to_<resultado>, y el mismo con
        «cap» en medio cuando la lambda captura. El guion bajo va aqui porque el
        nombre lo compone hx_iter_suffix. */
@@ -3915,7 +3931,7 @@ static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int
     }
     hx_buf_printf(&e->out, "(&%s, %s, (void *)&hx_call_%s", arena, inner,
                   hx_sym_str(fn ? fn->name : "?"));
-    if (capta) hx_buf_printf(&e->out, ", &hxcap_%s", hx_sym_str(fn->name));
+    if (capta) hx_bloque_captura(e, &e->out, fn);
     hx_buf_str(&e->out, ");\n");
 }
 
