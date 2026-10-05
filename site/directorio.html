@@ -146,6 +146,11 @@
       guardar una lambda en una variable y llamarla más tarde: solo se aceptan
       donde el lenguaje espera una función, que es <code>MAP</code> y
       <code>FILTER</code>.</li>
+      <li><strong>Sin <code>Sort</code> ni <code>Revés</code></strong> sobre un
+      <code>ARRAY</code>. Ordenar exige comparar, y comparar dos <code>T</code>
+      arbitrarios no tiene sentido sin que el programa sepa comparar. Con
+      <code>ARRAY</code> de números se puede con un <code>Fold</code> de intercambio
+      mientras haya hueco.</li>
       <li><strong>Sin rebanadas</strong> (<code>a[1..3]</code> da <code>E0210</code>),
       <strong>sin <code>audio</code> ni
       <code>gpu</code></strong>, porque no hay dispositivo ni compilador por

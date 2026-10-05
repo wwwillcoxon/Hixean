@@ -995,6 +995,46 @@ beto</pre></div>
       solo tiene <code>mmap</code> y <code>malloc</code>. Si un programa empuja
       y quita en bucle, esa memoria vuelve cuando sale el bloque de
       <code>ARENA</code>.</p>
+      <h4><code>Map</code>, <code>Filter</code> y <code>Fold</code> sobre el arreglo</h4>
+      <p>Un <code>ARRAY[T]</code> también se recorre con los verbos de iterador. El
+      arreglo se convierte en iterador y a partir de ahí encadena igual que un
+      <code>Rango</code>:</p>
+      <figure class="ej">
+        <figcaption><span>arreglo_iteradores.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">DIM a AS ARRAY[INT]
+a.Push(1)
+a.Push(2)
+a.Push(3)
+
+DIM corte AS INT = 3
+FOR x IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n * 2
+END FUNC)
+  PRINT x
+NEXT
+
+FOR y IN a.Filter(FUNC(n AS INT) AS BOOL
+  RETURN n &gt;= corte
+END FUNC)
+  PRINT y
+NEXT
+
+FUNCTION Suma(acc AS INT, n AS INT) AS INT
+  RETURN acc + n
+END FUNCTION
+PRINT a.Fold(0, Suma)</code></pre>
+        <div class="salida"><span>salida</span><pre>2
+4
+6
+3
+6</pre></div>
+      </figure>
+      <p><code>Fold</code> es distinto: produce un <strong>valor</strong>, no una
+      secuencia. La función recibe el acumulador y el elemento, en ese orden, y el
+      acumulador puede ser de otro tipo que el elemento.</p>
+      <p>El arreglo por sí solo no es un iterador: <code>FOR x IN a</code> da
+      <code>E0712</code>, porque no hay forma de saber que se quiere empezar por el
+      principio. Con <code>.Map</code> o <code>.Filter</code> encima sí.</p>
       <p><code>a[i]</code> sigue sin comprobar, también aquí:
       <code>a[0] = 1</code> es rápido, y para lo demás está <code>At</code> y
       <code>Set</code>. <code>T[]</code> es la misma cosa escrita de otra forma,

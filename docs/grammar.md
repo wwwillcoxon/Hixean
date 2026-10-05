@@ -705,6 +705,45 @@ nuevo.
 | `a.At(i)` | comprobado, como siempre | comprobado |
 | `a.Set(i, v)` | escribe comprobando el índice | `E0306`: no tiene sentido, el tamaño está en el tipo |
 | `a.Push(v)` | añade al final y devuelve el largo nuevo | `E0306`: no crece |
+| `a.Map(f)` | devuelve `ITER[R]` | `E0306`: un tamaño fijo se puede recorrer con `At` |
+| `a.Filter(f)` | devuelve `ITER[T]` | igual que `Map` |
+| `a.Fold(inicial, f)` | reduce a un valor | igual que `Map` |
+
+`Map` y `Filter` sobre un `ARRAY[T]` no son una forma distinta de las suyas sobre
+un iterador: el `ARRAY` se convierte en iterador con `hx_iter_darr` y a partir de ahí
+encadena igual que un `Rango`.
+
+```
+DIM a AS ARRAY[INT]
+a.Push(1)
+a.Push(2)
+a.Push(3)
+
+FOR x IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n * 2
+END FUNC)
+  PRINT x
+NEXT                                       ' 2, 4, 6
+
+FUNCTION Suma(acc AS INT, n AS INT) AS INT
+  RETURN acc + n
+END FUNCTION
+PRINT a.Fold(0, Suma)                      ' 6
+```
+
+`Fold` es distinto de los otros dos: produce un **valor**, no una secuencia. La
+función recibe el acumulador y el elemento, en ese orden, y `Fold` devuelve lo que
+devuelva la última llamada. El acumulador puede ser de otro tipo que el elemento:
+`Fold("", Concat)` sobre un `ARRAY[STRING]` va bien.
+
+El `ARRAY` no es un `ITER` por sí solo: `FOR x IN a` no vale, porque no hay forma de
+saber que se quiere empezar por el principio. Con `.Map` o `.Filter` encima sí.
+
+No hay `Sort` ni `Revés`: ordenar exige comparar, y comparar dos `T` arbitrarios no
+tiene sentido sin que el program'sabe comparar. Con `ARRAY[T]` de números se puede
+con un `Fold` de intercambio —burbuja, inserción— mientras haya hueco, que es lo que
+se puede hacer sin inventar una estructura de datos aparte.
+
 
 ```
 DIM numeros AS ARRAY[INT]
