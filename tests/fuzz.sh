@@ -18,7 +18,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 python3 - "$N" "$SEED" "$DIR" <<'PY'
-import os, random, subprocess, sys
+import glob, os, random, subprocess, sys
 
 n, seed, out = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
 rng = random.Random(seed)
@@ -68,6 +68,24 @@ def comando(ruta):
     if ruta.endswith(".hxq"):
         return ["query", ruta, "--path", "tests/kits"]
     return ["check", ruta]
+
+# Los crashes que ya se encontraron y corrigieron. Cada uno vive ahi como un
+# fichero mas, y esta fase los comprueba sin mutar nada: si uno vuelve a matar al
+# compilador, el fallo aparece aqui y no en una tanda de mutaciones al azar, que es
+# como se perdio el primero — salio con una semilla y no se volvio a ver.
+conocidos = 0
+for f in sorted(glob.glob("tests/fuzz_crashes/*")):
+    try:
+        p = subprocess.run(["./build/hxc", "check", f], capture_output=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        print("FALLO: %s cuelga el compilador" % f)
+        sys.exit(1)
+    if p.returncode < 0 or p.returncode >= 128:
+        print("FALLO: %s mata al compilador (senal %d)" % (f, p.returncode))
+        sys.exit(1)
+    conocidos += 1
+if conocidos:
+    print("      %d crashes conocidos: comprobados y sin reventar" % conocidos)
 
 crashes = timeouts = 0
 for i in range(n):

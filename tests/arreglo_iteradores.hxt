@@ -1,0 +1,96 @@
+' Un ARRAY[T] con Map, Filter y Fold.
+'
+'   Antes un ARRAY no era un ITER: habia que escribir el bucle con Len y At, y
+'   encima no se podia encadenar nada encima. Ahora el ARRAY se convierte en
+'   iterador con hx_iter_darr y a partir de ahi.Map y Filter se encadenan igual que
+'   sobre un Rango. Fold es un bucle que produce un valor, no una secuencia.
+
+DIM a AS ARRAY[INT]
+a.Push(1)
+a.Push(2)
+a.Push(3)
+a.Push(4)
+a.Push(5)
+
+' Map que conserva el tipo
+FOR x IN a.Map(FUNC(n AS INT) AS INT
+  RETURN n * 2
+END FUNC)
+  PRINT x
+NEXT
+PRINT "---"
+
+' Map que lo cambia
+FOR s IN a.Map(FUNC(n AS INT) AS STRING
+  RETURN "n" ++ n.ToString()
+END FUNC)
+  PRINT s
+NEXT
+PRINT "---"
+
+' Filter, con captura: la lambda lee una variable de su alrededor
+DIM corte AS INT = 3
+FOR y IN a.Filter(FUNC(n AS INT) AS BOOL
+  RETURN n > corte
+END FUNC)
+  PRINT y
+NEXT
+PRINT "---"
+
+' Fold: el acumulador delante, el elemento detras
+FUNCTION Suma(acc AS INT, n AS INT) AS INT
+  RETURN acc + n
+END FUNCTION
+FUNCTION Cuenta(acc AS INT, n AS INT) AS INT
+  RETURN acc + 1
+END FUNCTION
+FUNCTION Maximo(acc AS INT, n AS INT) AS INT
+  IF n > acc THEN RETURN n
+  RETURN acc
+END FUNCTION
+PRINT a.Fold(0, Suma)
+PRINT a.Fold(0, Maximo)
+PRINT "---"
+
+' Fold con un acumulador de otro tipo
+FUNCTION Concat(acc AS STRING, n AS INT) AS STRING
+  RETURN acc ++ n.ToString()
+END FUNCTION
+PRINT a.Fold("", Concat)
+PRINT "---"
+
+' un ARRAY vacio: Fold devuelve el inicial y los iteradores no dan nada
+DIM vacio AS ARRAY[INT]
+FUNCTION Uno(acc AS INT, n AS INT) AS INT
+  RETURN acc + 1
+END FUNCTION
+PRINT vacio.Fold(99, Uno)
+' un ARRAY vacio no produce nada en un iterador
+DIM cuantos AS INT = 0
+FOR z IN vacio.Filter(FUNC(n AS INT) AS BOOL
+  RETURN TRUE
+END FUNC)
+  cuantos = cuantos + 1
+NEXT
+PRINT cuantos
+PRINT "---"
+
+' un ARRAY de cadenas
+DIM nombres AS ARRAY[STRING]
+nombres.Push("ana")
+nombres.Push("beto")
+nombres.Push("carla")
+FOR m IN nombres.Map(FUNC(n AS STRING) AS STRING
+  RETURN n.Upper()
+END FUNC)
+  PRINT m
+NEXT
+' Len() devuelve I64 y no se suma a un INT sin decir cual de los dos quieres. Es
+'   lo correcto: unaconversiones explicita dice cual es, y un 0 a la derecha por
+'   sorpresa es peor que un error de tipos aqui.
+PRINT "---"
+
+' Una FUNCTION de nivel superior NO captura, solo las lambdas. Esto no es un fallo:
+'   el alcance de una FUNCTION es su propia unidad, y lo de fuera se le pasa por
+'   parametro. Para usar un valor de fuera hace falta una lambda, que es justo lo
+'   que hace el FILTER de mas arriba.

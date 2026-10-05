@@ -62,7 +62,38 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     byte no puede tolerarlo. Ahora el punto de entrada del perfil `libc` pone la
     salida en modo binario antes de escribir nada.
 
+- **`ARRAY[T]` acepta `Map`, `Filter` y `Fold`.** Un ARRAY no era un ITER, así que
+  había que escribir el bucle a mano con `Len` y `At`, y encima no se podía encadenar
+  nada encima. Ahora se convierte en iterador con `hx_iter_darr` y a partir de ahí
+  encadena igual que un `Rango`.
+  ```hixean
+  DIM a AS ARRAY[INT]
+  FOR x IN a.Map(FUNC(n AS INT) AS INT
+    RETURN n * 2
+  END FUNC)
+    PRINT x
+  NEXT
+  PRINT a.Fold(0, Suma)
+  ```
+  - `Fold` no produce una secuencia sino un valor, así que se emite con un ayudante
+    por par de tipos: un bucle no cabe en una expresión de C, y el bucle vive en la
+    función que devuelve el valor.
+
 ### Arreglado
+
+- **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>
+  … siguiente AS Nodo<T> …` se instanciaba, el clon se volvía a instanciar, y así
+  hasta que la pila se desbordaba. Con un valor directo no hay forma de cortarlo, así
+  que ahora el tipo queda desconocido y se dice por qué.
+- **Un `ToString()` dentro de una lambda no emitía su bloque de runtime** y el
+  enlazado decía que `hx_i64_str` no existía. El motivo: las lambdas no se
+  escaneaban, así que nada de lo que hubiera dentro pedía su runtime. Una `FUNC` sí
+  se escanea ahora.
+- **`s.Upper()` salía sin convertir** cuando se añadían métodos sin argumentos a la
+  misma marca que `ToString`: la marca 2 es «método sin argumentos» y la comparten
+  `Upper`, `Lower`, `Len` e `IsEmpty`. `ToString` se reconoce ahora por su nombre.
+- **Un nombre suelto que es una `FUNCTION` se emitía como `&hx_call_f` incluso siendo
+  el destino de una asignación**, lo que daba un destino no asignable.
 - **El corpus entero pasa en Windows**, que hasta ahora no se comprobaba entero:
   el checkout convertia los `.out` a CRLF y el programa tambien escribia CRLF, que
   es cosa que compara dos cosas iguales con dos cosas iguales. Con `.gitattributes`

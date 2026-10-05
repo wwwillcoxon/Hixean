@@ -150,6 +150,12 @@ static void hx_scope_push(HxChecker *c) {
 
 static void hx_scope_pop(HxChecker *c) { c->scope = c->scope->parent; }
 
+/* Declaradas aqui porque hx_array_iter_check, que se define antes que ellas, las
+   necesita: el ARRAY se convierte en iterador con las mismas reglas que el
+   constructor. */
+static struct HxFunc *hx_find_func_named(HxChecker *c, HxSym name);
+static HxTy *hx_iter_ty(HxChecker *c, HxTy *elem);
+
 /* Doblar un nombre nunca debe caer: el parser ya pone un nombreAnonimo cuando
    no hay identificador, pero una unidad .hxc manipulada tambien puede llegar
    hasta aqui. */
@@ -330,6 +336,7 @@ static struct HxFunc *hx_find_func(HxChecker *c, HxSym name) {
 }
 
 static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report);
+static HxTy *hx_resolve_type_cuerpo(HxChecker *c, HxTy *t, HxSpan sp, int report);
 
 static int hx_coerce(HxChecker *c, HxTy *from, HxTy *to, HxSpan sp, const char *what) {
     if (!from || !to) return 1;
@@ -640,6 +647,99 @@ static int hx_vec_len(HxTy *t) {
 
 /* Len/At/First/Last de un arreglo de tamaño fijo. El tamaño vive en el tipo, de
    modo que Len es una constante y At solo necesita la comparacion. */
+/* Map, Filter y Fold sobre un ARRAY[T].
+ *
+ * Antes un ARRAY no era un ITER, asi que `a.Map(...)` no existia: habia que
+ * escribir el bucle a mano con Len y At, y encima no se podia encadenar nada
+ * encima. Con esto el ARRAY se convierte en iterador con hx_iter_darr y a partir
+ * de ahi.Map encadena igual que un Rango. El codigo de salida es el mismo: una
+ * funcion que ya sabe recibirse por MAP. */
+static int hx_array_iter_check(HxChecker *c, HxExpr *e, HxExpr *recv, const char *member) {
+    int es_map = !hx_ascii_casecmp(member, "Map");
+    int es_filter = !hx_ascii_casecmp(member, "Filter");
+    int es_fold = !hx_ascii_casecmp(member, "Fold");
+    if (!es_map && !es_filter && !es_fold) return 0;
+    int dinamico = recv->ty && recv->ty->size < 0;
+    if (!dinamico) {
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena,
+                                  "'%s' sólo existe en un ARRAY[T] dinámico; este tiene "
+                                  "el tamaño fijo en el tipo", member));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    HxTy *elem = recv->ty->elem;
+    /* Fold lleva el acumulador delante y el elemento detras; Map y Filter solo el
+       elemento. Se comprueba con la misma cuenta que usa el constructor del
+       iterador, para que no haya dos reglas para lo mismo. */
+    int nargs = es_fold ? 2 : 1;
+    if (e->call.args.len != nargs) {
+        hx_error(c->diags, e->span, "E0306", "%s espera %d argumento(s), recibió %d", member,
+                  nargs, e->call.args.len);
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    HxExpr *farg = e->call.args.data[nargs - 1].value;
+    struct HxFunc *f = NULL;
+    if (farg->kind == EX_FUNC && farg->lit) f = hx_lambda_func(c, farg);
+    if (farg->kind == EX_PATH && farg->path.parts.len) {
+        HxSym fname = farg->path.parts.data[farg->path.parts.len - 1].name;
+        f = hx_find_func_named(c, fname);
+        if (f && f->is_generic) f = NULL;
+    }
+    if (es_fold) {
+        e->call.args.data[0].value = hx_expr_check(c, e->call.args.data[0].value);
+        if (!f) {
+            hx_error(c->diags, farg->span, "E0714", "%s",
+                      hx_arena_sprintf(c->arena, "Fold espera el nombre de una función"));
+            e->ty = recv->ty;
+            return 1;
+        }
+        if (f->params.len != 2) {
+            hx_error(c->diags, farg->span, "E0715", "Fold espera una función de dos argumentos: el "
+                                                      "acumulador y el elemento");
+            e->ty = recv->ty;
+            return 1;
+        }
+        HxTy *acum = f->params.data[0].ty;
+        if (acum && e->call.args.data[0].value->ty && !hx_ty_equal(acum, e->call.args.data[0].value->ty))
+            hx_error(c->diags, e->call.args.data[0].span, "E0715", "Fold espera un acumulador de %s y %s es %s",
+                      hx_ty_name(acum), hx_arena_sprintf(c->arena, "este valor"),
+                      hx_ty_name(e->call.args.data[0].value->ty));
+        if (f->params.data[1].ty && elem && !hx_ty_equal(f->params.data[1].ty, elem))
+            hx_error(c->diags, farg->span, "E0715", "Fold espera una funcion que tome %s como segundo argumento, %s toma %s",
+                      hx_ty_name(elem), hx_sym_str(f->name), hx_ty_name(f->params.data[1].ty));
+        /* Marca propia y no la 4 de la cadena de iteradores: Fold no produce una
+           secuencia que encadenar, produce un valor. Con la 4, la emision lo
+           trataria como un iterador mas y no generaria nada. */
+        /* 11 y no 10: el 10 ya era de Map sobre MAYBE, y compartir marca hacia que
+           un Fold sobre ARRAY se emitiera como un Map de MAYBE. */
+        e->is_intrin = 11;
+        e->method = hx_intern_cstr(c->intern, "Fold");
+        e->recv = recv;
+        e->ty = f->ret ? f->ret : (acum ? acum : hx_ty_builtin(c->arena, TY_UNKNOWN));
+        return 1;
+    }
+    if (!f) {
+        hx_error(c->diags, farg->span, "E0714", "%s",
+                  hx_arena_sprintf(c->arena, "%s espera el nombre de una funcion", member));
+        e->recv = recv;
+        e->ty = hx_iter_ty(c, elem);
+        return 1;
+    }
+    if (f->params.len != 1)
+        hx_error(c->diags, farg->span, "E0715", "%s espera una funcion de un argumento", member);
+    else if (f->params.data[0].ty && elem && !hx_ty_equal(f->params.data[0].ty, elem))
+        hx_error(c->diags, farg->span, "E0715", "%s espera una funcion de %s, %s toma %s",
+                  member, hx_ty_name(elem), hx_sym_str(f->name), hx_ty_name(f->params.data[0].ty));
+    if (es_filter && (!f->ret || f->ret->kind != TY_BOOL))
+        hx_error(c->diags, farg->span, "E0715", "FILTER espera una funcion de %s a BOOL", hx_ty_name(elem));
+    e->is_intrin = 9;
+    e->method = hx_intern_cstr(c->intern, es_map ? "MapD" : "FilterD");
+    e->recv = recv;
+    e->ty = hx_iter_ty(c, es_filter ? elem : (f->ret ? f->ret : elem));
+    return 1;
+}
+
 static int hx_array_method_check(HxChecker *c, HxExpr *e, HxExpr *recv, const char *member) {
     const HxArrIntrin *ai = hx_find_array_intrin(member);
     if (!ai || !recv) return 0;
@@ -961,12 +1061,23 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
         int es_iter = !hx_ascii_casecmp(mn, "Map") || !hx_ascii_casecmp(mn, "Filter") ||
                       !hx_ascii_casecmp(mn, "Take") || !hx_ascii_casecmp(mn, "First");
         int es_maybe = !hx_ascii_casecmp(mn, "Or") || !hx_ascii_casecmp(mn, "Map");
-        if (es_iter || es_maybe) {
+        int es_fold = !hx_ascii_casecmp(mn, "Fold");
+        /* Un ARRAY[T] con Map, Filter o Fold lo lleva hx_array_iter_check, no la
+           cadena de iteradores: son metodos del ARRAY, no del iterador. Se
+           comprueba antes porque es_maybe incluye Map y «Fold» no es es_iter, con
+           lo que antes caia en el else de metodos normales y se resolvia como un
+           metodo cualquiera, dando «no existe». */
+        if (es_maybe || es_iter || es_fold) {
             HxExpr *irecv = hx_expr_check(c, raw_callee->member.base);
             if (es_maybe && hx_es_maybe(irecv->ty)) {
                 hx_maybe_call_check(c, e, irecv, mn);
                 return e;
             }
+            if (irecv->ty && irecv->ty->kind == TY_ARRAY && irecv->ty->size < 0 &&
+                (es_iter || es_fold) &&
+                hx_array_iter_check(c, e, irecv,
+                                    es_fold ? "Fold" : !hx_ascii_casecmp(mn, "Map") ? "Map" : mn))
+                return e;
             if (es_iter && hx_iter_ctor_check(c, e, mn, irecv)) return e;
         } else {
             /* Cualquier otro metodo del tipo del receptor. Sin esto
@@ -999,6 +1110,9 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
                 e->ty = hx_ty_builtin(c->arena, in->ret);
                 return e;
             }
+            if (irecv->ty && irecv->ty->kind == TY_ARRAY && irecv->ty->size < 0 &&
+                hx_array_iter_check(c, e, irecv, mn))
+                return e;
             if (irecv->ty && irecv->ty->kind == TY_ARRAY &&
                 hx_array_method_check(c, e, irecv, mn))
                 return e;
@@ -2077,9 +2191,17 @@ static int hx_iter_ctor_check(HxChecker *c, HxExpr *e, const char *name, HxExpr 
     int is_filter = !hx_ascii_casecmp(name, "Filter");
     int is_take = !hx_ascii_casecmp(name, "Take");
     int is_first = !hx_ascii_casecmp(name, "First");
-    if (!is_rango && !is_rangof && !is_map && !is_filter && !is_take && !is_first) return 0;
+    int is_fold = !hx_ascii_casecmp(name, "Fold");
+    if (!is_rango && !is_rangof && !is_map && !is_filter && !is_take && !is_first && !is_fold)
+        return 0;
     e->is_intrin = 4;
     e->method = hx_intern_cstr(c->intern, name);
+    /* Un ARRAY[T] con Map, Filter o Fold no es el constructor del iterador: lo
+       comprueba hx_array_iter_check, que devuelve el mismo tipo y con la captura
+       resuelta. Aqui solo se le deja pasar el nombre. */
+    if (recv && recv->ty && recv->ty->kind == TY_ARRAY && recv->ty->size < 0 &&
+        (is_map || is_filter || is_fold))
+        return hx_array_iter_check(c, e, recv, is_map ? "Map" : is_filter ? "Filter" : "Fold");
 
     if (is_rango || is_rangof) {
         /* El emisor construye el iterador como una declaracion antes del
@@ -2391,8 +2513,35 @@ static HxExpr *hx_expr_check(HxChecker *c, HxExpr *e) {
     return e;
 }
 
+/* Un TYPE generico que se menciona a si mismo en un campo —`TYPE Nodo<T> ...
+   siguiente AS Nodo<T> END TYPE`— no es recursivo de verdad: al instanciarlo se
+   clona, y el clon vuelve a instanciarse, y asi hasta que la pila se desborda.
+   Es legal en otros lenguajes con una indireccion, pero aqui el valor es directo y
+   no habria forma de cortarlo.
+
+   Este contador no es una proteccion contra la recursion en general: es el tope de
+   «puedes mencionar tu propio tipo, y mientras sea un numero razonable de niveles
+   funciona». Al pasarse, el tipo queda desconocido y se dice por que, que es lo que
+   un compilador debe hacer en vez de reventar. */
+static int hx_profundidad_tipo;
+
 static HxTy *hx_resolve_type(HxChecker *c, HxTy *t, HxSpan sp, int report) {
     if (!t) return NULL;
+    if (hx_profundidad_tipo > 24) {
+        if (report)
+            hx_error(c->diags, sp, "E0705", "%s",
+                     "un tipo se menciona a si mismo demasiadas veces: con un valor "
+                     "directo no hay forma de cortarlo, y con un REF si la habria");
+        t->kind = TY_UNKNOWN;
+        return t;
+    }
+    hx_profundidad_tipo++;
+    HxTy *r = hx_resolve_type_cuerpo(c, t, sp, report);
+    hx_profundidad_tipo--;
+    return r;
+}
+
+static HxTy *hx_resolve_type_cuerpo(HxChecker *c, HxTy *t, HxSpan sp, int report) {
     switch (t->kind) {
         case TY_NAMED: {
             if (t->decl) return t; /* ya resuelto (puede ser una instancia) */

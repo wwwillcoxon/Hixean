@@ -64,6 +64,27 @@ typedef struct {
     /* La lambda que se esta emitiendo, para saber que nombres se leen del cierre
        en vez de ser variables suyas. NULL fuera de una lambda. */
     struct HxFunc *cur_lambda;
+    /* Cierres pendientes de declarar. Una declaracion de C no puede ir dentro de
+       una expresion, y el iterador se construye como una inicializacion: el cierre
+       tiene que salir como sentencia antes. Se acumulan y se vacian en
+       hx_stmt_emit, justo antes de escribir la sentencia que los usa. */
+    struct HxFunc **cierres;
+    int n_cierres, cap_cierres;
+    /* Fold necesita una sentencia y una variable, y en C eso no cabe en una
+       expresion. La expresion escribe «hx_fold_N» y la sentencia —con el bucle y
+       las llamadas— se emite justo antes, desde hx_stmt_emit. */
+    int uses_fold;
+    /* El nodo que se esta emitiendo es el destino de una asignacion. Un nombre
+       suelto que es una FUNCTION se emite como puntero a ella, y eso es lo
+       correcto cuando es un valor; como destino daria «&hx_call_f = ...» y el C
+       direccionaria una funcion. */
+    int en_destino;
+    /* pares (acumulador, elemento) de cada Fold, para el ayudante. La clave es la
+       concatenacion de las dos etiquetas, porque el par ordenado importa. */
+    HX_VEC_ANON(const char *) fold_pairs;
+    HX_VEC_ANON(const char *) fold_nombres;
+    HxTy **fold_acums;
+    HxTy **fold_elems;
 } HxEmit;
 
 static const char *hx_c_ty(HxEmit *e, HxTy *t) {
@@ -592,6 +613,30 @@ static const char *HX_RT_INDEX =
    realloc: se reserva un bloque nuevo desde la arena y se copia el contenido, así
    que el viejo se queda hasta que la arena se libera. Es memoria de más a
    cambio de no depender de realloc en el perfil freestanding. */
+static const char *HX_RT_DARRITER =
+    /* Un ARRAY[T] como iterador. Se podia recorrer con Len y At, pero eso obliga a
+       escribir el bucle, y sobre todo no encadena: un ARRAY no es un ITER, asi que
+       `a.Map(...)` no existia. Con esto, `a` se convierte en un iterador con
+       hx_iter_darr y a partir de ahi se encadena igual que un Rango.
+       No es una vista: el estado copia el puntero y el largo, asi que si el
+       arreglo crece mientras se recorre —que es justo lo que pasaria con un
+       Push dentro del propio bucle— se sale con el largo del principio. Es la
+       misma decision que ya toma el resto del runtime con la arena: primero la
+       salida, luego el dato. */
+    "typedef struct { hx_darr d; int64_t i; int64_t esz; } hx_darr_it;\n"
+    "static inline int32_t hx_darr_paso(void *st, void *out) {\n"
+    "  hx_darr_it *s = (hx_darr_it *)st;\n"
+    "  if (s->i >= s->d.len) return 0;\n"
+    "  memcpy(out, (const char *)s->d.data + s->i * s->esz, (size_t)s->esz);\n"
+    "  s->i++;\n"
+    "  return 1;\n"
+    "}\n"
+    "static inline hx_iter hx_iter_darr(hx_arena *a, hx_darr d, int64_t esz) {\n"
+    "  hx_darr_it *s = (hx_darr_it *)hx_arena_alloc(a, sizeof(*s));\n"
+    "  s->d = d; s->i = 0; s->esz = esz;\n"
+    "  hx_iter it; it.estado = s; it.paso = hx_darr_paso; return it;\n"
+    "}\n";
+
 static const char *HX_RT_DARR =
     "typedef struct { void *data; int64_t len, cap; } hx_darr;\n"
     "static hx_darr hx_darr_make(void) {\n"
@@ -1312,12 +1357,14 @@ static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to, int capta);
 static void hx_iter_note_cap_elem(HxEmit *e, HxTy *t);
 static struct HxFunc *hx_fn_de_mapa(HxEmit *e, HxExpr *x);
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
 static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b);
 static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name);
 static HxConst *hx_find_const_named(HxEmit *e, const char *name);
 static void hx_iter_ctor(HxEmit *e, HxExpr *x, const char *arena, char *out, int cap, int ind);
 
 static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind);
+static void hx_declara_cierres_de(HxEmit *e, HxExpr *cadena, int ind);
 static void hx_body(HxEmit *e, HxStmtVec *body, int ind);
 static void hx_scan_stmt(HxEmit *e, HxStmt *s);
 static void hx_scan_body(HxEmit *e, HxStmtVec *body);
@@ -1348,9 +1395,49 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 hx_darr_note_push(e, x->recv->ty->elem);
             }
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
-            if (x->is_intrin == 8) {
+            /* ToString lleva la marca 8, pero solo cuando el compilador lo decide
+               por tabla; el resto de los metodos sin argumentos de los escalares
+               llevan la 2, que es el mismo camino. Sin esta linea, un ToString()
+               dentro de una lambda no activaba el bloque y el enlazado decia que
+               hx_i64_str no existia. */
+            /* ToString se reconoce por su nombre y no por su marca: la marca 2 es
+               «metodo sin argumentos» y la comparten Upper, Lower, Len e
+               IsEmpty, que tambien no tienen argumentos. Con la marca sola, un
+               s.Upper() se emitia como un ToString y salia sin convertir. */
+            if (x->method && !hx_ascii_casecmp(hx_sym_str(x->method), "ToString")) {
                 e->uses_tostring = 1;
                 e->uses_string = 1;
+            }
+            if ((x->is_intrin == 9 || x->is_intrin == 11) && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_ARRAY) {
+                e->uses_iter = 1;
+                e->uses_darr = 1;
+                hx_iter_note_chain(e, x);
+                /* El cierre se escribe al emitir la llamada, en hx_emit_darr_iter,
+                   justo antes de la declaracion del iterador y despues de las DIM
+                   que captura. */
+            }
+            /* Fold se anota aqui, en el escaneo, y no al emitir: la cabecera del
+               runtime se escribe antes que el cuerpo, y el ayudante tiene que estar
+               ahi cuando se use la llamada. Marcarlo al emitir llegaba tarde y el
+               enlazado decia que hx_fold_i_i no existia. */
+            if (x->is_intrin == 11 && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_ARRAY && x->recv->ty->size < 0) {
+                HxExpr *fe = x->call.args.data[x->call.args.len - 1].value;
+                struct HxFunc *ffn = NULL;
+                if (fe->kind == EX_FUNC && fe->lit) ffn = fe->lit;
+                else if (fe->kind == EX_PATH && fe->path.parts.len)
+                    ffn = hx_find_func_named(e, hx_sym_str(fe->path.parts.data[fe->path.parts.len - 1].name));
+                HxTy *felem = x->recv->ty->elem;
+                HxTy *facum = ffn && ffn->params.len ? ffn->params.data[0].ty : felem;
+                char fa[96], fe2[96];
+                hx_ty_mangle(facum, fa, sizeof fa);
+                hx_ty_mangle(felem, fe2, sizeof fe2);
+                e->uses_fold = 1;
+                e->uses_iter = 1;
+                e->uses_darr = 1;
+                hx_fold_note(e, facum, felem, fa, fe2);
+                hx_iter_note_elem(e, felem);
             }
             /* ToInt y ToFloat son el camino de vuelta, de texto a numero. Van en un
                bloque aparte del de las demas cadenas porque casi ningun programa los
@@ -1404,9 +1491,14 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
         case EX_BOOL:
         case EX_NIL:
         case EX_PATH:
-        case EX_MEMBER:
-        case EX_DEREF:
-        case EX_FUNC: break;
+        case EX_DEREF: break;
+        /* Una FUNC si se escanea: es donde vive el cuerpo de una lambda, y si no
+           se recorre, nada de lo que haya dentro pide su runtime. Un ToString() en
+           una lambda no emitia el bloque de conversion y el enlazado decia que
+           hx_i64_str no existia. Las funciones de nivel superior se escanean
+           aparte, en su propio bucle. */
+        case EX_FUNC: hx_scan_body(e, &x->lit->body); break;
+        case EX_MEMBER: hx_scan_expr(e, x->member.base); break;
     }
     for (int i = 0; i < x->n_segs; i++) hx_scan_expr(e, x->segs[i].hole);
 }
@@ -1691,7 +1783,12 @@ static void hx_str_seg_expr(HxEmit *e, HxStrSeg *sg, HxBuf *b) {
     }
     HxBuf inner = {e->arena, NULL, 0, 0};
     hx_expr_str(e, h, 0, &inner);
-    hx_buf_printf(b, "%s(%s)", hx_str_of_fn(h->ty), inner.data ? inner.data : "0");
+    /* ElConversion toma int64_t. Con un INT de 32 bits dentro del argumento se
+       pasaba un int32_t y el C protestaba, porque no hay prototipo que convierta:
+       en C el entero se promueve al entero menor de los dos. Se convierte aqui, y
+       con la conversion explicita el Cgenerated compila en los tres sistemas. */
+    hx_buf_printf(b, "%s((int64_t)(%s))", hx_str_of_fn(h->ty),
+                  inner.data ? inner.data : "0");
     free(inner.data);
 }
 
@@ -1718,6 +1815,82 @@ static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
     for (int i = 1; i < pre; i++) hx_buf_printf(b, ".%s", hx_sym_str(x->path.parts.data[i].name));
 }
 
+static const char *hx_cap_nombre(HxEmit *e, struct HxFunc *f, char *buf, size_t cap);
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
+static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag);
+
+/* Map, Filter y Fold sobre un ARRAY[T]: el ARRAY se convierte en iterador y se
+   encadena con los mismos ayudantes que un Rango. Fold no es un iterador sino un
+   bucle: no produce valores que recorrer, produce uno. */
+static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
+    const char *nm = hx_sym_str(x->method);
+    HxTy *elem = x->recv->ty->elem;
+    char tag[96];
+    hx_ty_mangle(elem, tag, sizeof tag);
+    e->uses_darr = 1;
+    e->uses_iter = 1;
+    HxExpr *farg = x->call.args.data[x->call.args.len - 1].value;
+    struct HxFunc *fn = NULL;
+    if (farg->kind == EX_FUNC && farg->lit) fn = farg->lit;
+    else if (farg->kind == EX_PATH && farg->path.parts.len)
+        fn = hx_find_func_named(e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
+    int capta = fn && fn->captures.len > 0;
+    HxBuf src = {e->arena, NULL, 0, 0};
+    hx_expr_str(e, x->recv, 0, &src);
+    hx_buf_printf(&src, ", (int64_t)sizeof(%s)", hx_c_ty(e, elem));
+    if (!hx_ascii_casecmp(nm, "Fold")) {
+        /* En C no se puede poner un bucle dentro de una expresion, pero si se puede
+           con una funcion que se llama a si misma y devuelve el valor. Es lo que
+           hacen otros lenguajes con un IIFE. El bucle va aqui, la funcion no. */
+        HxTy *acum = fn && fn->params.len ? fn->params.data[0].ty : elem;
+        hx_iter_note_elem(e, elem);
+        e->uses_fold = 1;
+        /* El par (acumulador, elemento) decide el nombre del ayudante, y hace
+           falta uno por par: la firma en C depende de los dos. */
+        char fa[96], fe[96];
+        hx_ty_mangle(acum, fa, sizeof fa);
+        hx_ty_mangle(elem, fe, sizeof fe);
+        hx_fold_note(e, acum, elem, fa, fe);
+        hx_buf_printf(b, "hx_fold_%s_%s(", fa, fe);
+        hx_expr_str(e, x->call.args.data[0].value, 0, b);
+        hx_buf_str(b, ", ");
+        /* El ayudante quiere el bloque de memoria y el largo, no el hx_darr: un
+           hx_darr por valor leiria el puntero de una copia y no el del ARRAY. */
+        hx_expr_str(e, x->recv, 0, b);
+        hx_buf_str(b, ".data, ");
+        hx_expr_str(e, x->recv, 0, b);
+        hx_buf_str(b, ".len, (void *)&hx_call_");
+        hx_buf_str(b, hx_sym_str(fn ? fn->name : "?"));
+        hx_buf_str(b, ")");
+        free(src.data);
+        return;
+    }
+    /* El cierre se escribe como sentencia propia justo antes de la declaracion del
+       iterador, porque en C una declaracion no puede ir dentro de una expresion.
+       El nombre lleva el de la lambda, que es unico dentro del modulo. */
+    int es_mapd = !hx_ascii_casecmp(nm, "MapD");
+    HxTy *salida = elem;
+    if (es_mapd && fn && fn->ret) salida = fn->ret;
+    if (es_mapd) {
+        if (elem && salida) hx_iter_note_map(e, elem, salida, capta);
+    } else {
+        hx_iter_note_elem(e, elem);
+        if (capta) hx_iter_note_cap_elem(e, elem);
+    }
+    hx_buf_printf(b, "hx_iter_%s%s_", es_mapd ? "map" : "filter", capta ? "cap" : "");
+    hx_iter_suffix(e, elem, b);
+    if (es_mapd) {
+        hx_buf_str(b, "_to_");
+        hx_iter_suffix(e, salida, b);
+    }
+    hx_buf_str(b, "(&hx_static_arena, hx_iter_darr(&hx_static_arena, ");
+    hx_buf_str(b, src.data);
+    hx_buf_str(b, "), (void *)&hx_call_");
+    hx_buf_str(b, hx_sym_str(fn ? fn->name : "?"));
+    if (capta) hx_buf_printf(b, ", &hxcap_%s)", hx_sym_str(fn->name));
+    else hx_buf_str(b, ")");
+    free(src.data);
+}
 static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
 /* Las llamadas de la capacidad net se traducen a las primitivas del runtime.
    La direccion se recibe como I64 con los cuatro octetos empaquetados. */
@@ -1922,6 +2095,22 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 break;
             }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
+            /* Un nombre suelto que es el de una FUNCTION vale como puntero a ella.
+               Antes no hacia falta porque las lambdas solo aparecian como FUNC
+               literal dentro de MAP y FILTER, y ahi el emisor resolvia el nombre.
+               Fold acepta una funcion de nivel superior y se le pasa por aqui.
+               Solo cuando es un valor: si es el destino de una asignacion tiene que
+               salir el nombre de la variable, no su direccion, y en un Fold mal
+              断续持续 colgado… lo hace el propio emisor de la asignacion. */
+            if (x->path.parts.len == 1 && !x->is_intrin && !x->vec_component &&
+                !x->deref && !e->en_destino) {
+                struct HxFunc *nombrada =
+                    hx_find_func_named(e, hx_sym_str(x->path.parts.data[0].name));
+                if (nombrada) {
+                    hx_buf_printf(b, "&hx_call_%s", hx_sym_str(nombrada->name));
+                    break;
+                }
+            }
             if (x->is_intrin) {
                 hx_buf_printf(b, "hx_%s(hx_v_%s", hx_intrin_cname(hx_sym_str(x->method)),
                               hx_sym_str(x->path.parts.data[0].name));
@@ -1940,6 +2129,14 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             HxExpr *callee = x->call.callee;
             if (x->is_intrin == 7) {
                 hx_emit_array_member(e, x, b);
+                break;
+            }
+            if ((x->is_intrin == 9 || x->is_intrin == 11) && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_ARRAY && x->recv->ty->size < 0) {
+                /* Map, Filter y Fold sobre ARRAY[T]. El ARRAY se pasa a iterador
+                   con hx_iter_darr y a partir de ahi se encadena igual que un
+                   Rango, reutilizando los mismos ayudantes. */
+                hx_emit_darr_iter(e, x, b);
                 break;
             }
             if (x->is_intrin == 9) { /* m.Or(x) */
@@ -2047,13 +2244,30 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_emit_net(e, x, b);
                 break;
             }
-            if (x->is_intrin == 8) {
+            /* ToString lleva la 8 cuando el compilador lo marca por el tipo, y la
+               2 cuando cae en el camino de metodo sin argumentos. Sin las dos, un
+               ToString dentro de una lambda no pedia su bloque y el enlazado decia
+               que hx_i64_str no existia. */
+            /* ToString por su nombre, no por la marca: ver la nota del escaneo. */
+            if (x->method && !hx_ascii_casecmp(hx_sym_str(x->method), "ToString")) {
                 /* ToString: el texto vive en memoria propia, no en la pila */
                 e->uses_tostring = 1;
                 e->uses_string = 1;
-                hx_buf_printf(b, "hx_%s(", hx_tostring_cname(x->recv ? x->recv->ty : NULL));
-                hx_expr_str(e, x->recv, 0, b);
-                hx_buf_str(b, ")");
+                /* Los Conversion de numero toman int64_t. Con un INT de 32 bits
+                   dentro se pasaba un int32_t y el C protestaba, porque sin
+                   prototipo el entero se promueve al menor de los dos. Con un
+                   STRING no hay conversion que hacer: str_dup ya recibe un hx_str
+                   y el cast a entero no compila. */
+                HxTy *rt = x->recv ? x->recv->ty : NULL;
+                if (rt && rt->kind == TY_STRING) {
+                    hx_buf_printf(b, "hx_str_dup(");
+                    hx_expr_str(e, x->recv, 0, b);
+                    hx_buf_str(b, ")");
+                } else {
+                    hx_buf_printf(b, "hx_%s((int64_t)", hx_tostring_cname(rt));
+                    hx_expr_str(e, x->recv, 0, b);
+                    hx_buf_str(b, ")");
+                }
                 break;
             }
             if (x->is_intrin) {
@@ -2665,7 +2879,9 @@ static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
         hx_buf_str(b, ");\n");
         return;
     }
+    e->en_destino = 1;
     hx_expr_str(e, s->assign.target, 0, b);
+    e->en_destino = 0;
     if (!s->assign.compound) hx_buf_str(b, " = ");
     else if (s->assign.op == OP_ADD) hx_buf_str(b, " += ");
     else hx_buf_printf(b, " %s= ", hx_binop_spelling(s->assign.op));
@@ -2677,11 +2893,60 @@ static void hx_emit_assign(HxEmit *e, HxStmt *s, int ind) {
     hx_buf_str(b, ";\n");
 }
 
+static void hx_vacia_cierres(HxEmit *e, int ind) {
+    for (int i = 0; i < e->n_cierres; i++) {
+        struct HxFunc *fn = e->cierres[i];
+        char capbuf[128];
+        hx_indent(&e->out, ind);
+        hx_cap_nombre(e, fn, capbuf, sizeof capbuf);
+        hx_buf_printf(&e->out, "struct %s hxcap%d = { ", capbuf, i);
+        for (int k = 0; k < fn->captures.len; k++) {
+            if (k) hx_buf_str(&e->out, ", ");
+            hx_buf_printf(&e->out, "hx_v_%s", hx_sym_str(fn->captures.data[k].name));
+        }
+        hx_buf_str(&e->out, " };\n");
+    }
+    e->n_cierres = 0;
+}
+
+/* Declara los cierres que necesita una sentencia, justo antes de escribirla.
+ *
+ * Va aqui y no en el escaneo por una razon concreta: si se declararan al escanear,
+ * aparecerian al principio del cuerpo de la funcion, antes de que existieran las
+ * DIM que capturan, y el C no compilaria. Y no puede ir dentro de la expresion del
+ * iterador porque en C una declaracion no cabe ahi.
+ *
+ * Se recorre la cadena de adaptadores hacia dentro y, para cada uno, se mira la
+ * funcion que recibe. Un ARRAY con Map o Filter cuenta igual que cualquier otro:
+ * su receptor es el ARRAY, no otra llamada. */
+static void hx_declara_cierres_de(HxEmit *e, HxExpr *cadena, int ind) {
+    for (HxExpr *x = cadena; x && x->kind == EX_CALL; x = x->recv) {
+        HxExpr *fa = x->call.args.len ? x->call.args.data[x->call.args.len - 1].value : NULL;
+        if (!fa) continue;
+        struct HxFunc *fn = NULL;
+        if (fa->kind == EX_FUNC && fa->lit) fn = fa->lit;
+        else if (fa->kind == EX_PATH && fa->path.parts.len)
+            fn = hx_find_func_named(e, hx_sym_str(fa->path.parts.data[fa->path.parts.len - 1].name));
+        if (!fn || fn->captures.len == 0) continue;
+        char capbuf[128];
+        hx_indent(&e->out, ind);
+        hx_cap_nombre(e, fn, capbuf, sizeof capbuf);
+        hx_buf_printf(&e->out, "struct %s hxcap_%s = { ", capbuf, hx_sym_str(fn->name));
+        for (int i = 0; i < fn->captures.len; i++) {
+            if (i) hx_buf_str(&e->out, ", ");
+            hx_buf_printf(&e->out, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
+        }
+        hx_buf_str(&e->out, " };\n");
+    }
+}
+
+
 static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
     HxBuf *b = &e->out;
     switch (s->kind) {
         case ST_NOP: break;
         case ST_EXPR:
+            hx_vacia_cierres(e, ind);
             hx_indent(b, ind);
             hx_expr_str(e, s->expr, 0, b);
             hx_buf_str(b, ";\n");
@@ -2747,8 +3012,8 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_expr_str(e, s->konst.value, 0, b);
             hx_buf_str(b, ";\n");
             break;
-        case ST_ASSIGN: hx_emit_assign(e, s, ind); break;
-        case ST_PRINT: hx_emit_print(e, s, ind); break;
+        case ST_ASSIGN: hx_vacia_cierres(e, ind); hx_emit_assign(e, s, ind); break;
+        case ST_PRINT: hx_vacia_cierres(e, ind); hx_emit_print(e, s, ind); break;
         case ST_IF:
             hx_indent(b, ind);
             hx_buf_str(b, "if (");
@@ -2785,6 +3050,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_str(b, "}\n");
             break;
         case ST_FORIN: {
+            hx_vacia_cierres(e, ind);
             HxTy *elem = s->forin_.iter->ty && s->forin_.iter->ty->kind == TY_ITER
                              ? s->forin_.iter->ty->elem
                              : hx_ty_builtin(e->arena, TY_INT);
@@ -2813,6 +3079,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             } else {
                 /* Un ITER que ya existe (un parametro, un campo): no hay nada
                    que construir, solo recorrerlo */
+                hx_declara_cierres_de(e, s->forin_.iter, ind);
                 snprintf(it, sizeof(it), "hx_it%d", e->iter_n++);
                 hx_indent(b, ind);
                 hx_buf_printf(b, "hx_iter %s = ", it);
@@ -3308,6 +3575,58 @@ static void hx_maybe_note_map(HxEmit *e, HxTy *from, HxTy *to) {
     HX_VEC_PUSH(e->maybe_maps, *m);
 }
 
+/* Fold necesita un bucle, y en C un bucle no es una expresion. Se resuelve con
+   una funcion que se llama a si misma: elFold se escribe como una llamada a
+   hx_fold_<acum>_<elem>(inicial, array, funcion), y el bucle vive ahi. No es un
+   truco de la Keep: es la forma que tiene C de expresar «esto produce un valor»,
+   y evita generar un temporal y una sentencia suelta por cada Fold. El bucle va
+   con indice, no con iterador, porque aqui el ARRAY ya es un bloque de memoria
+   contiguo con su largo. */
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
+static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag) {
+    /* El nombre lleva los dos tags: hx_fold_<acum>_<elem>. El `tag` que llega es
+       la clave "acum|elem", y aqui se convierte en el guion que separa los dos,
+       porque la llamada se construye con los dos por separado. */
+    char nombre[224];
+    snprintf(nombre, sizeof nombre, "%s", tag);
+    for (char *p = nombre; *p; p++)
+        if (*p == '|') *p = '_';
+    hx_buf_printf(b, "static inline %s hx_fold_%s(%s inicial, void *datos, "
+                     "int64_t largo, void *ff) {\n", acum, nombre, acum);
+    hx_buf_printf(b, "  %s (*f)(%s, %s) = (%s (*)(%s, %s))ff;\n", acum, acum, aelem, acum,
+                  acum, aelem);
+    hx_buf_printf(b, "  %s v;\n", aelem);
+    hx_buf_str(b, "  for (int64_t i = 0; i < largo; i++) {\n");
+    hx_buf_printf(b, "    memcpy(&v, (const char *)datos + i * (int64_t)sizeof(%s), "
+                     "sizeof(%s));\n", aelem, aelem);
+    hx_buf_printf(b, "    inicial = f(inicial, v);\n");
+    hx_buf_str(b, "  }\n  return inicial;\n}\n");
+}
+
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe) {
+    char clave[224];
+    snprintf(clave, sizeof clave, "%s|%s", fa, fe);
+    /* La clave lleva los dos tags porque el nombre del ayudante los lleva: si solo
+       llevara el del acumulador, dos Folds con el mismo acumulador y distinto
+       elemento generarian el mismo nombre y uno pisaria al otro. */
+    for (int i = 0; i < e->fold_pairs.len; i++)
+        if (!strcmp(e->fold_pairs.data[i], clave)) return;
+    /* El nombre del ayudante lleva los dos tags con un guion, y la clave lleva una
+       barra vertical: son cosas distintas y se guardan las dos para no tener que
+       partir la cadena cada vez que se emite. */
+    if (e->fold_pairs.len >= 16) return;
+    /* El par se guarda con el push ya hecho, asi que el indice del nuevo es el
+       len menos uno. Reservar despues, no antes: si se reservara antes el realloc
+       moveria el vector y los indices poking se quedarian atras. */
+    int k = e->fold_pairs.len;
+    e->fold_acums = (HxTy **)hx_arena_realloc_tmp(e->fold_acums, sizeof(HxTy *) * (size_t)(k + 1));
+    e->fold_elems = (HxTy **)hx_arena_realloc_tmp(e->fold_elems, sizeof(HxTy *) * (size_t)(k + 1));
+    e->fold_acums[k] = acum;
+    e->fold_elems[k] = elem;
+    HX_VEC_PUSH(e->fold_pairs, hx_arena_strdup(e->arena, clave));
+    HX_VEC_PUSH(e->fold_nombres, hx_arena_strdup(e->arena, clave));
+}
+
 static void hx_iter_note_elem(HxEmit *e, HxTy *t) {
     for (int i = 0; i < e->iter_elems.len; i++)
         if (hx_ty_equal(&e->iter_elems.data[i], t)) return;
@@ -3362,7 +3681,33 @@ static struct HxFunc *hx_fn_de_mapa(HxEmit *e, HxExpr *x) {
 /* Registra los tipos de una cadena de iteradores antes de escribir el
    runtime: la cabecera se emite antes que los modulos. */
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x) {
-    while (x && x->kind == EX_CALL && x->is_intrin == 4) {
+    /* Un ARRAY[T] con Map, Filter o Fold lleva su propio nombre —MapD, FilterD—
+       y no entra en la cadena de abajo, que solo conoce Rango y los adaptadores.
+       Se registra aqui, antes de que se escriba ninguna linea. */
+    if (x && x->kind == EX_CALL && x->is_intrin == 9 && x->recv && x->recv->ty &&
+        x->recv->ty->kind == TY_ARRAY) {
+        HxExpr *farg = x->call.args.data[x->call.args.len - 1].value;
+        struct HxFunc *fn = NULL;
+        if (farg->kind == EX_FUNC && farg->lit) fn = farg->lit;
+        else if (farg->kind == EX_PATH && farg->path.parts.len)
+            fn = hx_find_func_named(e, hx_sym_str(farg->path.parts.data[farg->path.parts.len - 1].name));
+        int capta = fn && fn->captures.len > 0;
+        HxTy *elem = x->recv->ty->elem;
+        if (!hx_ascii_casecmp(hx_sym_str(x->method), "MapD")) {
+            HxTy *salida = fn && fn->ret ? fn->ret : elem;
+            if (elem && salida) hx_iter_note_map(e, elem, salida, capta);
+        } else if (elem) {
+            hx_iter_note_elem(e, elem);
+            if (capta) hx_iter_note_cap_elem(e, elem);
+        }
+    }
+    /* La cadena recorre hacia dentro. Cada adaptador tiene su propia marca: 4 para
+       los de un iterador, 9 para Map y Filter sobre un ARRAY, y 11 para Fold, que
+       no encadena. Lo que se busca es el par de tipos de cada uno, y el segundo de
+       una cadena —un Filter detras de un Map sobre ARRAY— tiene la marca del ARRAY
+       y se habría quedado sin registrar si solo se mirara la 4. */
+    while (x && x->kind == EX_CALL &&
+           (x->is_intrin == 4 || x->is_intrin == 9 || x->is_intrin == 11)) {
         const char *nm = hx_sym_str(x->method);
         HxTy *elem = x->ty && x->ty->kind == TY_ITER ? x->ty->elem : NULL;
         if (!hx_ascii_casecmp(nm, "Take") || !hx_ascii_casecmp(nm, "First")) {
@@ -3370,17 +3715,27 @@ static void hx_iter_note_chain(HxEmit *e, HxExpr *x) {
             hx_iter_note_chain(e, x->recv);
             return;
         }
-        HxTy *from =
-            x->recv && x->recv->ty && x->recv->ty->kind == TY_ITER ? x->recv->ty->elem : NULL;
-        if (!hx_ascii_casecmp(nm, "Map")) {
+        /* Un ARRAY[T] con Map no es un iterador todavia: su elemento es el del
+           ARRAY, no el de un ITER, asi que «from» se toma del receptor igual que
+           en el otro caso pero sin mirar que sea ITER. */
+        HxTy *from = x->recv && x->recv->ty &&
+                             (x->recv->ty->kind == TY_ITER ||
+                              x->recv->ty->kind == TY_ARRAY)
+                         ? x->recv->ty->elem
+                         : NULL;
+        if (!hx_ascii_casecmp(nm, "Map") || !hx_ascii_casecmp(nm, "MapD")) {
             struct HxFunc *fn = hx_fn_de_mapa(e, x);
             int capta = fn && fn->captures.len > 0;
             if (from) hx_iter_note_elem(e, from);
             if (elem) hx_iter_note_elem(e, elem);
             if (from && elem) hx_iter_note_map(e, from, elem, capta);
         } else if (from) {
+            /* Filter sobre ARRAY va con el mismo nombre de metodo que sobre un
+               iterador, asi que el registro del tipo —el del ayudante que
+               necesita— se hace aqui igual que en la rama de arriba. */
             struct HxFunc *fn = hx_fn_de_mapa(e, x);
-            if (fn && fn->captures.len > 0 && from) hx_iter_note_cap_elem(e, from);
+            if (fn && fn->captures.len > 0) hx_iter_note_cap_elem(e, from);
+            if (elem) hx_iter_note_elem(e, elem);
             hx_iter_note_elem(e, from);
         }
         hx_iter_note_chain(e, x->recv);
@@ -3616,7 +3971,10 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
 #endif
     }
     /* el arreglo dinámico usa la arena, asi que sus ayudantes van despues */
-    if (e->uses_darr) hx_buf_str(b, HX_RT_DARR);
+    if (e->uses_darr) {
+        hx_buf_str(b, HX_RT_DARR);
+        hx_buf_str(b, HX_RT_DARRITER);
+    }
     if (e->uses_iter) {
         hx_buf_str(b, HX_RT_ITER);
         hx_emit_iter_helpers(e, b);
@@ -3629,6 +3987,15 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
        ahi, y en C una funcion sin prototipo se compila y el enlazado despues dice
        que no existe. */
     if (e->uses_str2num) hx_buf_str(b, HX_RT_STR2NUM);
+    if (e->uses_fold) {
+        /* Se pasa la clave entera, «acum|elem»: hx_fold_helpers cambia la barra
+           por un guion para el nombre del ayudante. Partirla aqui y pasar solo la
+           primera mitad hacia que dos Folds con el mismo acumulador y distinto
+           elemento generaran el mismo nombre. */
+        for (int i = 0; i < e->fold_nombres.len; i++)
+            hx_fold_helpers(b, hx_c_ty(e, e->fold_acums[i]), hx_c_ty(e, e->fold_elems[i]),
+                            e->fold_nombres.data[i]);
+    }
     if (e->uses_enum) hx_emit_enum_names(e, b, e->unit);
     /* El perfil libc ya tiene memcpy y memset, y declararlos otra vez pisa los
        prototipos: en macOS, ademas, memcpy es una macro. El freestanding es el

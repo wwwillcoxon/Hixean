@@ -1,0 +1,54 @@
+"tipos genericos: una instancia por combinacion de argumentos de tipo"
+TYPE Caja<T>
+TYPE Caja<T>
+  valor AS T
+  veces AS INT
+END TYPE
+
+TYPE Par<T>
+  a AS T
+  b AS T
+END TYPE
+
+FUNCTION Valor<T>(c AS Caja<T>) AS T
+  RETURN c.valor
+END FUNCTION
+
+FUNCTION Amplia<T>(p AS Par<T>) AS Par<T>
+  DIM r AS Par<T>
+  r.a = p.a
+  r.b = p.b
+  RETURN r
+END FUNCTION
+
+DIM ci AS Caja<Int>
+ci.valor = 7
+ci.veces = 2
+PRINT ci.valor
+PRINT Valor(ci)
+
+DIM cs AS Caja<STRING>
+cs.valor = "hola"
+PRINT cs.valor
+PRINT Valor(cs)
+
+DIM p AS Par<INT>
+p.a = 1
+p.b = 2
+PRINT p.a + p.b
+
+DIM pf AS Par<FLOAT>
+pf.a = 1.5
+pf.b = 2.5
+PRINT pf.a * pf.b
+
+"el mismo tipo generico con dos argumentos distintos da dos instancias"
+DIM x AS Caja<Int>
+DIM y AS Caja<STRING>
+PRINT x.valor
+PRINT y.valor
+
+"una funcion generica que devuelve un tipo generico"
+DIM r AS Par<FLOAT> = Amplia(pf)
+PRINT r.a
+PRINT r.b
