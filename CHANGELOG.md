@@ -124,6 +124,10 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     declara las funciones de POSIX pero no las macros, y `CLOCK_MONOTONIC` es una
     macro. Va en `_runtime.h` antes de la primera cabecera del sistema, que es el
     único sitio donde puede ir.
+  - **Windows tiene su propio bloque**, con `QueryPerformanceCounter` y `rand_s`. El
+    `clock()` del CRT mide tiempo de CPU, así que un programa con una espera dentro
+    mide casi cero y la parecería rota sin estarlo. Y `Sleep` del CRT solo acepta
+    milisegundos enteros, así que una espera de menos de uno se redondea a cero.
   - `tests/tiempo.hxe` no comprueba ningún número exacto —un reloj da uno distinto
     cada vez— sino cosas que tienen que ser verdad siempre: que dormir 11 tarda al
     menos 11, que el dado reparte, que dos sorteos seguidos no coinciden.

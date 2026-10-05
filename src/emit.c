@@ -247,6 +247,38 @@ static const char *HX_TIME_FREESTANDING =
     "#endif\n";
 #endif
 
+#ifdef _WIN32
+/* En Windows no hay CLOCK_MONOTONIC ni nanosleep, y `clock()` del CRT mide tiempo
+   de CPU: un programa con una espera dentro mide casi cero, asi que la capacidad
+   pareceria rota sin estarlo. QueryPerformanceCounter es el reloj que de verdad mide
+   el tiempo que pasa, y va desde el arranque del sistema.
+   Sleep es el CRT y solo acepta milisegundos, asi que las esperas de menos de un
+   milisegundo se redondean hacia arriba a cero: se avisa en la gramatica. */
+static const char *HX_TIME_WIN =
+    "#include <windows.h>\n"
+    "#include <time.h>\n"
+    "static inline int64_t hx_time_ns(void) {\n"
+    "  LARGE_INTEGER f, c;\n"
+    "  if (!QueryPerformanceFrequency(&f) || f.QuadPart == 0) return 0;\n"
+    "  QueryPerformanceCounter(&c);\n"
+    "  return (int64_t)((c.QuadPart * 1000000000LL) / f.QuadPart);\n"
+    "}\n"
+    "static inline int64_t hx_time_sleep_ns(int64_t ns) {\n"
+    "  int64_t ms = ns / 1000000LL;\n"
+    "  if (ms > 0) Sleep((DWORD)ms);\n"
+    "  return 0;\n"
+    "}\n"
+    "static inline int hx_time_random(void *dest, int64_t n) {\n"
+    "  /* CryptGenRandom no esta en mingw sin advapi32, y el generador del CRT es de\n"
+    "  Microsoft y no criptografico. /dev/urandom no existe. rand_s si, y es del CRT. */\n"
+    "  unsigned char *d = (unsigned char *)dest;\n"
+    "  int64_t i = 0;\n"
+    "  for (; i < n; i++) d[i] = (unsigned char)(rand_s(1) & 0xffu);\n"
+    "  return i >= n;\n"
+    "}\n";
+#endif
+
+#ifndef _WIN32
 static const char *HX_TIME_LIBC =
     /* Aqui la estructura de tiempo es la de POSIX, `struct timespec`, y no la propia
        que usa el perfil freestanding: con libc ya hay una que hace falta. Declarar las
@@ -293,6 +325,8 @@ static const char *HX_TIME_LIBC =
     "#endif\n"
     "  return i >= n;\n"
     "}\n";
+
+#endif
 
 /* El generador es comun a los dos perfiles: la entropia viene del kernel una sola
    vez y a partir de ahi es aritmetica, no llamadas al sistema. */
@@ -4284,9 +4318,6 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     if (e->uses_time) {
         hx_buf_str(b, HX_TIME_PRE);
 #if defined(_WIN32)
-        /* En Windows el reloj es clock() del CRT, que mide tiempo de CPU y no de
-           reloj: un programa con una espera dentro mide casi cero, y la capacidad
-           parece rota sin estarlo. QueryPerformanceCounter es lo que hay. */
         hx_buf_str(b, HX_TIME_WIN);
 #else
         hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_TIME_FREESTANDING
