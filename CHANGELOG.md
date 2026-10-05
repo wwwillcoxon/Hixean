@@ -124,7 +124,16 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     declara las funciones de POSIX pero no las macros, y `CLOCK_MONOTONIC` es una
     macro. Va en `_runtime.h` antes de la primera cabecera del sistema, que es el
     único sitio donde puede ir.
-  - **Windows tiene su propio bloque**, con `QueryPerformanceCounter` y `rand_s`. El
+  - **Una puerta que compila el runtime de la otra plataforma.** Hay trozos del
+    runtime que solo se emiten en un sistema —el reloj de Windows, el net de POSIX— y
+    no se compilan nunca aquí, porque el `#if defined(_WIN32)` que los elige se
+    evalúa al compilar `hxc`. Un error en ellos sale en el CI de Windows, y con un
+    mensaje que habla de una constante que no existe. `tools/verificar-win-runtime.py`
+    extrae el bloque tal cual se emite y lo compila aparte con los mismos avisos que
+    el resto del proyecto, más `-Wcast-function-type`, que es el que prohibe convertir
+    `FARPROC` en la firma de `BCryptGenRandom`. Eso es lo que pasó con `rand_s`, que
+    además no existe en MinGW.
+  - **Windows tiene su propio bloque**, con `QueryPerformanceCounter` y `BCryptGenRandom`. El
     `clock()` del CRT mide tiempo de CPU, así que un programa con una espera dentro
     mide casi cero y la parecería rota sin estarlo. Y `Sleep` del CRT solo acepta
     milisegundos enteros, así que una espera de menos de uno se redondea a cero.

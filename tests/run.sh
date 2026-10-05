@@ -339,6 +339,14 @@ printf 'KIT con_tiempo 1.0.0\n  TARGET hixe >= 0.2\n  ENTRY t.hxe\n  PROVIDES co
   && echo "ok     declarado, se construye" \
   || { echo "FALLO: declarado y aun asi no se construye"; exit 1; }
 
+echo "== el runtime de la otra plataforma =="
+# Hay trozos del runtime que solo se emiten en un sistema: el reloj de Windows, el net
+# de POSIX. Aqui no se compilan nunca, porque el `if defined(_WIN32)` que los elige se
+# evalua al compilar hxc. Un error en ellos sale en el CI de Windows y con un mensaje
+# que habla de una constante que no existe. Esto los compila aparte, con los mismos
+# avisos que el resto.
+python3 tools/verificar-win-runtime.py || exit 1
+
 echo "== los documentos no mienten =="
 if command -v python3 >/dev/null 2>&1; then
   python3 tools/verificar-ejemplos.py docs/manual.html site/index.html

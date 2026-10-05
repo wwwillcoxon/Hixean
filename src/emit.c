@@ -268,12 +268,43 @@ static const char *HX_TIME_WIN =
     "  if (ms > 0) Sleep((DWORD)ms);\n"
     "  return 0;\n"
     "}\n"
+    /* En Windows no hay /dev/urandom, CryptGenRandom necesita advapi32 —que
+       mingw no trae por defecto— y rand_s no existe en mingw. Lo que hay es
+       BCryptGenRandom, que es la entropia del sistema y esta en bcrypt.dll desde
+       Windows 7. Anadir bcrypt como dependencia de enlace obligaria a todos los
+       programas a tenerla, asi que se busca en tiempo de ejecucion con
+       GetProcAddress, que esta en kernel32 y siempre esta enlazada. */
+    "typedef unsigned long (*hx_bcrypt_genrandom)(void *, unsigned char *, unsigned long,\n"
+    "                                                unsigned long);\n"
+    /* GetProcAddress devuelve FARPROC y hay que convertirlo a esta firma. Un cast
+       directo entre dos punteros a funcion de tipos distintos lo prohibe el
+       estandar, y -Wextra lo avisa con -Werror. Una union si: en C se puede leer
+       un miembro distinto del ultimo escrito. */
+    "union hx_proc { FARPROC f; hx_bcrypt_genrandom g; };\n"
     "static inline int hx_time_random(void *dest, int64_t n) {\n"
-    "  /* CryptGenRandom no esta en mingw sin advapi32, y el generador del CRT es de\n"
-    "  Microsoft y no criptografico. /dev/urandom no existe. rand_s si, y es del CRT. */\n"
     "  unsigned char *d = (unsigned char *)dest;\n"
     "  int64_t i = 0;\n"
-    "  for (; i < n; i++) d[i] = (unsigned char)(rand_s(1) & 0xffu);\n"
+    "  HMODULE mod = GetModuleHandleA(\"bcrypt.dll\");\n"
+    "  hx_bcrypt_genrandom genrandom = 0;\n"
+    "  if (mod) {\n"
+    "    union hx_proc p;\n"
+    "    p.f = GetProcAddress(mod, \"BCryptGenRandom\");\n"
+    "    genrandom = p.g;\n"
+    "  }\n"
+    "  if (genrandom) {\n"
+    "    while (i < n) {\n"
+    "      unsigned long trozo = (unsigned long)((n - i) > 65536 ? 65536 : (n - i));\n"
+    "      /* 2 es BCRYPT_USE_SYSTEM_PREFERRED_RNG: sin esto devuelve un error y no\n"
+    "         hay entropia. */\n"
+    "      if (genrandom(0, d + i, trozo, 2) != 0) return 0;\n"
+    "      i += (int64_t)trozo;\n"
+    "    }\n"
+    "    return 1;\n"
+    "  }\n"
+    "  /* Sin bcrypt.dll no hay entropia criptografica a mano. rand() es un LCG del\n"
+    "     CRT: sirve para repartir enemigos de un juego y no sirve para una clave, y\n"
+    "     por eso la gramatica lo dice en vez de dejarlo para que se descubra. */\n"
+    "  for (; i < n; i++) d[i] = (unsigned char)(rand() & 0xff);\n"
     "  return i >= n;\n"
     "}\n";
 #endif

@@ -700,6 +700,13 @@ son diferencias.
 bucle que sortea hasta alcanzarlo se colgaría. Un rango invertido o vacío devuelve
 el límite de abajo, que es lo único que se puede devolver sin inventarse un número.
 
+**En Windows hay dos pérdidas.** Su reloj es `QueryPerformanceCounter` y su espera es
+`Sleep` del CRT, que solo acepta milisegundos enteros: una espera de menos de uno se
+redondea a cero. Y su azar viene de `BCryptGenRandom`, que se busca en tiempo de
+ejecución para no hacer depender a todos los programas de `bcrypt.dll`; si esa DLL no
+está —Windows anterior a 7— se cae a `rand()` del CRT, que es un LCG y **no sirve
+para una clave**. Para algo que necesite criptografía de verdad, hay que portablearlo.
+
 **El azar sale del kernel, no de un generador sembrado con la hora.** Un LCG con la
 hora como semilla regala su clave: el estado inicial se prueba, y unas pocas semillas
 bastan. La entropía se pide una vez, con `getrandom` (syscall 318) y cayendo a
