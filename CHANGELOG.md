@@ -79,6 +79,16 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     por par de tipos: un bucle no cabe en una expresión de C, y el bucle vive en la
     función que devuelve el valor.
 
+- **ADR 0016: el perfil `freestanding` es de Linux x86-64 y solo de Linux
+  x86-64.** El perfil sin libc es el que sostiene la puerta de 12 KiB, y arrastra
+  una consecuencia que no se ve en la puerta: las syscalls están escritas para una
+  arquitectura y un kernel concretos. Un `asm` en línea con el número equivocado no
+  avisa, el programa arranca y muere con `SIGSEGV`, y el mensaje no sirve para nada.
+  Se decide por qué no se extiende a macOS ni a Windows, por qué la puerta solo se
+  mide en Linux, y por qué el error de compilación no se maquilla: el
+  generador de código es correcto para su destino, lo que no se puede es hacer que
+  un ejecutable de Linux arranque en Windows.
+
 ### Arreglado
 
 - **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>
