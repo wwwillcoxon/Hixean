@@ -2095,14 +2095,14 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 break;
             }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
-            /* Un nombre suelto que es el de una FUNCTION vale como puntero a ella.
-               Antes no hacia falta porque las lambdas solo aparecian como FUNC
-               literal dentro de MAP y FILTER, y ahi el emisor resolvia el nombre.
-               Fold acepta una funcion de nivel superior y se le pasa por aqui.
-               Solo cuando es un valor: si es el destino de una asignacion tiene que
-               salir el nombre de la variable, no su direccion, y en un Fold mal
-              断续持续 colgado… lo hace el propio emisor de la asignacion. */
-            if (x->path.parts.len == 1 && !x->is_intrin && !x->vec_component &&
+            /* Un nombre suelto que el checker ha marcado como FUNCTION vale como
+               puntero a ella. No se busca por nombre aqui: el emisor no lleva
+               ambitos, y `DIM suma AS INT` al lado de `FUNCTION Suma` se escriben
+               igual, asi que por nombre la funcion ganaba y `suma = suma + n` salia
+               como una llamada a Suma. Solo cuando es un valor: si es el destino de
+               una asignacion tiene que salir el nombre de la variable, no su
+               direccion, y eso lo hace el propio emisor de la asignacion. */
+            if (x->func_ref && x->path.parts.len == 1 && !x->is_intrin && !x->vec_component &&
                 !x->deref && !e->en_destino) {
                 struct HxFunc *nombrada =
                     hx_find_func_named(e, hx_sym_str(x->path.parts.data[0].name));

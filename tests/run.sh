@@ -1,5 +1,20 @@
 #!/bin/sh
 set -e
+
+# Compara la salida de un programa con lo esperado y para si no cuadra.
+#
+# Antes esto se escribia `diff -u a b && echo "ok ..."`, y con `set -e` una
+# comparacion que falla no para nada: en una lista con `&&` solo el ultimo comando
+# decide el codigo de salida, y el ultimo era el `echo`. Asi que un programa que
+# imprimia basura daba un "ok" y el corpus entero pasaba. Se ha visto: un
+# `suma = suma + n` mal emitido salia como 4198720 donde se esperaba 6, en Linux sin
+# quejarse, y solo lo delataba Windows con -Werror. Aqui el fallo es del que para.
+comprobar() {
+  if ! diff -u "$1" "$2"; then
+    echo "FALLO: la salida de $3 no cuadra con $1"; exit 1
+  fi
+  echo "ok     $3"
+}
 cd "$(dirname "$0")/.."
 echo "== hxc test =="
 ./build/hxc test tests/*.hxt tests/*.hxe
@@ -15,14 +30,20 @@ rm -rf build/units
 ./build/hxc build tests/hxc/mate.hxs --emit-hxc build/units -o build/mate
 ./build/hxc build tests/hxc/usa.hxe --use-hxc build/units -o build/usa
 ./build/usa > build/usa.out
-diff -u tests/hxc/usa.out build/usa.out && echo "ok     tests/hxc/usa.out"
+comprobar tests/hxc/usa.out build/usa.out "tests/hxc/usa.out"
 echo
 echo "== unidad .hxc con MAYBE e ITER en firmas exportadas =="
 rm -rf build/units_quiz
 ./build/hxc build tests/hxc/quiz.hxs --emit-hxc build/units_quiz -o build/quiz
 ./build/hxc build tests/hxc/usa_quiz.hxe --use-hxc build/units_quiz -o build/usa_quiz
 ./build/usa_quiz > build/usa_quiz.out
-diff -u tests/hxc/usa_quiz.out build/usa_quiz.out && echo "ok     tests/hxc/usa_quiz.out"
+# Este modulo tiene el caso que hay que mirar: `Total` declara `DIM suma AS INT`
+# y al lado existe `EXPORT FUNCTION Suma`. Los dos nombres se escriben igual porque
+# los identificadores no distinguen mayusculas, y gano la funcion: `suma = suma + n`
+# se emitia como una llamada. En Linux eso era solo un warning y Total(1) devolvia
+# 4198720 donde se esperaba 6; en Windows, con -Werror, era un error de compilacion.
+# Y `comprobar` es lo que hacia falta para enterarse en vez de ver un "ok".
+comprobar tests/hxc/usa_quiz.out build/usa_quiz.out "tests/hxc/usa_quiz.out"
 echo
 echo "== unidad .hxc dañada =="
 mkdir -p build/units_bad build/sinsrc
@@ -54,7 +75,7 @@ echo "== paquetes .hxk =="
 ./build/hxc build --kit tests/kits/aritmetica.hxk --path tests/kits -o build/kit_aritmetica
 ./build/kit_aritmetica > build/kit.out
 echo "32" > build/kit.expected
-diff -u build/kit.expected build/kit.out && echo "ok     el paquete aritmetica se construye y ejecuta"
+comprobar build/kit.expected build/kit.out "el paquete aritmetica se construye y ejecuta"
 ./build/hxc kit tests/kits/aritmetica.hxk --path tests/kits | grep -q "resolution base 0.2.0" \
   && echo "ok     resolucion de dependencias"
 for k in roto sin_permiso nuevo_dep churro; do
@@ -203,8 +224,7 @@ fi
 printf 'DIM x AS INT = 1\nIF x = 1 THEN\n  DIM x AS INT = 2\n  PRINT x\nEND IF\nPRINT x\n' > build/sombra.hxe
 ./build/hxc run build/sombra.hxe > build/sombra.out 2>/dev/null
 printf '2\n1\n' > build/sombra.expected
-diff -u build/sombra.expected build/sombra.out >/dev/null \
-  && echo "ok     sombrear en un ambito mas hondo si se permite"
+comprobar build/sombra.expected build/sombra.out "sombrear en un ambito mas hondo si se permite"
 printf 'DIM w AS vec2 = (1.0, 0.0)\nPRINT DOT(w, w)\n' > build/vec2dot.hxe
 if ./build/hxc check build/vec2dot.hxe 2>&1 | grep -q "E0402"; then
   echo "ok     DOT sobre un vec2 da E0402 y no C invalido"
@@ -214,8 +234,7 @@ fi
 printf 'CONST S AS STRING = "ho" ++ "la"\nCONST T AS STRING = "hola"\nPRINT S, T\n' > build/constcadena.hxe
 ./build/hxc run build/constcadena.hxe > build/constcadena.out 2>/dev/null
 printf 'hola        hola\n' > build/constcadena.expected
-diff -u build/constcadena.expected build/constcadena.out >/dev/null \
-  && echo "ok     CONST de cadena, literal y concatenado, sin C invalido"
+comprobar build/constcadena.expected build/constcadena.out "CONST de cadena, literal y concatenado, sin C invalido"
 
 echo "== diagnosticos en json =="
 printf 'DIM x AS INT = "hola"\nDIM y AS INT = noexiste\n' > build/json.hxe
@@ -285,8 +304,7 @@ echo "ok     publicar dos veces el mismo paquete se rechaza"
 ./build/hxc build --kit build/inst/aritmetica/aritmetica.hxk --path build/inst -o build/inst_arit
 ./build/inst_arit > build/inst_arit.out
 echo "32" > build/inst_arit.expected
-diff -u build/inst_arit.expected build/inst_arit.out \
-  && echo "ok     el paquete instalado se construye y ejecuta (32)"
+comprobar build/inst_arit.expected build/inst_arit.out "el paquete instalado se construye y ejecuta (32)"
 if ./build/hxc install base --registry build/reg --into build/inst 2>&1 | grep -q E0818; then
   echo "ok     instalar dos veces da E0818"
 else
@@ -300,8 +318,7 @@ fi
 printf 'QUERY lo que hay en el registro\n  VERSION >= 0.1\nEND QUERY\n' > build/reg.hxq
 ./build/hxc query build/reg.hxq --path build/reg > build/reg.out
 printf 'aritmetica 1.0.0  build/reg/aritmetica/aritmetica.hxk\nbase 0.2.0  build/reg/base/base.hxk\n' > build/reg.expected
-diff -u build/reg.expected build/reg.out >/dev/null \
-  && echo "ok     hxc query encuentra lo publicado en el registro"
+comprobar build/reg.expected build/reg.out "hxc query encuentra lo publicado en el registro"
 
 echo "== los documentos no mienten =="
 if command -v python3 >/dev/null 2>&1; then
@@ -393,8 +410,7 @@ else
 fi
 # un modulo con punto: std.texto.hxs se llama std.texto y se llama texto.Doble
 ./build/hxc run tests/modulos_con_punto/usa.hxe > build/punto.out 2>&1
-diff -u tests/modulos_con_punto/usa.hxe.out build/punto.out \
-  && echo "ok     IMPORT std.texto encuentra std.texto.hxs y se llama con su namespace"
+comprobar tests/modulos_con_punto/usa.hxe.out build/punto.out "IMPORT std.texto encuentra std.texto.hxs y se llama con su namespace"
 # el nombre del módulo tiene que ser el de la ruta del IMPORT
 rm -rf build/modulo_mal && mkdir -p build/modulo_mal
 cp tests/malos/mate_equivocado.hxs build/modulo_mal/mate.hxs

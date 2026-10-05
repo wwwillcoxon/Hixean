@@ -94,6 +94,19 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   `Upper`, `Lower`, `Len` e `IsEmpty`. `ToString` se reconoce ahora por su nombre.
 - **Un nombre suelto que es una `FUNCTION` se emitía como `&hx_call_f` incluso siendo
   el destino de una asignación**, lo que daba un destino no asignable.
+- **Un identificador que era a la vez una variable y el nombre de una función se
+  resolvía siempre como la función.** Como los identificadores no distinguen
+  mayúsculas, `DIM suma AS INT` al lado de `FUNCTION Suma` son el mismo nombre, y en
+  `Total(desde)` la línea `suma = suma + n` se emitía como una llamada a `Suma`. En
+  Linux era un warning y el resultado era basura —`4198720` donde tocaba `6`—; en
+  Windows, con `-Werror`, era un error de compilación. Ahora manda la variable, y
+  quien marca si un nombre es una función es el checker, que es el único que lleva
+  los ámbitos.
+- **Las comparaciones de `tests/run.sh` no paraban el script.** `diff -u a b &&
+  echo "ok"`, con `set -e`, no falla nunca: en una lista con `&&` solo el último
+  comando decide el código de salida, y el último era el `echo`. Ocho
+  comparaciones del corpus podían fallar en silencio y seguir. Ahora hay una
+  función `comprobar` que sale con error, y las ocho pasan por ella.
 - **El corpus entero pasa en Windows**, que hasta ahora no se comprobaba entero:
   el checkout convertia los `.out` a CRLF y el programa tambien escribia CRLF, que
   es cosa que compara dos cosas iguales con dos cosas iguales. Con `.gitattributes`

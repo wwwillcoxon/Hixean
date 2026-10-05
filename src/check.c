@@ -685,6 +685,10 @@ static int hx_array_iter_check(HxChecker *c, HxExpr *e, HxExpr *recv, const char
         HxSym fname = farg->path.parts.data[farg->path.parts.len - 1].name;
         f = hx_find_func_named(c, fname);
         if (f && f->is_generic) f = NULL;
+        /* Se marca aqui y no se deduce despues en el emisor: el checker es quien ha
+           mirado los ambitos y sabe si el nombre era una funcion o una variable que
+           la tapa. En el emisor no hay por donde saberlo. */
+        if (f) farg->func_ref = 1;
     }
     if (es_fold) {
         e->call.args.data[0].value = hx_expr_check(c, e->call.args.data[0].value);
@@ -1868,11 +1872,28 @@ static HxTy *hx_iter_ty(HxChecker *c, HxTy *elem) {
     return t;
 }
 
+/* Un nombre escrito tambien puede ser una variable. `DIM suma AS INT` y
+   `FUNCTION Suma` se escriben igual, porque los identificadores no distinguen
+   mayusculas, y los dos pueden existir a la vez: entonces el nombre es de la
+   variable y de la funcion no hay ni que acordarse. Por eso esta busca mira
+   primero los ambitos y solo si no aparece ninguno vuelve a las funciones de
+   nivel superior. */
+static int hx_local_named(HxChecker *c, const char *name) {
+    for (HxScope *sc = c->scope; sc; sc = sc->parent)
+        for (int i = 0; i < sc->syms.len; i++)
+            if (sc->syms.data[i].kind == SK_VAR &&
+                !hx_ascii_casecmp(hx_sym_str(sc->syms.data[i].name), name))
+                return 1;
+    return 0;
+}
+
 static struct HxFunc *hx_find_func_named(HxChecker *c, HxSym name) {
+    const char *n = hx_sym_str(name);
+    if (!n) return NULL;
+    if (hx_local_named(c, n)) return NULL;
     for (int m = 0; m < c->unit->modules.len; m++)
         for (int i = 0; i < c->unit->modules.data[m].funcs.len; i++)
-            if (!hx_ascii_casecmp(hx_sym_str(c->unit->modules.data[m].funcs.data[i].name),
-                                  hx_sym_str(name)))
+            if (!hx_ascii_casecmp(hx_sym_str(c->unit->modules.data[m].funcs.data[i].name), n))
                 return &c->unit->modules.data[m].funcs.data[i];
     return NULL;
 }

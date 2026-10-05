@@ -142,6 +142,12 @@ struct HxExpr {
     int prefix_len;
     HxSym method;
     int is_intrin;
+    /* EX_PATH: este identificador solo nombra una FUNCTION de nivel superior, asi
+       que como valor es `&hx_call_nombre`. Lo marca el checker, que es quien sabe
+       si el nombre resuelve a una funcion o a una variable que la tapa: buscar por
+       nombre en el emisor rompia con `DIM suma AS INT` al lado de `FUNCTION Suma`,
+       porque los dos se escriben igual y ganaba la funcion. */
+    int func_ref;
     int is_nil; /* NIL: el valor "no hay" de un MAYBE */
     HxExpr *recv;
     struct HxFunc *fn;
