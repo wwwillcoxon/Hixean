@@ -29,6 +29,12 @@ documento paginado con el diálogo del navegador.
 make manual
 ```
 
+`docs/complejos.md` es el otro documento de los tres, y es el que se lee cuando ya
+no basta con `hxc run hola.hxe`: qué falta para un programa de mil líneas —archivos,
+reloj, sistema de proyectos— y por qué los bindings de C no necesitan una palabra
+clave nueva en la gramática. Está escrito desde lo que hay hoy, marcando qué existe
+y qué habría que escribir.
+
 ## Distribución
 
 El compilador y los paquetes van por caminos distintos, y conviene no

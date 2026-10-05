@@ -89,6 +89,14 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   generador de código es correcto para su destino, lo que no se puede es hacer que
   un ejecutable de Linux arranque en Windows.
 
+- **`docs/complejos.md`.** El documento que faltaba para cuando ya no basta con
+  `hxc run hola.hxe`: qué sostiene hoy un proyecto —módulos, paquetes, compilación
+  incremental, interfaz sin fuentes— y qué habría que escribir para uno grande:
+  `std.io`, reloj y azar, sistema de proyectos, `HTTP` sobre TCP, y por qué los
+  bindings de C son una capacidad que ya existe y no una palabra clave nueva.
+  Está escrito desde el código: los ejemplos del documento compilan, y cada
+  afirmación sobre lo que hay se comprobó contra el fuente.
+
 ### Arreglado
 
 - **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>
