@@ -156,6 +156,20 @@ comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
 ### Arreglado
 
+- **La tabla de hitos se había parado en M20** y no sabía nada de este mes: la
+  captura de lambdas, el camino de vuelta a número, los verbos de iterador del
+  `ARRAY`, la capacidad `time` y la publicación no eran ningún hito. El libro mayor del
+  proyecto era lo único que no decía qué tenía dentro.
+  Hay cinco filas nuevas, M21 a M25, con su tercera columna como todos los demás:
+  qué puerta demuestra que la cosa funciona. La última es de documentación y
+  distribución porque el proyecto ya cuenta eso como hito —M12 mete el manual HTML y
+  M13 mete la extensión, los sanitizers y el fuzzer— y no como otra cosa.
+- **`verificar-cifras.py` se quedaba callado a partir de veintidós hitos.** La tabla
+  de números en letra acababa ahí, así que un hito nuevo hacía fallar la puerta sin
+  motivo aparente. Además el patrón del ADR no incluía la `í` acentuada, de modo que
+  en cuanto una palabra la hubiera tenido, la comprobación habría dejado de encontrar
+  nada y habría pasado sin comprobar. Los dos arreglados, y probados: se rompen a
+  propósito las cifras y se ve quejarse.
 - **El changelog se estaba reescribiendo por dentro de una versión ya publicada.**
   Veintiséis commits de trabajo posterior al tag `v0.2.0` estaban escritos dentro de su
   bloque, así que el changelog anunciaba cosas que nadie podía descargar —la captura

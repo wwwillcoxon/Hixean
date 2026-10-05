@@ -160,8 +160,14 @@ def main():
         "veintiun ": 21,
         "veintidós": 22,
         "veintidos": 22,
+        "veintitrés": 23,
+        "veintitres": 23,
+        "veinticuatro": 24,
+        "veinticinco": 25,
+        "veintiséis": 26,
+        "veintiseis": 26,
     }
-    m = re.search(r"([A-Za-zé]+) ADR", pagina)
+    m = re.search(r"([A-Za-zÀ-ÿ]+) ADR", pagina)
     if m:
         dicho = palabras.get(m.group(1).lower())
         comprobar(

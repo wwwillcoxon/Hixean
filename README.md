@@ -141,6 +141,11 @@ sin abrir el editor (`node editors/vscode/test/smoke.js`, y también desde
 | M18 | `UNIQUE`: un campo `UNIQUE REF T` es el dueño del préstamo, y `^` ya funciona sobre un `REF` | una variable no puede estar en dos campos `UNIQUE` (`E0218`) |
 | M19 | `ARRAY[T]`: el arreglo que crece, con `Push`, `Set`, `At` comprobado y `Len` | 101 elementos y `At(100)` sale con el 70 diciendo el índice |
 | M20 | rutas de biblioteca (`-I`, `HX_LIB`, la del propio compilador), módulos con punto y `std.texto` | `IMPORT std.texto` funciona sin `-I`; el error de módulo no encontrado dice dónde se buscó |
+| M21 | las funciones anónimas capturan lo que usan de fuera, por valor, en `MAP`, `FILTER` y `FOLD` | dos `Fold` sobre el mismo dato con la misma lambda capturan cada uno el valor que había |
+| M22 | el camino de vuelta: `s.ToInt()` y `s.ToFloat()`, con parser propio y sin `strtod` | texto inválido y desbordamiento abortan con el 70; `1.5.ToString()` da `1.5` |
+| M23 | verbos de iterador sobre `ARRAY[T]`: `Map`, `Filter` y `Fold`, encadenables | tres verbos y un `Take` encadenados sobre el mismo `ARRAY`, con y sin lambda capturante |
+| M24 | capacidad `time`: reloj monótono, espera y azar del kernel (`ENABLE time`) | dormir 11 tarda al menos 11; el dado reparte entre 6000 sorteos; dos sorteos seguidos no coinciden |
+| M25 | publicación: release con `SHA256SUMS` verificado e instalador probado contra el artefacto real, sitio con SEO completo y PDF de la guía verificable | el instalador descarga, comprueba el hash y compila un programa que importa `std.texto` |
 
 M4 cubre `Result<T,E>` con `Ok`/`Err`, el operador `?` y `MATCH` con
 patrones de constructor, literales, rangos y bindings. El error se propaga
