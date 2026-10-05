@@ -191,6 +191,58 @@ def main():
     else:
         comprobar(False, "la pagina ya no dice cuantos hitos hay")
 
+    # 6. la version que se anuncia, que tiene que ser la que es.
+    #
+    # No se busca cualquier 0.x.y: hay versiones que deben quedarse donde estan. «E0212
+    # retirado en 0.2.0» es historia, y el 0.0.1 del .hxc y el 0.0.0 del .hxk son formato
+    # de fichero, no la version del lenguaje. Una puerta ancha aqui daria quejidos
+    # falsos y acabarian apagandola, que es peor que no tenerla.
+    #
+    # La version no se lee de src/common.c: se le pregunta a `hxc version`, que es la
+    # unica respuesta que importa y que ademas falla si el compilador no esta construido.
+    # Los trece sitios de la lista estan a proposito, y van a cambiar en cada release:
+    # una puerta que hay que actualizar es una puerta que obliga a mirar.
+    version = ""
+    try:
+        r = subprocess.run([str(HXC), "version"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
+        m = re.search(r"(\d+\.\d+\.\d+)", r.stdout)
+        if m:
+            version = m.group(1)
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+
+    if solo_linux and not version:
+        comprobar(False, "no se pudo leer la version de `hxc version`")
+    elif version:
+        # (fichero, patron) donde el patron lleva %s donde va la version
+        # (fichero, que es este sitio, patron): el nombre va en el mensaje porque «no
+        # anuncia la versión» sin decir cuál no lleva a ninguna parte. Un pie de pagina
+        # puede ser de tres ficheros y hay cuatro sitios distintos en el mismo index.
+        donde = [
+            ("site/index.html", "el pie", r"Hixean %s · licencia MIT"),
+            ("site/directorio.html", "el pie", r"Hixean %s · licencia MIT"),
+            ("site/terminos.html", "el pie", r"Hixean %s · licencia MIT"),
+            ("site/index.html", "el subtitulo de instalacion", r"guía de instalación · %s"),
+            ("site/index.html", "el ejemplo de install.sh", r"sh tools/install\.sh %s"),
+            ("site/index.html", "el nombre del tarball", r"hixean-%s-linux-x64\.tar\.gz"),
+            ("site/index.html", "el enlace a la release", r"releases/tag/v%s"),
+            ("README.md", "el ejemplo de git tag", r"git tag v%s"),
+            ("packaging/homebrew/hixean.rb", "la version de la formula", r'version "%s"'),
+            ("packaging/winget/hixean.yaml", "PackageVersion", r"PackageVersion: %s"),
+            ("packaging/winget/hixean.yaml", "el enlace a la release", r"releases/tag/v%s"),
+        ]
+        for fichero, cual, patron in donde:
+            ruta = os.path.join(RAIZ, fichero)
+            if not os.path.exists(ruta):
+                comprobar(False, "el sitio de la versión no existe: %s" % fichero)
+                continue
+            with open(ruta, encoding="utf-8") as f:
+                texto = f.read()
+            if not re.search(patron % re.escape(version), texto):
+                comprobar(False, "%s, %s, no anuncia la versión %s que es la de hxc"
+                          % (fichero, cual, version))
+
     for f in fallos:
         print("FALLO:", f)
     if fallos:

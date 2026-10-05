@@ -156,6 +156,24 @@ comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
 ### Arreglado
 
+- **Una puerta que comprueba que la versión que se anuncia es la que es.** La versión
+  aparece en trece sitios —los tres pies del sitio, el subtítulo de instalación, dos
+  ejemplos de instalación, el enlace a la release, el ejemplo de `git tag` del README,
+  la versión de la fórmula de Homebrew y dos de winget— y nada comparaba unos con
+  otros. Subir `HX_VERSION` sin subir el resto deja la página anunciando una versión que
+  no existe, que es la misma clase de mentira que este proyecto lleva cuatro commits
+  quitándose de encima.
+
+  La versión no se lee de `src/common.c`: se le pregunta a `hxc version`, que es la
+  única respuesta que importa y que además falla si el compilador no está construido.
+  Y **no** busca cualquier `0.x.y`, porque hay versiones que deben quedarse donde
+  están: «`E0212` retirado en 0.2.0» es historia, y el `0.0.1` del `.hxc` y el `0.0.0`
+  del `.hxk` son formato de fichero, no versión del lenguaje. Una puerta demasiado
+  ancha daría quejidos falsos y acabarían apagándola.
+
+  Probada subi��do `HX_VERSION` a `0.3.0` sin tocar nada más: falla los once patrones y
+  dice cuál es cuál, porque «no anuncia la versión» sin decir dónde no lleva a ninguna
+  parte.
 - **En Windows el reloj daba cero.** `QueryPerformanceCounter` cuenta marcas desde el
   arranque del sistema, y multiplicarlas por mil millones para pasarlas a
   nanosegundos se sale del `int64` en cuanto la máquina lleva un rato encendida: a 10
