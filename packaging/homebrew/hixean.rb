@@ -36,8 +36,14 @@ class Hixean < Formula
       # cadena de fe. La release publica un solo artefacto, el de linux-x64; las otras
       # tres casillas se esconden porque Homebrew exige una URL que exista para cada
       # arquitectura.
+      #
+      # Y este hash es el del artefacto que hay publicado ahora, que no es el que
+      # había hace un rato: el tar se hace con `tar -czf`, que graba la hora en la
+      # cabecera del gzip y el mtime de cada fichero, así que dos compresiones del
+      # mismo contenido dan bytes distintos. El hash identifica una construcción, no
+      # el código. Ver tools/dist.sh y el sitio.
       url "https://github.com/wwwillcoxon/Hixean/releases/download/v0.3.0/hixean-0.3.0-linux-x64.tar.gz"
-      sha256 "5d109e86d40f08f0deb8034e7f52f889c3b388d77ddb7b1cedfbf3e9b9354639"
+      sha256 "e8502272c61a21c6fbcf167a88a1a16d4cea87f93f60dec51ee487b879570be6"
     end
   end
 
