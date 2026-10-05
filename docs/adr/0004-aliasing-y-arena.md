@@ -1,6 +1,8 @@
 # ADR 0004 — Aliasing: unicidad y procedencia, no *borrow checker*
 
-Estado: aceptada para M4 (no implementado aún).
+Estado: aceptada. Implementada en M4, M5c y M18.
+Revisado 2026-10-05: aquí decía «aceptada para M4 (no implementado aún)». Ya
+está.
 
 ## Problema
 

@@ -59,8 +59,10 @@ unidad y se enlace `lib<modulo>.a` en lugar de compilar el módulo.
 - El frente `.hxc` se ejecuta en orden inverso al de enlace (objetos primero,
   bibliotecas después), que es lo que espera `cc`.
 - En frío, 20 módulos cuestan más que uno solo (4 711 ms frente a 890 ms) por el
-  coste de lanzar `cc` 22 veces. Es el precio de la recompilación incremental y
-  no se ha optimizado (compilación en paralelo es el siguiente paso natural).
+  coste de lanzar `cc` 22 veces. Es el precio de la recompilación incremental.
+
+  Revisado 2026-10-05: la compilación en paralelo ya está, y es lo que M9 cerró;
+  20 módulos bajaron de 4 636 ms a 1 767 ms.
 - El formato es deliberadamente simple: no serializa cuerpos de función, ni
   literales compuestos, ni la tabla de tipos builtins del módulo. Un `.hxc` no
   sustituye a las fuentes para recompilar la biblioteca, sólo para usarla.

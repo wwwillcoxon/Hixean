@@ -28,7 +28,8 @@ No es poco, y conviene saberlo antes de hacer la lista de lo que falta:
   comprueban en cada commit.
 
 Lo que **no** hay es el paso de la propia biblioteca estándar con contenido. `std`
-tiene módulos pequeños: `std.texto`, `std.mat`, `std.net`. No tiene ni un archivo.
+tiene un módulo propio, `std.texto`, y dos capacidades que viven en el runtime en vez
+de en un `.hxs`: `net` y `time`. No tiene ni un archivo.
 
 ## 1. std.io: archivos
 
@@ -149,22 +150,18 @@ Un orden razonable: TCP ya está, así que lo primero es un `HTTP` GET sin más,
 poder descargar una release de Hixean desde un programa escrito en Hixean. Después
 el servidor, que es donde está el bloqueo. El DNS, al final.
 
-## 4. Reloj y azar
+## 4. Reloj y azar: hecho
 
-Pequeños, y se hdicen pronto porque sin ellos no hay ninguna prueba de tiempo.
+Esto estaba en la lista y ya está. La capacidad `time` da `TIME_MS`, `TIME_NS`,
+`TIME_SLEEP`, `TIME_RANDOM` y `TIME_RANDOM_BETWEEN`, con `ENABLE time`; el azar sale
+de `getrandom` en `freestanding` y de `BCryptGenRandom` en Windows, y a partir de ahí
+se reparte con SplitMix64. El razonamiento entero —monótono y sin origen conocido,
+rangos medio abiertos, entropía del kernel y no un LCG sembrado con la hora— está en
+la sección 20 de la gramática.
 
-- **`Reloj()`** devuelve milisegundos desde un origen fijo. En `libc`, `clock_gettime`.
-  En `freestanding`, `clock_gettime` es la syscall 228. También `HiRes()` con
-  nanoseconds, porque `Sleep(1)` para medir no sirve y los juegos lo notan.
-- **`Aleatorio(min, max)`** sobre `/dev/urandom`, que en `freestanding` es la
-  syscall 318, con el buffer y el hash de lo leído. Sin eso, un juego que sortea
-  enemigos es igual de repetible cada partida, y un programa que sortea una clave es
-  peor.
-- **`Sleep(ms)`** para esperar sin ocupar el procesador: `nanosleep` es la syscall
-  35, y en `libc` la misma llamada.
-
-Ninguno de los tres necesita decisión semántica difícil. Se pueden hacer juntos en
-una tarde, y son la base de cualquier cosa que se pueda medir.
+Se hizo antes que `std.io`, contra el orden de este documento, y no por casualidad:
+sin medir el tiempo no se puede comprobar nada que dependa de él, así que el reloj
+era la pieza que faltaba para poder comprobar lo demás con pruebas y no de palabra.
 
 ## 5. Sistema de proyectos: `hxc new`
 
@@ -218,8 +215,11 @@ nuevo para lo mismo es un formato más que mantener.
 ## Orden
 
 1. `std.io` — sin archivos no hay nada de lo de abajo.
-2. Reloj, azar y `Sleep` — una tarde, y desbloquean las pruebas de tiempo.
-3. Sistema de proyectos — `hx.json`, estructura de `hxc new`, `hxc test`.
-4. Enlazar C como receta de enlace — la capacidad ya existe; esto es el comfort.
-5. `HTTP` sobre TCP, luego servidor, luego DNS.
-6. Concurrencia, cuando haya programas que la pidan.
+2. Sistema de proyectos — `hx.json`, estructura de `hxc new`, `hxc test`.
+3. Enlazar C como receta de enlace — la capacidad ya existe; esto es el comfort.
+4. `HTTP` sobre TCP, luego servidor, luego DNS.
+5. Concurrencia, cuando haya programas que la pidan.
+
+El punto 2 de la lista original — reloj, azar y espera — ya está hecho y es la
+capacidad `time`; sale de la lista por lo mismo que salió del documento: está
+escrito donde ya no queda.

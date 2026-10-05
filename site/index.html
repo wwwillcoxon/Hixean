@@ -445,20 +445,25 @@ NEXT i</code></pre>
     perfil hace cada cosa.</p>
 
     <h3>Qué está verificado, y dónde</h3>
-    <p>La CI corre en Linux, macOS y Windows. Lo que está verde ahora mismo:</p>
+    <p>La CI corre en Linux, macOS y Windows, y aquí no hay cifras: las que
+    hubiera se quedaban viejas al mes siguiente, y una página que dice «pasa 33 de
+    34» cuando ya pasan 38 es una página que miente sin que nadie la toque. Lo que no
+    cambia es esto:</p>
     <ul class="faltan">
-      <li><strong>Linux:</strong> las siete puertas. Es donde se mide el perfil
+      <li><strong>Linux:</strong> todas las puertas. Es donde se mide el perfil
       <code>freestanding</code> y donde corre el perfil de red con sockets
       reales.</li>
-      <li><strong>macOS y Windows:</strong> el compilador se construye y el corpus
-      pasa <strong>33 de 34</strong>. La que falla es
-      <code>tests/genericos.hxt</code>, y solo en la interpolación de un entero
-      dentro de una función genérica: donde Linux imprime <code>777</code>, macOS
-      imprime tres bytes que no son <code>7</code>. La prueba que sale verde es la
-      que importa; esta está en rojo y a la vista.</li>
+      <li><strong>Windows:</strong> todo el corpus entero. La prueba de red se
+      omite porque el <code>net</code> del runtime son stubs fuera de Linux, y se
+      dice en la salida en vez de contarse como verde.</li>
+      <li><strong>macOS:</strong> el compilador se construye y todo el corpus pasa
+      menos una: <code>tests/genericos.hxt</code>, y solo en la interpolación de un
+      entero dentro de una función genérica, donde Linux imprime <code>777</code> y
+      macOS imprime tres bytes que no son <code>7</code>. Está en rojo y a la
+      vista.</li>
     </ul>
-    <p>El fallo aún no está explicado. El código que genera el compilador es el
-    mismo en los dos sistemas, así que la causa está en el runtime o en el
+    <p>El fallo de macOS aún no está explicado. El código que genera el compilador es
+    el mismo en los dos sistemas, así que la causa está en el runtime o en el
     enlazado de macOS, y hace falta una máquina con macOS para mirarlo. Mientras
     tanto, la release no se publica para esas plataformas.</p>
 

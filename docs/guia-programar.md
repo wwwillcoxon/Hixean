@@ -584,9 +584,16 @@ NEXT c
 ```
 
 Una `FUNC` se eleva a una función del módulo y se referencia como puntero a
-función. **No captura el entorno**: una lambda que intente leer una variable de
-su alrededor da un error de verificación, no un fallo raro. Es la decisión
-documentada en ADR 0008, y la que hay que revisar si algún día hace falta.
+función. **Captura el entorno por valor**: una lambda puede leer una variable de su
+alrededor, y lo que lee es una copia del valor que tenía cuando se construyó la
+lambda, no una referencia. Por eso dos `MAP` sobre el mismo dato con la misma lambda
+no se pisan entre sí, y por eso una lambda que no captura no cuesta nada: sigue
+siendo una función normal.
+
+Se acepta donde el lenguaje ya sabe que espera una función, que es `MAP`, `FILTER` y
+`FOLD`. Guardar una lambda en una variable y llamarla más tarde sigue sin poder
+hacerse, porque no hay un tipo que describa una función; es lo que queda abierto en
+ADR 0008.
 
 # Vectores
 

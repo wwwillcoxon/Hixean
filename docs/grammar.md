@@ -1,4 +1,4 @@
-# Gramática de Hixean (subconjunto implementado, v0.1-dev)
+# Gramática de Hixean (subconjunto implementado, v0.2)
 
 Notación: `=` definición, `|` alternativa, `{x}` cero o más, `[x]` opcional.
 Las palabras clave son ASCII-insensitive a mayúsculas; los identificadores

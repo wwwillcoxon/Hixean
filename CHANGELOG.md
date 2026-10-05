@@ -156,6 +156,36 @@ comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
 ### Arreglado
 
+- **La página decía que Windows no pasa el corpus.** Escribía «macOS y Windows: el
+  corpus pasa 33 de 34», y Windows lleva tiempo en verde entero; el corpus era de 38
+  pruebas, no 34. La página además no lleva cifras ahora, y no por
+  modestia: cualquier número escrito a mano ahí se queda viejo al mes siguiente y
+  una página que dice «33 de 34» cuando pasan 38 es una página que miente sin que nadie
+  la toque. Se queda lo que no caduca, que es que Linux pasa todas las puertas, que
+  Windows pasa el corpus entero con la prueba de red omitida porque el `net` son stubs
+  fuera de Linux, y que macOS tiene una en rojo y a la vista.
+- **`hxc fmt` no existe y estaba escrito en pasado** dentro de la lista de «estas
+  cinco cosas que convierten proyecto en lenguaje» del ADR 0013, con sus cuatro
+  Sisters todas verdaderas. Sale de la lista y pasa a lo que falta, con la nota de por
+  qué: una promesa en pasado que no está en ninguna parte que la compruebe es la forma
+  más fácil de mentir sin querer. La extensión de VS Code ya lo tenía bien, en «qué
+  le falta».
+- **Tres ADR decían cosas que ya no eran ciertas.** El 0004 ponía «aceptada para M4
+  (no implementado aún)» de lo que M4, M5c y M18 ya tienen detrás; el 0006 decía que
+  la compilación en paralelo era «el siguiente paso natural» cuando es lo que cerró
+  M9, de 4 636 ms a 1 767 ms; y el 0007 decía que `MAP` y `FILTER` reciben «el nombre
+  de una función, no una lambda». Enmendados los tres con una nota de revisión fechada,
+  que es como este proyecto ya hizo con el 0008.
+- **`docs/complejos.md` se contradecía con el código en tres sitios**, y dos los
+  escribió el mismo commit que hizo la capacidad `time`: decía que el reloj y el azar
+  estaban pendientes cuando ya estaban hechos, y que existe `std.mat` cuando el único
+  módulo de la biblioteca es `std.texto`. Un documento de planificación que se queda
+  viejo no vale como plan, así que la sección 4 pasa a decir que está hecha y el orden
+  de la lista pierde el punto que ya no queda.
+- **La guía de programación decía que una `FUNC` «no captura el entorno»**, que es lo
+  contrario de lo que hace desde 0.2.0, y es el PDF que se descarga. Ahora explica la
+  captura por valor y por qué dos `MAP` con la misma lambda no se pisan entre sí.
+- **El título de la gramática decía `v0.1-dev`** con la versión en 0.2.0.
 - **La tabla de hitos se había parado en M20** y no sabía nada de este mes: la
   captura de lambdas, el camino de vuelta a número, los verbos de iterador del
   `ARRAY`, la capacidad `time` y la publicación no eran ningún hito. El libro mayor del

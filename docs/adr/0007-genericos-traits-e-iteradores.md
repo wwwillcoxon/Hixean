@@ -61,7 +61,10 @@ programa encuentra un `FOR .. IN`.
   comparar `STRING` con `>` se aceptaba en silencio: ahora da `E0307`).
 - No hay polimorfismo dynamico: un trait no puede implementarse para un tipo
   que todavía no se conoce y no hay boxing.
-- `MAP`/`FILTER` reciben el *nombre* de una función de primer orden, no una
-  lambda: no hay valores de función en el lenguaje todavía (`E0714`).
+- `MAP`/`FILTER`/`FOLD` reciben una lambda además de un nombre de función. No hay
+  valores de función en el lenguaje —guardar una lambda en una variable y llamarla
+  después sigue sin poder hacerse, y `E0714` lo dice cuando se pasa un nombre que no
+  es ninguna función—, pero sí una `FUNC`, que además captura por valor. Revisado
+  2026-10-05.
 - Los adaptadores se generan por tipo de elemento, y `MAP` por par
   (origen, resultado) porque puede cambiar el tipo.

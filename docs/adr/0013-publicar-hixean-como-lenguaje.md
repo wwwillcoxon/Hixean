@@ -4,6 +4,9 @@
 
 aceptado (0.1.0)
 
+Revisado 2026-10-05: `hxc fmt` sale de la lista de «lo invisible», porque no existe
+y estaba escrito en pasado como una de las cosas que el proyecto ya tenía.
+
 ## Contexto
 
 Hixean llevaba doce hitos como proyecto de una sola persona: funcional,
@@ -47,7 +50,7 @@ tiene.
 ### Lo invisible, que es lo que de verdad sostiene lo anterior
 
 Un lenguaje se perdona un tutorial malo; no se perdona un compilador que
-pierde datos. Estas cinco cosas no se ven en una demo y son las que
+pierde datos. Estas cuatro cosas no se ven en una demo y son las que
 convierten "proyecto" en "lenguaje":
 
 1. **`-Werror` en el build.** Los avisos que quedan hoy (dos, en
@@ -67,8 +70,15 @@ convierten "proyecto" en "lenguaje":
 4. **`hxc check --json`.** El editor, el LSP y el CI necesitan los
    diagnósticos en una forma que una máquina pueda leer. Imprimirlos para
    humanos y ya está el trabajo: el formato es el contrato.
-5. **`hxc fmt`.** Formatear es la mitad de la experiencia de un lenguaje en
-   un editor y no depende de ningún protocolo ni servidor.
+
+La quinta que aquí había, **`hxc fmt`**, sale de la lista y pasa a lo que
+falta: el comando no existe. Estar en una lista de «estas cosas que
+convierten proyecto en lenguaje» escrita en pasado es una promesa, y una
+promesa que no está escrita en ninguna parte que la compruebe es la forma
+más fácil de mentir sin querer. Formatear es la mitad de la experiencia de
+un lenguaje en un editor y no depende de ningún protocolo ni servidor, así
+que sigue siendo lo que más falta por el mismo precio: lo que falta es
+escribirlo, y decidir cómo se decide el sangrado.
 
 ## Alternativas
 
