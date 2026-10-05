@@ -134,6 +134,51 @@ else
   git check-attr text eol -- tests/anonimas.hxt.out
   exit 1
 fi
+echo "== el camino de vuelta: texto a numero =="
+# El fallo se comprueba aqui y no en el corpus, porque un programa que aborta a
+# mitad no ejecuta lo que viene despues: su salida no diria nada de lo que se
+# pusiera a continuacion. Aqui si se puede mirar el codigo de salida y el mensaje,
+# que es el contrato de verdad.
+# El `|| rc=$?` es necesario: con `set -e`, un programa que aborta con 70 —que es
+# justo lo que se esta probando— se lleva por delante el script entero.
+for malo in '"no soy un numero"' '"12abc"' '"3.7"' '""' '"9223372036854775808"'; do
+  printf 'DIM x AS I64 = %s.ToInt()\nPRINT x\n' "$malo" > build/malo.hxe
+  rc=0
+  ./build/hxc run build/malo.hxe > build/malo.out 2>&1 || rc=$?
+  if [ "$rc" -eq 70 ] && grep -q "no es un entero" build/malo.out; then
+    :
+  else
+    echo "FALLO: $malo deberia abortar con 70 y decir por que (rc=$rc)"; exit 1
+  fi
+done
+echo "ok     un entero invalido aborta con 70 y lo dice, en vez de devolver 0"
+printf 'DIM x AS FLOAT = "abc".ToFloat()\nPRINT x\n' > build/malo.hxe
+rc=0
+./build/hxc run build/malo.hxe > build/malo.out 2>&1 || rc=$?
+if [ "$rc" -eq 70 ] && grep -q "no es un numero" build/malo.out; then
+  echo "ok     un float invalido tambien aborta con 70"
+else
+  echo "FALLO: \"abc\".ToFloat() deberia abortar con 70 (rc=$rc)"; exit 1
+fi
+# Y el limite: un numero que no cabe no puede salir por el otro extremo como si
+# valiera. En C el desbordamiento no avisa, asi que esto no es trivial.
+printf 'DIM ok AS I64 = "9223372036854775807".ToInt()\nPRINT ok\n' > build/limite.hxe
+./build/hxc run build/limite.hxe > build/limite.out 2>&1
+if [ "$(cat build/limite.out)" = "9223372036854775807" ]; then
+  echo "ok     el entero mas grande se convierte bien"
+else
+  echo "FALLO: el limite de INT no deberia fallar"; exit 1
+fi
+# Un flotante enorme se imprime en notacion cientifica. Antes salia
+# 18446744073709551615.000000000 para 1e20, que no es el numero que se le dio.
+printf 'PRINT 1e20\nPRINT 1e19\n' > build/cientifico.hxe
+./build/hxc run build/cientifico.hxe > build/cientifico.out 2>&1
+if [ "$(cat build/cientifico.out)" = "1e20
+10000000000000000000.0" ]; then
+  echo "ok     1e20 se imprime en notacion cientifica y 1e19 en decimal"
+else
+  echo "FALLO: un flotante mayor de 2^64 no cabe en un entero y se imprime mal"; exit 1
+fi
 echo
 echo "== puertas de tamano =="
 ./build/hxc build examples/hola.hxe -o build/hola

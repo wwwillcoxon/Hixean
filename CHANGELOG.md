@@ -122,8 +122,33 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
     para cuando los cierres sean valores de primer orden.
   - 35 programas en el corpus, 8896 <= 12288 bytes, ASan y fuzzer limpios.
 
+- **El camino de vuelta: `s.ToInt()` y `s.ToFloat()`.** Antes solo había una
+  dirección, y un programa que lee un argumento o un fichero de configuración
+  tenía que escribir el parser a mano. Se escribe en el runtime, sin `strtol`
+  ni `strtod`, porque el perfil `freestanding` no tiene libc.
+  ```hixean
+  DIM puerto AS I64 = "8080".ToInt()
+  DIM precio AS FLOAT = "19.99".ToFloat()
+  ```
+  - Si el texto no es un número, el programa **aborta con 70** y un mensaje, en vez
+    de devolver 0. Un 0 silencioso convierte un dato malo en un dato bueno.
+  - `ToInt` devuelve `I64` y no `INT` a propósito: `INT` son 32 bits, y con `INT`
+    `"9223372036854775807"` salía como `-1` sin decir nada. Pedir un `INT` da
+    `E0301` en vez de truncar en silencio.
+
 ### Arreglado
 
+- **Un `FLOAT` se imprimía mal de dos maneras.** `PRINT 19.99` salía
+  `19.989999999`, porque el formateador multiplicaba por diez nueve veces y cada
+  paso redondeaba un poco más; ahora multiplica una vez y redondea. Y `PRINT 1e20`
+  salía `18446744073709551615.000000000`, que no es el número que se le dio: a
+  partir de 2^64 la parte entera no cabe en un `uint64` y la conversión en C no
+  avisa. Ahora ese rango, y solo ese, se escribe en notación científica, perdiendo
+  precisión pero no la forma.
+  - Los ceros de la izquierda de la fracción **se quedan** porque son el número:
+    la fracción de `1.005` son cinco dígitos con tres ceros delante, y quitarlos
+    decía `1.5`. Los de la derecha sobran, y `0.0` ahora se imprime `0.0` en vez
+    de `0`.
 - **`verificar-ejemplos.py` decia «ok» con un FALLO cinco líneas antes.** Devolvía
   1, asi que la puerta se paraba igual, pero quien leyera el final de la salida se
   quedaba con la última línea. Ahora el «ok» solo se imprime si no falló nada, y

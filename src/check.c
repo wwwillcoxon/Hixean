@@ -386,6 +386,11 @@ static const HxIntrin hx_string_intrins[] = {
     {"Slice", "str_slice", 2, TY_STRING},
     {"At", "str_at", 1, TY_STRING},
     {"Repeat", "repeat_str", 1, TY_STRING},
+    /* ToInt devuelve I64 y no INT a proposito: INT son 32 bits, y un entero de
+       texto cabe en 64. Con INT, "9223372036854775807" salia como -1 sin decir
+       nada, que es la peor forma de equivocarse: un numero que parece valido. */
+    {"ToInt", "to_int_str", 0, TY_I64},
+    {"ToFloat", "to_float_str", 0, TY_FLOAT},
     {NULL, NULL, 0, TY_UNKNOWN},
 };
 

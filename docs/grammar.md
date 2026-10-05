@@ -188,8 +188,39 @@ El texto que devuelve vive en memoria propia y **no se libera**: Hixean no tiene
 recolector y no va a fingir uno. Quien llame a `ToString` muchas veces en un bucle
 debe encerrarlo en un `ARENA` (que se aligeran al salir del bloque).
 
-Lo que **no** existe todavía es el camino de vuelta: `s.ToInt()` y `s.ToFloat()`
-para leer un número de un texto.
+### `ToInt()` y `ToFloat()`
+
+El camino de vuelta: un `STRING` tiene `s.ToInt()` (devuelve `I64`) y
+`s.ToFloat()` (devuelve `FLOAT`).
+
+```
+DIM puerto AS I64 = "8080".ToInt()
+DIM precio AS FLOAT = "19.99".ToFloat()
+```
+
+Se escribe el parser a mano en el runtime, sin `strtol` ni `strtod`: el perfil
+`freestanding` no tiene libc, y una función de la biblioteca estándar entrevería
+en el binario su nombre y su versión. Además `strtol` se para en el primer carácter
+raro y devuelve 0 sin decirlo, que es justo lo que no puede pasar al leer datos de
+fuera.
+
+`ToInt` devuelve **`I64` y no `INT`** a propósito: `INT` son 32 bits, y un entero
+escrito en un fichero de configuración cabe en 64. Con `INT`,
+`"9223372036854775807"` salía como `-1` sin decir nada. Pedir un `INT` a propósito
+da `E0301` en vez de truncar en silencio.
+
+El contrato es el de la división verificada: si el texto no es un número, el
+programa **aborta con el código 70** y un mensaje que lo dice, en vez de devolver
+0. Un 0 silencioso convierte un dato malo en un dato bueno. Se permite espacio al
+principio y al final; cualquier otro carácter hace fallar la conversión.
+
+Un entero que no cabe en 64 bits también aborta, y un exponente mayor que 400
+también, porque un `FLOAT` no lo representa y dar 0 sería inventarse un dato.
+
+Los ejemplos van en `tests/texto_a_numero.hxt`, y el abortar con 70 se comprueba
+en `tests/run.sh` y no en el corpus: un programa que aborta a mitad no ejecuta lo
+que viene después, así que su salida no probaría nada de lo que se pusiera a
+continuación.
 
 ### Vectores
 

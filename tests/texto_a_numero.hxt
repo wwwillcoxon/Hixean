@@ -1,0 +1,65 @@
+' El camino de vuelta: de texto a numero. Antes solo habia una direccion, y un
+'   programa que lee un argumento, un fichero de configuracion o una linea de
+'   entrada no tenia forma de convertirlo sin escribir el parser a mano.
+'
+'   No se usa strtol ni strtod: el perfil freestanding no tiene libc, y una funcion
+'   de la biblioteca estandar entreveria en el binario su nombre y su version. Y
+'   ademas strtol se para en el primer caracter raro y devuelve 0 sin decirlo, que
+'   es justo lo que no puede pasar al leer datos de fuera.
+'
+'   El contrato es el de la division verificada: si no hay numero, se aborta con
+'   codigo 70 en vez de devolver 0. Un 0 silencioso convierte un dato malo en un
+'   dato bueno.
+
+PRINT "42".ToInt()
+PRINT "  7  ".ToInt()
+PRINT "-7".ToInt()
+PRINT "+5".ToInt()
+PRINT "0".ToInt()
+PRINT "9223372036854775807".ToInt()
+PRINT "---"
+
+' ToInt devuelve I64 y no INT a proposito: INT son 32 bits, y un entero escrito
+'   en un fichero de configuracion cabe en 64. Con INT, el mismo numero salia -1
+'   sin decir nada. Pedir un INT a proposito da E0301 en vez de truncar en
+'   silencio, que es lo unico aceptable.
+
+PRINT "3.5".ToFloat()
+PRINT "1.5".ToFloat()
+PRINT "-2.25".ToFloat()
+PRINT "  0.5  ".ToFloat()
+PRINT "100".ToFloat()
+PRINT "1e2".ToFloat()
+PRINT "2.5e-1".ToFloat()
+PRINT ".5".ToFloat()
+PRINT "5.".ToFloat()
+PRINT "---"
+
+' Los bordes se comprueban comparando, no imprimiendo: PRINT redondea a nueve
+'   decimales y aqui lo que importa es el valor exacto.
+DIM entero AS I64 = "-123456".ToInt()
+PRINT entero
+DIM uno AS FLOAT = "1".ToFloat()
+PRINT uno == 1.0
+DIM menos_uno AS FLOAT = "-0.5".ToFloat()
+PRINT menos_uno * 2.0 == -1.0
+PRINT "---"
+
+' Un valor usandolo, que es de donde sale el motivo de que exista
+DIM base AS I64 = "10".ToInt()
+DIM escala AS FLOAT = "0.25".ToFloat()
+FOR i IN Rango(1, 4)
+  PRINT i * base, " ", i * escala
+NEXT
+PRINT "---"
+
+' Los espacios de los dos lados se permiten; cualquier otra cosa no. Un
+'   "12abc" no es un 12 con algo pegado: es un dato malo, y por eso aborta.
+DIM limpio AS I64 = " 12 ".ToInt()
+PRINT limpio
+PRINT "---"
+
+' El fallo, con codigo de salida, se comprueba fuera de aqui: un programa que
+'   aborta a mitad no ejecuta lo que viene despues, asi que su salida no probaria
+'   nada de lo que se pusiera a continuacion. En tests/run.sh se mira el 70 y el
+'   mensaje.

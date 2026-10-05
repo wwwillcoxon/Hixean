@@ -201,7 +201,7 @@ a.x = 3.0
 a.y = 4.0
 
 PRINT a.x.ToString() ++ ", " ++ a.y.ToString()
--> 3, 4
+-> 3.0, 4.0
 ```
 
 > Un `TYPE` **no** admite métodos dentro. Si vienes de un lenguaje donde un

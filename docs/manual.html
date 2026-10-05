@@ -143,7 +143,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>35/35</b><span>pruebas del corpus</span></li>
+        <li><b>36/36</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -257,6 +257,28 @@ o
 undo
 n vale 42, y al doble 84</pre></div>
       </figure>
+      <h3>De texto a número</h3>
+      <p>Un <code>STRING</code> también se convierte a número, que es lo que hace
+      falta para leer un argumento o un fichero de configuración:</p>
+      <figure class="ej">
+        <figcaption><span>texto_a_numero.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">DIM puerto AS I64 = "8080".ToInt()
+DIM precio AS FLOAT = "19.99".ToFloat()
+PRINT puerto
+PRINT precio
+PRINT "  42  ".ToInt()</code></pre>
+        <div class="salida"><b>salida</b><pre>8080
+19.99
+42</pre></div>
+      </figure>
+      <p><code>ToInt</code> devuelve <code>I64</code> y no <code>INT</code>: <code>INT</code>
+      son 32 bits, y un entero escrito en un fichero de configuración cabe en 64.
+      Pedir un <code>INT</code> a propósito da <code>E0301</code> en vez de truncar
+      en silencio.</p>
+      <p>Si el texto no es un número, el programa <strong>aborta con el código 70</strong>
+      y un mensaje que lo dice. No devuelve 0: un 0 silencioso convierte un dato
+      malo en un dato bueno. Se admite espacio al principio y al final; cualquier
+      otro carácter hace fallar la conversión.</p>
       <p>Una cadena puede ocupar varias líneas, y por eso una línea que empieza
       por <code>"</code> sirve de comentario de bloque. Para escribir una llave
       literal dentro de una interpolación se escapa con <code>\{</code>.</p>
@@ -592,10 +614,10 @@ PRINT CROSS(a, b).y        ' producto cruz
 
 DIM v AS vec2 = (1, 2)     ' los componentes admiten enteros
 PRINT v.yx</code></pre>
-        <div class="salida"><b>salida</b><pre>1        2
+        <div class="salida"><b>salida</b><pre>1.0        2.0
 (1, 1)
-3
-0
+3.0
+0.0
 (2, 1)</pre></div>
       </figure>
       <p>Los literales de vector llegan hasta 4 componentes; <code>(a,b)</code> es

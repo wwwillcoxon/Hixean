@@ -21,6 +21,8 @@ typedef struct {
     HxBuf out;
     int tmp;
     int uses_string;
+    /* s.ToInt() o s.ToFloat(): el bloque de conversion solo entra si se usa. */
+    int uses_str2num;
     int uses_index;  /* a.At(i), que comprueba el rango */
     int uses_maybe;  /* MAYBE<T> */
     int uses_darr;   /* ARRAY[T] dinámico: Push necesita la arena */
@@ -438,28 +440,70 @@ static const char *HX_RT_CORE =
     "}\n"
     "static inline void hx_print_bool(hx_bool v) { hx_out(v ? \"true\" : \"false\", v ? 4 : 5); }\n"
     "static inline void hx_print_str(hx_str s) { hx_write(1, s.p, s.n); }\n"
+;
+
+/* HX_RT_CORE partido en dos. El estandar de C solo garantiza 4095 caracteres de
+   literal y el bloque de formatear ya se pasaba. Para el C generado es el mismo
+   texto seguido, asi que el corte no se ve. */
+static const char *HX_RT_CORE2 =
     "static inline void hx_print_f64(double d) {\n"
-    "  char buf[48];\n"
+    "  char buf[64];\n"
     "  int n = 0, i;\n"
     "  uint64_t ip;\n"
     "  double frac;\n"
     "  if (d != d) { hx_out(\"nan\", 3); return; }\n"
     "  if (d < 0) { buf[n++] = '-'; d = -d; }\n"
+    "  /* A partir de 2^64 la parte entera no cabe en un uint64 y la conversion en C\n"
+    "     no avisa: PRINT 1e20 salia 18446744073709551615.000000000, que no es el\n"
+    "     numero que se le dio. Ahi, y solo ahi, notacion cientifica. Se pierde\n"
+    "     precision —dividir por diez redondea— y es mejor que imprimir basura: un\n"
+    "     numero con la forma equivocada se lee como un dato falso. */\n"
+    "  if (d >= 18446744073709551616.0) {\n"
+    "    int64_t exp = 0;\n"
+    "    while (d >= 10.0) { d /= 10.0; exp++; }\n"
+    "    while (d < 1.0) { d *= 10.0; exp--; }\n"
+    "    { int64_t mant = (int64_t)d;\n"
+    "      buf[n++] = (char)('0' + (int)mant);\n"
+    "      d -= (double)mant;\n"
+    "      if (d > 1e-16) {\n"
+    "        int64_t resto = (int64_t)(d * 10000000000000000.0 + 0.5);\n"
+    "        char dg[17];\n"
+    "        int q;\n"
+    "        if (resto > 9999999999999999LL) resto = 9999999999999999LL;\n"
+    "        for (q = 16; q >= 0; q--) { dg[q] = (char)('0' + resto % 10); resto /= 10; }\n"
+    "        { int ultimo = 17;\n"
+    "          while (ultimo > 1 && dg[ultimo - 1] == '0') ultimo--;\n"
+    "          if (ultimo > 0) { buf[n++] = '.'; for (q = 0; q < ultimo; q++) buf[n++] = dg[q]; } }\n"
+    "      } }\n"
+    "    buf[n++] = 'e';\n"
+    "    if (exp < 0) { buf[n++] = '-'; exp = -exp; }\n"
+    "    { int digs = 0; char tmp[8];\n"
+    "      while (exp > 0) { tmp[digs++] = (char)('0' + exp % 10); exp /= 10; }\n"
+    "      while (digs > 0) buf[n++] = tmp[--digs]; }\n"
+    "    hx_out(buf, n);\n"
+    "    return;\n"
+    "  }\n";
+static const char *HX_RT_CORE3 =
     "  ip = (uint64_t)d;\n"
     "  frac = d - (double)ip;\n"
     "  hx_u64_to_dec(ip, buf, &n);\n"
-    "  if (frac > 0) {\n"
-    "    buf[n++] = '.';\n"
-    "    for (i = 0; i < 9; i++) {\n"
-    "      int dd;\n"
-    "      frac *= 10.0;\n"
-    "      dd = (int)frac;\n"
-    "      if (dd > 9) dd = 9;\n"
-    "      buf[n++] = (char)('0' + dd);\n"
-    "      frac -= (double)dd;\n"
-    "      if (frac <= 0) break;\n"
-    "    }\n"
-    "  }\n"
+    "  /* Una sola multiplicacion y un redondeo, en vez de nueve pasos de frac *= 10.\n"
+    "     Cada paso redondea un poco mas y el error se acumula: 19.99 salia como\n"
+    "     19.989999999, que no es el numero que se le dio. Multiplicar una vez por\n"
+    "     1e9 y redondear da los nueve digitos correctos. Los ceros de la izquierda\n"
+    "     se quedan porque son el numero: la fraccion de 1.005 es cinco digitos con\n"
+    "     tres ceros delante, y quitarlos decia 1.5. Los de la derecha sobran. */\n"
+    "  { int64_t nueve = (int64_t)(frac * 1000000000.0 + 0.5);\n"
+    "    char digs[9];\n"
+    "    int k;\n"
+    "    if (nueve > 999999999) nueve = 999999999;\n"
+    "    for (k = 8; k >= 0; k--) { digs[k] = (char)('0' + nueve % 10); nueve /= 10; }\n"
+    "    { int ultimo = 9;\n"
+    "      while (ultimo > 1 && digs[ultimo - 1] == '0') ultimo--;\n"
+    "      if (ultimo > 0) {\n"
+    "        buf[n++] = '.';\n"
+    "        for (k = 0; k < ultimo; k++) buf[n++] = digs[k];\n"
+    "      } } }\n"
     "  hx_out(buf, n);\n"
     "}\n"
     "static inline void hx_print_duration(int64_t ns) {\n"
@@ -650,6 +694,88 @@ static const char *HX_RT_CHECKED =
     "  if (b < 0 && a > 9223372036854775807LL + b) return 9223372036854775807LL;\n"
     "  if (b > 0 && a < -9223372036854775807LL - 1 + b) return -9223372036854775807LL - 1;\n"
     "  return a - b;\n"
+    "}\n";
+
+static const char *HX_RT_STR2NUM =
+    /* Texto a numero, escrito a mano y no con strtol/strtod: el perfil
+       freestanding no tiene libc, y una funcion de la biblioteca estandar
+       entreveria en el binario el nombre y la version. Ademas strtol se para en
+       el primer caracter raro y devuelve 0 sin decir nada, que es justo lo que no
+       puede pasar al leer un argumento o un fichero de configuracion.
+       El contrato es el de la division verificada: si no hay numero, el programa
+       aborta con 70 y un mensaje que lo dice, en vez de devolver 0. Un 0
+       silencioso convierte un dato malo en un dato bueno. */
+    "#define HX_INT64_MAX 9223372036854775807LL\n"
+    "static inline int64_t hx_parse_int(hx_str s, int *ok) {\n"
+    "  int64_t v = 0;\n"
+    "  int64_t i = 0;\n"
+    "  int signo = 1;\n"
+    "  int digs = 0;\n"
+    "  while (i < s.n && hx_is_space_c((unsigned char)s.p[i])) i++;\n"
+    "  if (i < s.n && (s.p[i] == '+' || s.p[i] == '-')) { signo = s.p[i] == '-' ? -1 : 1; i++; }\n"
+    "  /* La comprobacion va ANTES de multiplicar, con el limite exacto: comprobar\n"
+    "     despues ya es tarde, porque el desbordamiento en C no avisa y el numero\n"
+    "     desbordado salia por el otro extremo como si fuera valido. */\n"
+    "  for (; i < s.n && s.p[i] >= '0' && s.p[i] <= '9'; i++) {\n"
+    "    int64_t d = (int64_t)(s.p[i] - '0');\n"
+    "    if (v > (HX_INT64_MAX - d) / 10) { *ok = 0; return 0; }\n"
+    "    v = v * 10 + d;\n"
+    "    digs++;\n"
+    "  }\n"
+    "  while (i < s.n && hx_is_space_c((unsigned char)s.p[i])) i++;\n"
+    "  *ok = digs > 0 && i == s.n;\n"
+    "  return signo * v;\n"
+    "}\n"
+    "static inline double hx_parse_float(hx_str s, int *ok) {\n"
+    "  double v = 0.0;\n"
+    "  double escala = 1.0;\n"
+    "  int64_t i = 0;\n"
+    "  int signo = 1;\n"
+    "  int digs = 0;\n"
+    "  int hubo_punto = 0;\n"
+    "  while (i < s.n && hx_is_space_c((unsigned char)s.p[i])) i++;\n"
+    "  if (i < s.n && (s.p[i] == '+' || s.p[i] == '-')) { signo = s.p[i] == '-' ? -1 : 1; i++; }\n"
+    "  for (; i < s.n; i++) {\n"
+    "    char c = s.p[i];\n"
+    "    if (c >= '0' && c <= '9') { v = v * 10.0 + (double)(c - '0'); digs++;\n"
+    "      if (hubo_punto) escala *= 10.0; continue; }\n"
+    "    if (c == '.' && !hubo_punto) { hubo_punto = 1; continue; }\n"
+    "    break;\n"
+    "  }\n"
+    "  /* El techo del exponente no es decorativo: uno enorme hacia girar el bucle\n"
+    "     un rato, y un double no representa 10^400, asi que mas alla el resultado\n"
+    "     no es un numero y dar 0 seria inventarse un dato. */\n"
+    "  if (i < s.n && (s.p[i] == 'e' || s.p[i] == 'E')) {\n"
+    "    int neg_exp = 0;\n"
+    "    int64_t exp = 0;\n"
+    "    i++;\n"
+    "    if (i < s.n && (s.p[i] == '+' || s.p[i] == '-')) { neg_exp = s.p[i] == '-'; i++; }\n"
+    "    while (i < s.n && s.p[i] >= '0' && s.p[i] <= '9') {\n"
+    "      if (exp > 1000000) { *ok = 0; return 0; }\n"
+    "      exp = exp * 10 + (s.p[i] - '0');\n"
+    "      i++;\n"
+    "    }\n"
+    "    if (exp > 400) { *ok = 0; return 0; }\n"
+    "    while (exp > 0) {\n"
+    "      if (neg_exp) v /= 10.0; else v *= 10.0;\n"
+    "      exp--;\n"
+    "    }\n"
+    "  }\n"
+    "  while (i < s.n && hx_is_space_c((unsigned char)s.p[i])) i++;\n"
+    "  *ok = digs > 0 && i == s.n;\n"
+    "  return signo * (v / escala);\n"
+    "}\n"
+    "static inline int64_t hx_to_int_str(hx_str s) {\n"
+    "  int ok;\n"
+    "  int64_t v = hx_parse_int(s, &ok);\n"
+    "  if (!ok) hx_panic(\"no es un entero\", sizeof(\"no es un entero\") - 1);\n"
+    "  return v;\n"
+    "}\n"
+    "static inline double hx_to_float_str(hx_str s) {\n"
+    "  int ok;\n"
+    "  double v = hx_parse_float(s, &ok);\n"
+    "  if (!ok) hx_panic(\"no es un numero\", sizeof(\"no es un numero\") - 1);\n"
+    "  return v;\n"
     "}\n";
 
 static const char *HX_RT_STRFUNS =
@@ -1038,18 +1164,23 @@ static const char *HX_RT_STRING =
     "  ip = (uint64_t)d;\n"
     "  frac = d - (double)ip;\n"
     "  hx_u64_to_dec(ip, buf, &n);\n"
-    "  if (frac > 0) {\n"
-    "    buf[n++] = '.';\n"
-    "    for (i = 0; i < 9; i++) {\n"
-    "      int dd;\n"
-    "      frac *= 10.0;\n"
-    "      dd = (int)frac;\n"
-    "      if (dd > 9) dd = 9;\n"
-    "      buf[n++] = (char)('0' + dd);\n"
-    "      frac -= (double)dd;\n"
-    "      if (frac <= 0) break;\n"
-    "    }\n"
-    "  }\n"
+    "  /* Una sola multiplicacion y un redondeo, en vez de nueve pasos de frac *= 10.\n"
+    "     Cada paso redondea un poco mas y el error se acumula: 19.99 salia como\n"
+    "     19.989999999, que no es el numero que se le dio. Multiplicar una vez por\n"
+    "     1e9 y redondear da los nueve digitos correctos. Los ceros de la izquierda\n"
+    "     se quedan porque son el numero: la fraccion de 1.005 es cinco digitos con\n"
+    "     tres ceros delante, y quitarlos decia 1.5. Los de la derecha sobran. */\n"
+    "  { int64_t nueve = (int64_t)(frac * 1000000000.0 + 0.5);\n"
+    "    char digs[9];\n"
+    "    int k;\n"
+    "    if (nueve > 999999999) nueve = 999999999;\n"
+    "    for (k = 8; k >= 0; k--) { digs[k] = (char)('0' + nueve % 10); nueve /= 10; }\n"
+    "    { int ultimo = 9;\n"
+    "      while (ultimo > 1 && digs[ultimo - 1] == '0') ultimo--;\n"
+    "      if (ultimo > 0) {\n"
+    "        buf[n++] = '.';\n"
+    "        for (k = 0; k < ultimo; k++) buf[n++] = digs[k];\n"
+    "      } } }\n"
     "  s.p = buf;\n"
     "  s.n = n;\n"
     "  return s;\n"
@@ -1064,7 +1195,8 @@ typedef struct {
 static const HxIntrinName hx_intrin_names[] = {
     {"Len", "len_str"},       {"IsEmpty", "is_empty_str"}, {"Upper", "upper_str"},
     {"Lower", "lower_str"},   {"Trim", "trim_str"},        {"Slice", "str_slice"},
-    {"At", "str_at"},         {"Repeat", "repeat_str"},    {NULL, NULL},
+    {"At", "str_at"},         {"Repeat", "repeat_str"},    {"ToInt", "to_int_str"},
+    {"ToFloat", "to_float_str"}, {NULL, NULL},
 };
 
 static const char *hx_intrin_cname(const char *name) {
@@ -1218,6 +1350,16 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
             if (x->is_intrin == 7 && strcmp(hx_sym_str(x->method), "Len")) e->uses_index = 1;
             if (x->is_intrin == 8) {
                 e->uses_tostring = 1;
+                e->uses_string = 1;
+            }
+            /* ToInt y ToFloat son el camino de vuelta, de texto a numero. Van en un
+               bloque aparte del de las demas cadenas porque casi ningun programa los
+               usa y entrarian en el binario igual. */
+            if (x->is_intrin == 1 && x->recv && x->recv->ty &&
+                x->recv->ty->kind == TY_STRING &&
+                (!hx_ascii_casecmp(hx_sym_str(x->method), "ToInt") ||
+                 !hx_ascii_casecmp(hx_sym_str(x->method), "ToFloat"))) {
+                e->uses_str2num = 1;
                 e->uses_string = 1;
             }
             hx_scan_expr(e, x->call.callee);
@@ -3433,6 +3575,8 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     }
     hx_buf_str(b, HX_RT_TYPES);
     hx_buf_str(b, HX_RT_CORE);
+    hx_buf_str(b, HX_RT_CORE2);
+    hx_buf_str(b, HX_RT_CORE3);
     hx_buf_str(b, HX_RT_ITER_TYPE);
     if (e->uses_vec) {
         hx_buf_str(b, HX_RT_VEC_PRE);
@@ -3481,6 +3625,10 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_STRFUNS);
         hx_buf_str(b, HX_RT_STRMORE);
     }
+    /* Detras de los ayudantes de cadena: hx_parse_* usa hx_is_space_c, que vive
+       ahi, y en C una funcion sin prototipo se compila y el enlazado despues dice
+       que no existe. */
+    if (e->uses_str2num) hx_buf_str(b, HX_RT_STR2NUM);
     if (e->uses_enum) hx_emit_enum_names(e, b, e->unit);
     /* El perfil libc ya tiene memcpy y memset, y declararlos otra vez pisa los
        prototipos: en macOS, ademas, memcpy es una macro. El freestanding es el
