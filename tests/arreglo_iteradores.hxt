@@ -94,3 +94,40 @@ PRINT "---"
 '   el alcance de una FUNCTION es su propia unidad, y lo de fuera se le pasa por
 '   parametro. Para usar un valor de fuera hace falta una lambda, que es justo lo
 '   que hace el FILTER de mas arriba.
+
+' Fold con una lambda que captura. El bloque se declara antes de la sentencia,
+'   porque un Fold es una expresion y en C no se puede declarar una estructura
+'   dentro de una expresion. Sin esto el tercer argumento de la lambda se quedaba
+'   sin nada y el programa reventaba.
+DIM extra AS INT = 2
+DIM con_corte AS INT = a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+  RETURN acc + n + extra
+END FUNC)
+PRINT con_corte
+PRINT "---"
+
+' Lo mismo desde dentro de una FUNCTION, donde lo natural es un RETURN
+FUNCTION FoldSuma(ar AS ARRAY[INT], extra AS INT) AS INT
+  RETURN ar.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+    RETURN acc + n + extra
+  END FUNC)
+END FUNCTION
+PRINT FoldSuma(a, extra)
+PRINT "---"
+
+' Dos Folds con el mismo par (acumulador, elemento): uno con lambda que captura y
+'   otro sin ella. Son dos firmas distintas y por tanto dos ayudantes; si se
+'   compartieran, el que no captura tendria que pasar un argumento de mas y el que
+'   captura leeria el bloque por donde le --
+IF a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+  RETURN acc + n
+END FUNC) > 5 THEN
+  PRINT "la suma pasa de cinco"
+END IF
+DIM i AS INT = 0
+WHILE i < a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+        RETURN acc + n + extra
+      END FUNC)
+  i = i + 1
+END WHILE
+PRINT i

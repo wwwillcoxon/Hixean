@@ -85,6 +85,9 @@ typedef struct {
     HX_VEC_ANON(const char *) fold_nombres;
     HxTy **fold_acums;
     HxTy **fold_elems;
+    /* Uno por par, y con la misma posicion: si el Fold que se registro usaba una
+       lambda que captura, su ayudante es el que recibe el bloque. */
+    int *fold_caps;
 } HxEmit;
 
 static const char *hx_c_ty(HxEmit *e, HxTy *t) {
@@ -1357,7 +1360,8 @@ static void hx_iter_note_map(HxEmit *e, HxTy *from, HxTy *to, int capta);
 static void hx_iter_note_cap_elem(HxEmit *e, HxTy *t);
 static struct HxFunc *hx_fn_de_mapa(HxEmit *e, HxExpr *x);
 static void hx_iter_note_chain(HxEmit *e, HxExpr *x);
-static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe,
+                       int capta);
 static void hx_iter_suffix(HxEmit *e, HxTy *t, HxBuf *b);
 static struct HxFunc *hx_find_func_named(HxEmit *e, const char *name);
 static HxConst *hx_find_const_named(HxEmit *e, const char *name);
@@ -1433,10 +1437,15 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
                 char fa[96], fe2[96];
                 hx_ty_mangle(facum, fa, sizeof fa);
                 hx_ty_mangle(felem, fe2, sizeof fe2);
+                /* El flag de captura tambien aqui, no solo al emitir: el ayudante se
+                   anota en el escaneo, y si se anotara la variante sin «cap» la
+                   llamada de hx_emit_darr_iter buscaria un hx_fold_...cap que no se
+                   ha emitido. */
+                int fcapta = ffn && ffn->captures.len > 0;
                 e->uses_fold = 1;
                 e->uses_iter = 1;
                 e->uses_darr = 1;
-                hx_fold_note(e, facum, felem, fa, fe2);
+                hx_fold_note(e, facum, felem, fa, fe2, fcapta);
                 hx_iter_note_elem(e, felem);
             }
             /* ToInt y ToFloat son el camino de vuelta, de texto a numero. Van en un
@@ -1816,8 +1825,10 @@ static void hx_expr_base(HxEmit *e, HxExpr *x, int pre, HxBuf *b) {
 }
 
 static const char *hx_cap_nombre(HxEmit *e, struct HxFunc *f, char *buf, size_t cap);
-static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
-static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag);
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe,
+                       int capta);
+static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag,
+                         int capta);
 
 /* Map, Filter y Fold sobre un ARRAY[T]: el ARRAY se convierte en iterador y se
    encadena con los mismos ayudantes que un Rango. Fold no es un iterador sino un
@@ -1846,12 +1857,13 @@ static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
         hx_iter_note_elem(e, elem);
         e->uses_fold = 1;
         /* El par (acumulador, elemento) decide el nombre del ayudante, y hace
-           falta uno por par: la firma en C depende de los dos. */
+           falta uno por par: la firma en C depende de los dos, y tambien de si la
+           funcion captura, porque entonces lleva un argumento mas. */
         char fa[96], fe[96];
         hx_ty_mangle(acum, fa, sizeof fa);
         hx_ty_mangle(elem, fe, sizeof fe);
-        hx_fold_note(e, acum, elem, fa, fe);
-        hx_buf_printf(b, "hx_fold_%s_%s(", fa, fe);
+        hx_fold_note(e, acum, elem, fa, fe, capta);
+        hx_buf_printf(b, "hx_fold_%s_%s%s(", fa, fe, capta ? "cap" : "");
         hx_expr_str(e, x->call.args.data[0].value, 0, b);
         hx_buf_str(b, ", ");
         /* El ayudante quiere el bloque de memoria y el largo, no el hx_darr: un
@@ -1861,6 +1873,25 @@ static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b) {
         hx_expr_str(e, x->recv, 0, b);
         hx_buf_str(b, ".len, (void *)&hx_call_");
         hx_buf_str(b, hx_sym_str(fn ? fn->name : "?"));
+        /* El bloque, si la lambda captura. Sin esto el tercer argumento de la
+           lambda queda sin inicializar y el Fold con captura revienta: hace falta
+           una variante del ayudante porque la firma en C no es la misma.
+
+           Va como literal compuesto y no como una declaracion antes de la
+           sentencia, porque un Fold es una expresion y en C no se declara nada
+           dentro de una expresion. El tipo del bloque ya esta en la cabecera del
+           modulo para toda lambda que capture, asi que aqui solo se construye el
+           valor. Los campos se copian por su nombre: son variables de la funcion
+           que contiene la llamada, y ahi se llaman hx_v_<nombre>. */
+        if (capta) {
+            char capbuf[128];
+            hx_buf_printf(b, ", &(struct %s){ ", hx_cap_nombre(e, fn, capbuf, sizeof capbuf));
+            for (int i = 0; i < fn->captures.len; i++) {
+                if (i) hx_buf_str(b, ", ");
+                hx_buf_printf(b, "hx_v_%s", hx_sym_str(fn->captures.data[i].name));
+            }
+            hx_buf_str(b, " }");
+        }
         hx_buf_str(b, ")");
         free(src.data);
         return;
@@ -2940,7 +2971,6 @@ static void hx_declara_cierres_de(HxEmit *e, HxExpr *cadena, int ind) {
     }
 }
 
-
 static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
     HxBuf *b = &e->out;
     switch (s->kind) {
@@ -2952,6 +2982,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_str(b, ";\n");
             break;
         case ST_DIM:
+            hx_vacia_cierres(e, ind);
             if (s->dim.init && s->dim.init->kind == EX_TRY && s->dim.init->propagate) {
                 char *dest = hx_arena_sprintf(e->arena, "%s hx_v_%s = ",
                                               hx_c_ty(e, s->dim.ty), hx_sym_str(s->dim.name));
@@ -3012,9 +3043,16 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_expr_str(e, s->konst.value, 0, b);
             hx_buf_str(b, ";\n");
             break;
-        case ST_ASSIGN: hx_vacia_cierres(e, ind); hx_emit_assign(e, s, ind); break;
-        case ST_PRINT: hx_vacia_cierres(e, ind); hx_emit_print(e, s, ind); break;
+        case ST_ASSIGN:
+            hx_vacia_cierres(e, ind);
+            hx_emit_assign(e, s, ind);
+            break;
+        case ST_PRINT:
+            hx_vacia_cierres(e, ind);
+            hx_emit_print(e, s, ind);
+            break;
         case ST_IF:
+            hx_vacia_cierres(e, ind);
             hx_indent(b, ind);
             hx_buf_str(b, "if (");
             hx_expr_str(e, s->if_.cond, 0, b);
@@ -3039,6 +3077,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             hx_buf_str(b, "\n");
             break;
         case ST_WHILE:
+            hx_vacia_cierres(e, ind);
             hx_indent(b, ind);
             hx_buf_str(b, "while (1) {\n");
             hx_indent(b, ind + 1);
@@ -3126,6 +3165,7 @@ static void hx_stmt_emit(HxEmit *e, HxStmt *s, int ind) {
             break;
         }
         case ST_RETURN:
+            hx_vacia_cierres(e, ind);
             if (s->ret.value && s->ret.value->kind == EX_TRY && s->ret.value->propagate) {
                 hx_emit_propagating(e, s->ret.value, ind, "return ", 0);
                 break;
@@ -3576,36 +3616,53 @@ static void hx_maybe_note_map(HxEmit *e, HxTy *from, HxTy *to) {
 }
 
 /* Fold necesita un bucle, y en C un bucle no es una expresion. Se resuelve con
-   una funcion que se llama a si misma: elFold se escribe como una llamada a
+   una funcion que se llama a si misma: el Fold se escribe como una llamada a
    hx_fold_<acum>_<elem>(inicial, array, funcion), y el bucle vive ahi. No es un
    truco de la Keep: es la forma que tiene C de expresar «esto produce un valor»,
    y evita generar un temporal y una sentencia suelta por cada Fold. El bucle va
    con indice, no con iterador, porque aqui el ARRAY ya es un bloque de memoria
    contiguo con su largo. */
-static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe);
-static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag) {
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe,
+                       int capta);
+static void hx_fold_helpers(HxBuf *b, const char *acum, const char *aelem, const char *tag,
+                             int capta) {
     /* El nombre lleva los dos tags: hx_fold_<acum>_<elem>. El `tag` que llega es
        la clave "acum|elem", y aqui se convierte en el guion que separa los dos,
-       porque la llamada se construye con los dos por separado. */
+       porque la llamada se construye con los dos por separado. Con «cap» detras es
+       la variante que ademas recibe el bloque de captura, y no puede ser la misma:
+       una lambda que captura tiene un tercer argumento, y llamar a una como si no
+       lo tuviera deja el puntero del bloque sin inicializar. */
     char nombre[224];
     snprintf(nombre, sizeof nombre, "%s", tag);
     for (char *p = nombre; *p; p++)
         if (*p == '|') *p = '_';
-    hx_buf_printf(b, "static inline %s hx_fold_%s(%s inicial, void *datos, "
-                     "int64_t largo, void *ff) {\n", acum, nombre, acum);
-    hx_buf_printf(b, "  %s (*f)(%s, %s) = (%s (*)(%s, %s))ff;\n", acum, acum, aelem, acum,
-                  acum, aelem);
+    if (capta) strncat(nombre, "cap", sizeof nombre - strlen(nombre) - 1);
+    /* El `cap` de la firma va solo en la variante que lo usa: dejarlo siempre
+       obligaria a la llamada sin captura a pasar un argumento de mas, y el mismo
+       nombre no puede servir para las dos. */
+    hx_buf_printf(b, "static inline %s hx_fold_%s(%s inicial, void *datos, int64_t largo, "
+                     "void *ff%s) {\n", acum, nombre, acum, capta ? ", void *cap" : "");
+    /* La conversion del puntero a funcion depende de si hay bloque: el prototipo
+       de una lambda que captura lleva un `void *` detras que el ayudante tiene que
+       tener tambien, o el enlace complains de que la firma no coincide. */
+    hx_buf_printf(b, "  %s (*f)(%s, %s%s) = (%s (*)(%s, %s%s))ff;\n", acum, acum, aelem,
+                  capta ? ", void *" : "", acum, acum, aelem, capta ? ", void *" : "");
     hx_buf_printf(b, "  %s v;\n", aelem);
     hx_buf_str(b, "  for (int64_t i = 0; i < largo; i++) {\n");
     hx_buf_printf(b, "    memcpy(&v, (const char *)datos + i * (int64_t)sizeof(%s), "
                      "sizeof(%s));\n", aelem, aelem);
-    hx_buf_printf(b, "    inicial = f(inicial, v);\n");
+    hx_buf_printf(b, "    inicial = f(inicial, v%s);\n", capta ? ", cap" : "");
     hx_buf_str(b, "  }\n  return inicial;\n}\n");
 }
 
-static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe) {
+static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, const char *fe,
+                       int capta) {
     char clave[224];
-    snprintf(clave, sizeof clave, "%s|%s", fa, fe);
+    /* El «c» del final va en la clave porque las dos variantes no pueden compartir
+       ayudante: el mismo par (acumulador, elemento) puede salir una vez con una
+       FUNC de nivel superior y otra con una lambda que capture, y son dos firmas
+       distintas. */
+    snprintf(clave, sizeof clave, "%s|%s%s", fa, fe, capta ? "|c" : "");
     /* La clave lleva los dos tags porque el nombre del ayudante los lleva: si solo
        llevara el del acumulador, dos Folds con el mismo acumulador y distinto
        elemento generarian el mismo nombre y uno pisaria al otro. */
@@ -3621,10 +3678,16 @@ static void hx_fold_note(HxEmit *e, HxTy *acum, HxTy *elem, const char *fa, cons
     int k = e->fold_pairs.len;
     e->fold_acums = (HxTy **)hx_arena_realloc_tmp(e->fold_acums, sizeof(HxTy *) * (size_t)(k + 1));
     e->fold_elems = (HxTy **)hx_arena_realloc_tmp(e->fold_elems, sizeof(HxTy *) * (size_t)(k + 1));
+    e->fold_caps = (int *)hx_arena_realloc_tmp(e->fold_caps, sizeof(int) * (size_t)(k + 1));
     e->fold_acums[k] = acum;
     e->fold_elems[k] = elem;
+    e->fold_caps[k] = capta;
     HX_VEC_PUSH(e->fold_pairs, hx_arena_strdup(e->arena, clave));
-    HX_VEC_PUSH(e->fold_nombres, hx_arena_strdup(e->arena, clave));
+    /* El nombre del ayudante se guarda sin el «c» de la clave: el sufijo «cap» lo
+       pone hx_fold_helpers segun el flag, y si lo trajera aqui saldria «ccap». */
+    char nombre[224];
+    snprintf(nombre, sizeof nombre, "%s|%s", fa, fe);
+    HX_VEC_PUSH(e->fold_nombres, hx_arena_strdup(e->arena, nombre));
 }
 
 static void hx_iter_note_elem(HxEmit *e, HxTy *t) {
@@ -3994,7 +4057,7 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
            elemento generaran el mismo nombre. */
         for (int i = 0; i < e->fold_nombres.len; i++)
             hx_fold_helpers(b, hx_c_ty(e, e->fold_acums[i]), hx_c_ty(e, e->fold_elems[i]),
-                            e->fold_nombres.data[i]);
+                            e->fold_nombres.data[i], e->fold_caps[i]);
     }
     if (e->uses_enum) hx_emit_enum_names(e, b, e->unit);
     /* El perfil libc ya tiene memcpy y memset, y declararlos otra vez pisa los

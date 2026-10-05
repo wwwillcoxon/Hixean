@@ -103,6 +103,20 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   … siguiente AS Nodo<T> …` se instanciaba, el clon se volvía a instanciar, y así
   hasta que la pila se desbordaba. Con un valor directo no hay forma de cortarlo, así
   que ahora el tipo queda desconocido y se dice por qué.
+- **`Fold` con una lambda que captura reventaba el programa.** El emisor calculaba si
+  la lambda capturaba y luego tiraba ese dato: pasaba `(void *)&hx_call_f` sin el
+  bloque, y el ayudante llamaba a la lambda con dos argumentos cuando esperaba tres.
+  Como el tercer argumento se leía de la nada, el programa moría con `SIGSEGV`. Ahora
+  hay una variante del ayudante, `hx_fold_<a>_<e>cap`, con el bloque delante, y la
+  llamada lo construye con un literal compuesto: un `Fold` es una expresión y en C no
+  se declara nada dentro de una expresión.
+  El bloque se construía con una declaración antes de la sentencia, como se hacía
+  para el iterador de un `FOR`, pero un `Fold` puede salir en un `PRINT`, en un `DIM`,
+  en un `RETURN` o en la condición de un `IF`, y ahí no había dónde ponerla.
+- **`FUNC` capturando y `FOLD` sin capturar con el mismo par de tipos generaban un
+  solo ayudante**, con la firma de la que se registró primero. El que no capturaba
+  tenía que pasar un argumento de más y el enlazado lo echaba. Ahora la clave que
+  registra el par incluye la captura, y salen los dos ayudantes.
 - **Un `ToString()` dentro de una lambda no emitía su bloque de runtime** y el
   enlazado decía que `hx_i64_str` no existía. El motivo: las lambdas no se
   escaneaban, así que nada de lo que hubiera dentro pedía su runtime. Una `FUNC` sí

@@ -1031,7 +1031,23 @@ PRINT a.Fold(0, Suma)</code></pre>
       </figure>
       <p><code>Fold</code> es distinto: produce un <strong>valor</strong>, no una
       secuencia. La función recibe el acumulador y el elemento, en ese orden, y el
-      acumulador puede ser de otro tipo que el elemento.</p>
+      acumulador puede ser de otro tipo que el elemento. La función también puede ser
+      una lambda que capture, igual que en <code>Map</code> y <code>Filter</code>:</p>
+      <figure class="ej">
+        <figcaption><span>fold_captura.hxt</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lenguaje">DIM a AS ARRAY[INT]
+a.Push(1)
+a.Push(2)
+
+DIM extra AS INT = 10
+DIM total AS INT = a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+  RETURN acc + n + extra
+END FUNC)
+PRINT total</code></pre>
+        <div class="salida"><span>salida</span><pre>23</pre></div>
+      </figure>
+      <p>El bloque se copia por valor en el momento de la llamada, que es también el
+      momento en que <code>Fold</code> lo consume entero.</p>
       <p>El arreglo por sí solo no es un iterador: <code>FOR x IN a</code> da
       <code>E0712</code>, porque no hay forma de saber que se quiere empezar por el
       principio. Con <code>.Map</code> o <code>.Filter</code> encima sí.</p>

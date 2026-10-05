@@ -736,6 +736,23 @@ función recibe el acumulador y el elemento, en ese orden, y `Fold` devuelve lo 
 devuelva la última llamada. El acumulador puede ser de otro tipo que el elemento:
 `Fold("", Concat)` sobre un `ARRAY[STRING]` va bien.
 
+La función puede ser una lambda que capture, con la misma regla que en `Map` y
+`Filter`, y el bloque se construye en el momento de la llamada:
+
+```
+DIM a AS ARRAY[INT]
+a.Push(1)
+a.Push(2)
+DIM extra AS INT = 10
+PRINT a.Fold(0, FUNC(acc AS INT, n AS INT) AS INT
+  RETURN acc + n + extra
+END FUNC)                              ' 23
+```
+
+Como el bloque se copia por valor y `Fold` se ejecuta entero en esa expresión, el
+valor capturado es el que hay en el momento de la llamada, que es también el
+momento en que se consume.
+
 El `ARRAY` no es un `ITER` por sí solo: `FOR x IN a` no vale, porque no hay forma de
 saber que se quiere empezar por el principio. Con `.Map` o `.Filter` encima sí.
 
