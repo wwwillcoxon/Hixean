@@ -261,7 +261,15 @@ static const char *HX_TIME_WIN =
     "  LARGE_INTEGER f, c;\n"
     "  if (!QueryPerformanceFrequency(&f) || f.QuadPart == 0) return 0;\n"
     "  QueryPerformanceCounter(&c);\n"
-    "  return (int64_t)((c.QuadPart * 1000000000LL) / f.QuadPart);\n"
+    /* El contador son marcas desde el arranque del sistema, y multiplicarlas por mil
+       millones se sale del int64 en cuanto la maquina lleva un rato encendida: con
+       un reloj de 10 MHz, media hora de uptime ya dan 1.8e19 marcas y el signo se va
+       al otro lado, que es como el reloj de Windows devolvia cero y la capacidad
+       parecia rota. Se divide primero y se multiplica solo el resto, que siempre es
+       menor que la frecuencia. */
+    "  int64_t seg = (int64_t)(c.QuadPart / f.QuadPart);\n"
+    "  int64_t resto = (int64_t)(c.QuadPart % f.QuadPart);\n"
+    "  return seg * 1000000000LL + (resto * 1000000000LL) / (int64_t)f.QuadPart;\n"
     "}\n"
     "static inline int64_t hx_time_sleep_ns(int64_t ns) {\n"
     "  int64_t ms = ns / 1000000LL;\n"

@@ -156,6 +156,23 @@ comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
 ### Arreglado
 
+- **En Windows el reloj daba cero.** `QueryPerformanceCounter` cuenta marcas desde el
+  arranque del sistema, y multiplicarlas por mil millones para pasarlas a
+  nanosegundos se sale del `int64` en cuanto la máquina lleva un rato encendida: a 10
+  MHz, un año de uptime son 3.15e20 marcas y el `int64` llega a 9.2e18. El signo se iba
+  al otro lado y `TIME_NS()` devolvía un número negativo, así que las tres
+  comprobaciones de tiempo del corpus fallaban y la capacidad parecía rota. Ahora se
+  divide primero y solo se multiplica el resto, que siempre es menor que la
+  frecuencia.
+  La puerta que compila el runtime de Windows lo debería haber visto y no lo veía,
+  porque su `QueryPerformanceCounter` de mentira devolvía 12345: multiplicar eso por
+  mil millones no desborda nunca. Ahora el stub arranca con un año de uptime y
+  comprueba que el reloj dé del orden de 3.15e16, y se ha probado que con el código
+  viejo la puerta falla diciendo qué número salió.
+- **La puerta del runtime de Windows no enseñaba por qué fallaba.** Decía «el runtime
+  de Windows no funciona» y nada más, que es el mismo problema que sufre el primer
+  día que el del primer día, con `HX_TIME_WIN undeclared`: un mensaje sin número no lleva a
+  ninguna parte. Ahora imprime lo que diga el programa.
 - **La página decía que Windows no pasa el corpus.** Escribía «macOS y Windows: el
   corpus pasa 33 de 34», y Windows lleva tiempo en verde entero; el corpus era de 38
   pruebas, no 34. La página además no lleva cifras ahora, y no por

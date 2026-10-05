@@ -23,12 +23,23 @@ STUBS = """#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 typedef union { struct { int64_t low; int64_t high; } u; int64_t QuadPart; } LARGE_INTEGER;
 typedef unsigned long DWORD;
 typedef void *HMODULE;
 typedef int64_t (*FARPROC)(void);
+/* El contador de rendimiento va desde el arranque del sistema, y una maquina que
+   lleva encendida un rato ya ha acumulado marcas suficientes para que multiplicar
+   por mil millones se salga del int64: un ano a 10 MHz son 3.15e20 marcas, y el
+   int64 llega a 9.2e18. Con el stub de valores pequenos que habia antes eso no se
+   veía, y el reloj de Windows devolvia cero en el CI sin que aqui se notase nada.
+   El stub arranca con un ano de uptime. */
+#define HX_STUB_UPTIME_TICKS 315360000000000LL
 static inline int QueryPerformanceFrequency(LARGE_INTEGER *f) { f->QuadPart = 10000000; return 1; }
-static inline int QueryPerformanceCounter(LARGE_INTEGER *c) { c->QuadPart = 12345; return 1; }
+static inline int QueryPerformanceCounter(LARGE_INTEGER *c) {
+  c->QuadPart = HX_STUB_UPTIME_TICKS;
+  return 1;
+}
 static inline void Sleep(DWORD ms) { (void)ms; }
 static inline HMODULE GetModuleHandleA(const char *n) { (void)n; return 0; }
 static inline FARPROC GetProcAddress(HMODULE m, const char *n) { (void)m; (void)n; return 0; }
@@ -63,8 +74,18 @@ def main():
             return 1
         # windows.h no existe aqui: lo que se comprueba es el bloque, no la cabecera.
         texto = texto.replace('#include <windows.h>', "").replace('#include <time.h>', "")
-        fuente = STUBS + texto + "\nint main(void) {\n  unsigned char b[4];\n" \
-                                  "  return hx_time_random(b, 4) && hx_time_ns() >= 0 ? 0 : 1;\n}\n"
+        main = ('int main(void) {\n'
+                '  unsigned char b[4];\n'
+                '  int64_t ns = hx_time_ns();\n'
+                '  /* Un ano de uptime son 3.1536e16 nanosegundos. Se comprueba el orden\n'
+                '     de magnitud y no el numero: lo que importa es que no se haya ido\n'
+                '     por el desbordamiento, y un stub con el reloj del runner daria un\n'
+                '     numero distinto cada vez. */\n'
+                '  int ok = ns > 31000000000000000LL && ns < 32000000000000000LL;\n'
+                '  if (!ok) printf("el reloj dio %lld y deberia dar unos 3.15e16\\n",\n'
+                '                 (long long)ns);\n'
+                '  return (hx_time_random(b, 4) && ok) ? 0 : 1;\n}\n')
+        fuente = STUBS + texto + main
         with tempfile.TemporaryDirectory() as d:
             c = os.path.join(d, "bloque.c")
             exe = os.path.join(d, "bloque")
@@ -76,11 +97,19 @@ def main():
                 print("FALLO: el runtime de Windows no compila:\n%s" % p.stderr)
                 fallos += 1
                 continue
-            # Y ademas se ejecuta: el bloque cae a rand() porque el stub no encuentra
-            # bcrypt.dll, que es justo el camino que hay que probar tambien.
-            p = subprocess.run([exe], capture_output=True)
+            # Y ademas se ejecuta, y se comprueba que el reloj da un numero de la
+            # magnitud del uptime: 32 dias estan en 2.7e15 nanosegundos. Un reloj que
+            # se sale del int64 da negativo o cero, y con un valor de 12345 —que es lo
+            # que tenia el stub antes— eso no se ve.
+            p = subprocess.run([exe], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
             if p.returncode != 0:
                 print("FALLO: el runtime de Windows no funciona (rc=%d)" % p.returncode)
+                # El programa dice que le pasa: sin esto la puerta dice «no funciona»
+                # y no dice cómo, que es el mismo problema que solve el primer día.
+                if p.stdout.strip():
+                    for linea in p.stdout.strip().split("\n"):
+                        print("       %s" % linea.strip())
                 fallos += 1
                 continue
     if fallos:
