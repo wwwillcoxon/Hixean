@@ -4,13 +4,13 @@
 # winget exige InstallerSha256: hay que copiarlo de dist/SHA256SUMS de la
 # release correspondiente.
 #
-# NO PUBLICABLE EN LA 0.2.0, y no por un detalle de forma: los zip de Windows los
-# genera el workflow de la release para los targets de windows, y la 0.2.0
+# NO PUBLICABLE EN LA 0.3.0, y no por un detalle de forma: los zip de Windows los
+# genera el workflow de la release para los targets de windows, y la 0.3.0
 # publica solo linux-x64. Las dos InstallerUrl de abajo darian 404. El manifiesto
 # se queda escrito y con la version puesta, para que cuando windows entre en la
 # matriz (el corpus ya pasa ahi entero) solo haya que copiar el sha256.
 PackageIdentifier: wwwillcoxon.Hixean
-PackageVersion: 0.2.0
+PackageVersion: 0.3.0
 DefaultLocale: en-US
 ManifestType: installer
 ManifestVersion: 1.6.0
@@ -29,7 +29,7 @@ Description: |-
   el trabajo. Sin maquina virtual, sin unwinding y con un perfil freestanding
   por defecto: hola mundo ocupa 8896 bytes.
 Homepage: https://github.com/wwwillcoxon/Hixean
-ReleaseNotes: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.2.0
+ReleaseNotes: https://github.com/wwwillcoxon/Hixean/releases/tag/v0.3.0
 Tags:
   - compiler
   - language
@@ -37,8 +37,8 @@ ReleaseDate: 2026-10-03
 Installers:
   - Architecture: x64
     InstallerType: zip
-    # sin artefacto de windows en la 0.2.0: la release solo publica linux-x64
-    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-windows-x64.zip
+    # sin artefacto de windows en la 0.3.0: la release solo publica linux-x64
+    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.3.0/hixean-0.2.0-windows-x64.zip
     InstallerSha256: REEMPLAZAR_CON_EL_SHA256_DE_windows-x64
     NestedInstallerType: portable
     NestedInstallerFiles:
@@ -46,7 +46,7 @@ Installers:
         PortableCommandAlias: hxc
   - Architecture: arm64
     InstallerType: zip
-    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.2.0/hixean-0.2.0-windows-arm64.zip
+    InstallerUrl: https://github.com/wwwillcoxon/Hixean/releases/download/v0.3.0/hixean-0.2.0-windows-arm64.zip
     InstallerSha256: REEMPLAZAR_CON_EL_SHA256_DE_windows-arm64
     NestedInstallerType: portable
     NestedInstallerFiles:

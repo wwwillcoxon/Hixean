@@ -161,6 +161,13 @@ que pasaron de verdad y quitarlas sería escribir una historia que no ocurrió.
 
 ### Arreglado
 
+- **La versión sube a 0.3.0**, y los manifiestos de Homebrew y winget con ella. El
+  `sha256` de la fórmula de Homebrew es el de 0.2.0 y sigue siéndolo durante unos
+  minutos: el hash del artefacto no se conoce antes de construirlo, así que se copia
+  de `SHA256SUMS` en el commit posterior a publicar, que es como se hizo con la 0.2.0.
+  Se dice en el propio manifiesto en vez de dejar un hash inventado, que instala y no
+  compila, y un `brew install` en ese ventana falla con un 404 antes de que pueda
+  siquiera mirar el hash.
 - **La versión sube a 0.3.0** en el compilador, en los tres pies del sitio, en el
   subtítulo de instalación, en los dos ejemplos de instalación, en el enlace y el
   título de la tarjeta de release, en el ejemplo de `git tag` del README y del
