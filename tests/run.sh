@@ -320,6 +320,25 @@ printf 'QUERY lo que hay en el registro\n  VERSION >= 0.1\nEND QUERY\n' > build/
 printf 'aritmetica 1.0.0  build/reg/aritmetica/aritmetica.hxk\nbase 0.2.0  build/reg/base/base.hxk\n' > build/reg.expected
 comprobar build/reg.expected build/reg.out "hxc query encuentra lo publicado en el registro"
 
+echo "== una capacidad sin declarar es un paquete que no se construye =="
+# Las capacidades se declaran con ENABLE en el fuente y con CAPABILITY en el
+# manifiesto, y si no coinciden el paquete no se construye. Aqui se comprueba con
+# `time`, que es la segunda capacidad: la puerta es generica y sirve para las dos.
+rm -rf build/caps_tiempo && mkdir -p build/caps_tiempo
+printf 'ENABLE time\nPRINT TIME_RANDOM(6)\n' > build/caps_tiempo/t.hxe
+printf 'KIT con_tiempo 1.0.0\n  TARGET hixe >= 0.2\n  ENTRY t.hxe\n  PROVIDES con_tiempo\nEND KIT\n' \
+  > build/caps_tiempo/p.hxk
+if ./build/hxc build --kit build/caps_tiempo/p.hxk -o build/caps_tiempo/salida 2>&1 | grep -q "CAPABILITY time"; then
+  echo "ok     un paquete que usa time sin declararlo no se construye"
+else
+  echo "FALLO: la capacidad usada no se exige en el manifiesto"; exit 1
+fi
+printf 'KIT con_tiempo 1.0.0\n  TARGET hixe >= 0.2\n  ENTRY t.hxe\n  PROVIDES con_tiempo\n  CAPABILITY time\nEND KIT\n' \
+  > build/caps_tiempo/p.hxk
+./build/hxc build --kit build/caps_tiempo/p.hxk -o build/caps_tiempo/salida 2>/dev/null \
+  && echo "ok     declarado, se construye" \
+  || { echo "FALLO: declarado y aun asi no se construye"; exit 1; }
+
 echo "== los documentos no mienten =="
 if command -v python3 >/dev/null 2>&1; then
   python3 tools/verificar-ejemplos.py docs/manual.html site/index.html

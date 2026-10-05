@@ -46,6 +46,7 @@ typedef struct {
     const char *caps[16]; /* capacidades activadas con --capability */
     int n_caps;
     int uses_net;
+    int uses_time;
     HxTy *cur_self; /* tipo que implementa el TRAIT que se esta comprobando */
     int defer_depth;
     int loop_defer_depth;
@@ -126,6 +127,71 @@ static int hx_net_check(HxChecker *c, HxExpr *e, const char *name) {
     e->is_intrin = 6;
     e->method = hx_intern_cstr(c->intern, tabla[idx].name);
     e->ty = hx_ty_builtin(c->arena, tabla[idx].ret_string ? TY_STRING : TY_INT);
+    return 1;
+}
+
+/* --- std.time -------------------------------------------------------------
+   La capacidad `time`: reloj, espera y azar. Es la segunda capacidad del lenguaje
+   y la mas pequena: cinco funciones. Sin ella no hay manera de comprobar nada que
+   dependa del tiempo, porque un bucle «mientras no pase un segundo» necesita saber
+   cuanto ha pasado.
+
+   El origen del reloj no se dice y no se puede pedir: es monotonico y no se sabe,
+   porque un programa que lo imprima daria un numero distinto cada vez que se
+   compila. Lo que se compara son diferencias, que es lo que sirve para medir.
+
+   Los rangos del azar son medio abiertos, como `Rango(0, n)`: `TIME_RANDOM(6)` sale
+   de 0 a 5. Cerrarlos por arriba obligaria a decidir que pasa cuando lo == hi, y
+   un bucle que sortea hasta salir deahi se colgaria. */
+
+static int hx_time_check(HxChecker *c, HxExpr *e, const char *name) {
+    if (!hx_capability(c, "time")) return 0;
+    struct {
+        const char *name;
+        int nargs;
+    } tabla[] = {{"TIME_NS", 0},         {"TIME_MS", 0},         {"TIME_SLEEP", 1},
+                 {"TIME_RANDOM", 1},    {"TIME_RANDOM_BETWEEN", 2}, {NULL, 0}};
+    int idx = -1;
+    for (int i = 0; tabla[i].name; i++)
+        if (!hx_ascii_casecmp(name, tabla[i].name)) idx = i;
+    if (idx < 0) return 0;
+    if (e->call.args.len != tabla[idx].nargs) {
+        hx_error(c->diags, e->span, "E0306", "%s", hx_arena_sprintf(c->arena, "%s espera %d argumento(s), recibió %d", name,
+                                  tabla[idx].nargs, e->call.args.len));
+        e->ty = hx_ty_builtin(c->arena, TY_UNKNOWN);
+        return 1;
+    }
+    for (int i = 0; i < e->call.args.len; i++) {
+        e->call.args.data[i].value = hx_expr_check(c, e->call.args.data[i].value);
+        HxExpr *a2 = e->call.args.data[i].value;
+        HxTy *ty = a2->ty;
+        if (!ty) continue;
+        int es_ref = ty->kind == TY_REF;
+        HxTy *inner = es_ref ? ty->inner : ty;
+        /* Un tiempo negativo no es «esperar un rato»: es esperar lo que quede, que
+           es no esperar nada. Y una espera de mas de unos 292 años se sale del
+           int64 en nanosegundos. Las dos se rechazan aqui en vez de dejar que el
+           kernel receive un numero absurdo. */
+        if (inner->kind != TY_I64 && inner->kind != TY_INT)
+            hx_error(c->diags, a2->span, "E0902", "%s", hx_arena_sprintf(c->arena, "%s: el argumento %d debe ser INT o I64",
+                                      name, i + 1));
+        else if (!hx_ascii_casecmp(name, "TIME_SLEEP") && a2->kind == EX_INT && a2->ival < 0)
+            hx_error(c->diags, a2->span, "E0903", "%s", "una espera no puede ser negativa");
+        else if (!hx_ascii_casecmp(name, "TIME_RANDOM") && a2->kind == EX_INT && a2->ival <= 0)
+            hx_error(c->diags, a2->span, "E0903", "%s", "el rango del azar tiene que ser mayor que cero");
+    }
+    c->uses_time = 1;
+    if (c->unit->n_caps_used < 8) {
+        const char **slot = &c->unit->caps_used[c->unit->n_caps_used];
+        *slot = hx_intern_cstr(c->intern, "time");
+        c->unit->n_caps_used++;
+    }
+    e->is_intrin = 12;
+    e->method = hx_intern_cstr(c->intern, tabla[idx].name);
+    /* El azar y el reloj dan I64, no INT: un entero de 32 bits no llega para un
+       reloj, y porquemezclar un I64 con un INT sin decir cual de los dos se quiere
+       es un error de tipos que aqui se evita desde el principio. */
+    e->ty = hx_ty_builtin(c->arena, (!hx_ascii_casecmp(tabla[idx].name, "TIME_SLEEP")) ? TY_VOID : TY_I64);
     return 1;
 }
 
@@ -1124,9 +1190,10 @@ static HxExpr *hx_call_check(HxChecker *c, HxExpr *e) {
     }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1) {
         const char *solo = hx_sym_str(raw_callee->path.parts.data[0].name);
-        if (!hx_lookup(c, raw_callee->path.parts.data[0].name) &&
-            !strncmp(solo, "NET_", 4) && hx_net_check(c, e, solo))
-            return e;
+        if (!hx_lookup(c, raw_callee->path.parts.data[0].name)) {
+            if (!strncmp(solo, "NET_", 4) && hx_net_check(c, e, solo)) return e;
+            if (!strncmp(solo, "TIME_", 5) && hx_time_check(c, e, solo)) return e;
+        }
     }
     if (raw_callee->kind == EX_PATH && raw_callee->path.parts.len == 1 &&
         !hx_lookup(c, raw_callee->path.parts.data[0].name)) {

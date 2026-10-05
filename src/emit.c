@@ -30,6 +30,7 @@ typedef struct {
     int uses_iter;
     int uses_enum;
     int uses_net;
+    int uses_time;
     int iter_depth;
     int iter_n; /* contador global de variables de iterador por funcion */
     /* tipos de elemento usados por iteradores, para generar sus ayudantes */
@@ -170,6 +171,164 @@ static const char *HX_RT_ITER =
     "  hx_iter_st_rango_f *s = (hx_iter_st_rango_f *)hx_arena_alloc(a, sizeof(*s));\n"
     "  s->i = desde; s->fin = hasta; s->paso_ = paso;\n"
     "  hx_iter it; it.estado = s; it.paso = hx_iter_paso_rango_f; return it;\n"
+    "}\n";
+
+/* --- capacidad time --------------------------------------------------------
+   Reloj, espera y azar. Es lo mas pequeno que puede hacer falta un programa que
+   mide algo, y sin esto no hay manera de comprobar nada que dependa del tiempo: un
+   bucle «mientras no pase un segundo» se mide con la misma capacidad.
+
+   En freestanding son syscalls de Linux x86-64 —228 clock_gettime, 35 nanosleep,
+   318 getrandom— y en libc las llamadas de la biblioteca. Los dos caminos miden lo
+   mismo: CLOCK_MONOTONIC, que no se mueve cuando alguien cambia la hora del
+   sistema, porque un reloj que se puede atrasar da diferencias negativas y rompe
+   cualquier medida. */
+
+static const char *HX_TIME_PRE =
+    "typedef struct { int64_t seg; int64_t nsec; } hx_timespec;\n";
+
+#ifndef _WIN32
+static const char *HX_TIME_FREESTANDING =
+    "#if defined(__linux__) && defined(__x86_64__)\n"
+    "static inline int64_t hx_sys2(long n, long a1, long a2) {\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r) : \"a\"(n), \"D\"(a1), \"S\"(a2)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
+    "}\n"
+    "static inline int64_t hx_sys3(long n, long a1, long a2, long a3) {\n"
+    "  long r;\n"
+    "  __asm__ volatile(\"syscall\" : \"=a\"(r) : \"a\"(n), \"D\"(a1), \"S\"(a2), \"d\"(a3)\n"
+    "                   : \"rcx\", \"r11\", \"memory\");\n"
+    "  return r;\n"
+    "}\n"
+    /* CLOCK_MONOTONIC. Si la llamada falla se devuelve 0, que es lo mejor que se
+       puede hacer sin conocer el codigo de error: un reloj que devuelve 0 se ve
+       como un programa parado, y eso es mejor que inventarse un numero. */
+    "static inline int64_t hx_time_ns(void) {\n"
+    "  hx_timespec ts;\n"
+    "  if (hx_sys2(228L, 1L, (long)&ts) < 0) return 0;\n"
+    "  return ts.seg * 1000000000LL + ts.nsec;\n"
+    "}\n"
+    "static inline int64_t hx_time_sleep_ns(int64_t ns) {\n"
+    "  hx_timespec ts;\n"
+    "  ts.seg = ns / 1000000000LL;\n"
+    "  ts.nsec = ns % 1000000000LL;\n"
+    "  return hx_sys2(35L, (long)&ts, 0L);\n"
+    "}\n"
+    /* El azar sale del kernel, no de un generador sembrado con la hora. Un LCG con
+       una semilla de la hora es un programa que regala su clave: el estado inicial
+       se puede probar, y unas pocas semillas bastan para encontrarlo. getrandom no
+       tiene estado inicial que probar.
+
+       318 es getrandom. En un kernel que no lo tiene sale -ENOSYS, que es -38, y se
+       cae a /dev/urandom con open (2), read (0) y close (3). Las dos rutas dan lo
+       mismo, y la del archivo es la que existia antes de 2014. */
+    "static inline int hx_time_random(void *dest, int64_t n) {\n"
+    "  unsigned char *d = (unsigned char *)dest;\n"
+    "  int64_t i = 0;\n"
+    "  while (i < n) {\n"
+    "    long r = hx_sys3(318L, (long)(d + i), n - i, 0L);\n"
+    "    if (r > 0) { i += r; continue; }\n"
+    "    if (r != -4L) break;\n"
+    "  }\n"
+    "  if (i >= n) return 1;\n"
+    "  long fd = hx_sys3(2L, (long)\"/dev/urandom\", 0L, 0L);\n"
+    "  if (fd < 0) return 0;\n"
+    "  i = 0;\n"
+    "  while (i < n) {\n"
+    "    long r = hx_sys3(0L, fd, (long)(d + i), n - i);\n"
+    "    if (r <= 0) break;\n"
+    "    i += r;\n"
+    "  }\n"
+    "  hx_sys3(3L, fd, 0L, 0L);\n"
+    "  return i >= n;\n"
+    "}\n"
+    "#endif\n";
+#endif
+
+static const char *HX_TIME_LIBC =
+    /* Aqui la estructura de tiempo es la de POSIX, `struct timespec`, y no la propia
+       que usa el perfil freestanding: con libc ya hay una que hace falta. Declarar las
+       dos con el mismo nombre seria pedir que alguien lea la que no es. */
+    "#include <time.h>\n"
+    "#ifndef _WIN32\n"
+    "#include <fcntl.h>\n"
+    "#include <unistd.h>\n"
+    "#endif\n"
+    "static inline int64_t hx_time_ns(void) {\n"
+    "  struct timespec ts;\n"
+    "  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;\n"
+    "  return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;\n"
+    "}\n"
+    "static inline int64_t hx_time_sleep_ns(int64_t ns) {\n"
+    "  struct timespec ts;\n"
+    "  ts.tv_sec = (time_t)(ns / 1000000000LL);\n"
+    "  ts.tv_nsec = (long)(ns % 1000000000LL);\n"
+    "  return (int64_t)nanosleep(&ts, 0);\n"
+    "}\n"
+    /* Aqui no hay getrandom: no existe en macOS, y en glibc es de la 2.25. Se lee
+       /dev/urandom, que esta en los tres sistemas y es exactamente lo mismo. */
+    "static inline int hx_time_random(void *dest, int64_t n) {\n"
+    "  unsigned char *d = (unsigned char *)dest;\n"
+    "  int64_t i = 0;\n"
+    "#ifdef _WIN32\n"
+    "  int fd = _open(\"/dev/urandom\", _O_RDONLY | _O_BINARY);\n"
+    "  if (fd < 0) return 0;\n"
+    "  while (i < n) {\n"
+    "    int r = _read(fd, d + i, (unsigned int)(n - i));\n"
+    "    if (r <= 0) break;\n"
+    "    i += r;\n"
+    "  }\n"
+    "  _close(fd);\n"
+    "#else\n"
+    "  int fd = open(\"/dev/urandom\", O_RDONLY);\n"
+    "  if (fd < 0) return 0;\n"
+    "  while (i < n) {\n"
+    "    long r = read(fd, d + i, (size_t)(n - i));\n"
+    "    if (r <= 0) break;\n"
+    "    i += r;\n"
+    "  }\n"
+    "  close(fd);\n"
+    "#endif\n"
+    "  return i >= n;\n"
+    "}\n";
+
+/* El generador es comun a los dos perfiles: la entropia viene del kernel una sola
+   vez y a partir de ahi es aritmetica, no llamadas al sistema. */
+
+static const char *HX_TIME_RAND =
+    "typedef struct { uint64_t s; } hx_rand;\n"
+    "static inline uint64_t hx_rand_siguiente(hx_rand *r) {\n"
+    "  uint64_t z = (r->s += UINT64_C(0x9E3779B97F4A7C15));\n"
+    "  z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);\n"
+    "  z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);\n"
+    "  return z ^ (z >> 31);\n"
+    "}\n"
+    /* El estado se siembra la primera vez. Si el kernel no da entropia, el reloj
+       entra de serie: es peor que no tener nada —dos programas seguidos darian la
+       misma secuencia— pero el azar es una comodidad y quedarse colgado no lo es. El
+       1 del final es para que un estado sembrado con cero no vuelva a preguntar. */
+    "static inline void hx_rand_llave(hx_rand *r) {\n"
+    "  uint64_t semilla = 0;\n"
+    "  if (!hx_time_random(&semilla, 8)) {\n"
+    "    semilla = (uint64_t)hx_time_ns() ^ ((uint64_t)(uintptr_t)r << 32);\n"
+    "    if (semilla == 0) semilla = UINT64_C(0x2545F4914F6CDD1D);\n"
+    "  }\n"
+    "  r->s = semilla | UINT64_C(1);\n"
+    "}\n"
+    /* El rango es medio abierto [lo, hi), como Rango(0, n): el maximo no sale nunca.
+       Repartir con un modulo introduce un sesgo —si 2^64 no es multiplo del rango,
+       los primeros valores salen una vez mas que los ultimos— y para un dado es
+       invisible, pero para elegir entre muchas hojas de un arbol no. Se descarta lo
+       que sobra, que es menos del doble de lo que se gasta, y se vuelve a tirar. */
+    "static inline int64_t hx_rand_entre(hx_rand *r, int64_t lo, int64_t hi) {\n"
+    "  if (hi <= lo) return lo;\n"
+    "  uint64_t rango = (uint64_t)(hi - lo);\n"
+    "  uint64_t corte = UINT64_MAX - (UINT64_MAX % rango) - (rango - 1);\n"
+    "  uint64_t v;\n"
+    "  do { v = hx_rand_siguiente(r); } while (v > corte);\n"
+    "  return lo + (int64_t)(v % rango);\n"
     "}\n";
 
 /* La capacidad net habla con el kernel: en freestanding son syscalls directas
@@ -1384,6 +1543,7 @@ static void hx_scan_expr(HxEmit *e, HxExpr *x) {
     if (x->ty && hx_ty_is_result(x->ty)) e->uses_result = 1;
     switch (x->kind) {
         case EX_CALL:
+            if (x->is_intrin == 12) e->uses_time = 1;
             if (x->is_intrin == 6) {
                 /* recibir copia el datagrama en una arena */
                 e->uses_net = 1;
@@ -1952,6 +2112,53 @@ static void hx_emit_darr_iter(HxEmit *e, HxExpr *x, HxBuf *b, const char *arena)
 static void hx_enum_member_str(HxEmit *e, HxExpr *x, HxBuf *b);
 /* Las llamadas de la capacidad net se traducen a las primitivas del runtime.
    La direccion se recibe como I64 con los cuatro octetos empaquetados. */
+/* La capacidad time: cinco funciones y poco mas. Los argumentos son HxArg, asi que
+   hay que copiar los valores a HxExpr* como en net, no reinterpretar el vector. */
+static void hx_emit_time(HxEmit *e, HxExpr *x, HxBuf *b) {
+    const char *nm = hx_sym_str(x->method);
+    HxExpr *vals[4];
+    int n = x->call.args.len < 4 ? x->call.args.len : 4;
+    for (int i = 0; i < n; i++) vals[i] = x->call.args.data[i].value;
+    HxExpr **a = vals;
+    e->uses_time = 1;
+    if (!hx_ascii_casecmp(nm, "TIME_NS") || !hx_ascii_casecmp(nm, "TIME_MS")) {
+        /* El origen es monotonico y no se sabe: el runtime no lo dice porque un
+           programa que lo imprima dependeria de cuando se compilo, y el mismo
+           programa da un numero distinto cada vez. Lo que se puede comparar son
+           diferencias, que es lo que sirve para medir. */
+        hx_buf_printf(b, "(hx_time_ns() / %s)", !hx_ascii_casecmp(nm, "TIME_MS") ? "1000000LL"
+                                                                                   : "1LL");
+        return;
+    }
+    if (!hx_ascii_casecmp(nm, "TIME_SLEEP")) {
+        hx_buf_str(b, "hx_time_sleep_ns(");
+        hx_expr_str(e, a[0], 0, b);
+        hx_buf_str(b, " * 1000000LL)");
+        return;
+    }
+    int entre = !hx_ascii_casecmp(nm, "TIME_RANDOM_BETWEEN");
+    if (entre || !hx_ascii_casecmp(nm, "TIME_RANDOM")) {
+        /* Rango medio abierto, como Rango(0, n): el maximo no sale nunca, y asi un
+           bucle de `RANDOM(n)` se comporta como el resto de la libreria. Si se
+           quotara el maximo habria que comprobar el caso de min == max, que es un
+           bucle infinito esperando un numero que no puede salir. */
+        hx_buf_str(b, "({ static hx_rand hx_r; hx_rand_llave(&hx_r); ");
+        if (entre) {
+            hx_buf_str(b, "hx_rand_entre(&hx_r, ");
+            hx_expr_str(e, a[0], 0, b);
+            hx_buf_str(b, ", ");
+            hx_expr_str(e, a[1], 0, b);
+            hx_buf_str(b, ")");
+        } else {
+            hx_buf_str(b, "hx_rand_entre(&hx_r, 0, ");
+            hx_expr_str(e, a[0], 0, b);
+            hx_buf_str(b, ")");
+        }
+        hx_buf_str(b, "; })");
+        return;
+    }
+}
+
 static void hx_emit_net(HxEmit *e, HxExpr *x, HxBuf *b) {
     const char *nm = hx_sym_str(x->method);
     /* los argumentos son HxArg: hay que copiar los valores, no reinterpretar */
@@ -2152,6 +2359,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
                 hx_emit_net(e, x, b);
                 break;
             }
+            if (x->is_intrin == 12) {
+                hx_emit_time(e, x, b);
+                break;
+            }
             int pre = x->prefix_len > 0 ? x->prefix_len : (x->path.parts.len > 1 ? 1 : 1);
             /* Un nombre suelto que el checker ha marcado como FUNCTION vale como
                puntero a ella. No se busca por nombre aqui: el emisor no lleva
@@ -2300,6 +2511,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             if (x->is_intrin == 6) {
                 hx_emit_net(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 12) {
+                hx_emit_time(e, x, b);
                 break;
             }
             /* ToString lleva la 8 cuando el compilador lo marca por el tipo, y la
@@ -2547,6 +2762,10 @@ static void hx_expr_str(HxEmit *e, HxExpr *x, int prec, HxBuf *b) {
             }
             if (x->is_intrin == 6) {
                 hx_emit_net(e, x, b);
+                break;
+            }
+            if (x->is_intrin == 12) {
+                hx_emit_time(e, x, b);
                 break;
             }
             hx_expr_str(e, x->member.base, 7, b);
@@ -4020,6 +4239,20 @@ static void hx_emit_enum_names(HxEmit *e, HxBuf *b, HxUnit *unit) {
 static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
     hx_buf_printf(b, "/* runtime hxc %s */\n", HX_VERSION);
     hx_buf_str(b, "#ifndef HX_RUNTIME_H\n#define HX_RUNTIME_H\n");
+    /* El perfil libc se compila con -std=c11, que define __STRICT_ANSI__, y entonces
+       glibc no declara nada de POSIX: las funciones de <unistd.h> siguen porque son
+       la base de C, pero las macros de POSIX no. CLOCK_MONOTONIC es una de ellas, y
+       sin esto la capacidad time no compila con libc.
+
+       La macro tiene que estar antes de la primera cabecera del sistema, y este es el
+       primer sitio donde se puede poner eso: _runtime.h lo incluye todo. En Windows
+       no se define porque alli <time.h> no es POSIX, y lo que hace falta es otra
+       cosa. */
+    if (e->profile != HX_PROFILE_FREESTANDING) {
+        hx_buf_str(b,
+                   "#ifndef _WIN32\n#ifndef _POSIX_C_SOURCE\n#define _POSIX_C_SOURCE "
+                   "200809L\n#endif\n#endif\n");
+    }
     hx_buf_str(b, "#include <stdint.h>\n#include <stddef.h>\n#include <string.h>\n");
     hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_RT_FREESTANDING : HX_RT_LIBC);
     if (e->profile == HX_PROFILE_FREESTANDING) {
@@ -4047,6 +4280,19 @@ static void hx_emit_runtime_header(HxEmit *e, HxBuf *b) {
         hx_buf_str(b, HX_RT_ARENA);
         hx_buf_str(b, "extern hx_arena hx_static_arena;\n");
         hx_buf_str(b, "void hx_static_init(void);\n");
+    }
+    if (e->uses_time) {
+        hx_buf_str(b, HX_TIME_PRE);
+#if defined(_WIN32)
+        /* En Windows el reloj es clock() del CRT, que mide tiempo de CPU y no de
+           reloj: un programa con una espera dentro mide casi cero, y la capacidad
+           parece rota sin estarlo. QueryPerformanceCounter es lo que hay. */
+        hx_buf_str(b, HX_TIME_WIN);
+#else
+        hx_buf_str(b, e->profile == HX_PROFILE_FREESTANDING ? HX_TIME_FREESTANDING
+                                                           : HX_TIME_LIBC);
+#endif
+        hx_buf_str(b, HX_TIME_RAND);
     }
     if (e->uses_net) {
         e->uses_arena = 1;

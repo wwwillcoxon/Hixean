@@ -1,0 +1,91 @@
+ENABLE time
+' La capacidad time: reloj, espera y azar.
+'
+' Este test no puede comparar un numero exacto, porque un reloj da un numero distinto
+' cada vez. Lo que compara son cosas que tienen que ser verdad siempre, y por eso las
+' salidas son todas «true» o «false»: el reparto de un dado cabe en una franja, dos
+' sorteos seguidos no coinciden, y dormir 11 milisegundos tarda al menos 11. Un test
+' que imprimiera «el bucle tardo 3 milisegundos» no probaria nada, porque el mismo
+' programa en un runner mas cargado daria 7.
+
+' El reloj es monotonico y su origen no se dice, asi que lo unico con sentido es
+' comparar diferencias.
+DIM antes AS I64 = TIME_MS()
+FOR i IN Rango(0, 1000)
+NEXT i
+PRINT "un bucle no retrocede el reloj: " ++ ((TIME_MS() - antes) >= 0).ToString()
+' Con milisegundos no se puede decir esto: un bucle de mil vueltas cabe de sobra en
+' un milisegundo, y el reloj no ha ticado. En nanosegundos si.
+PRINT "y el reloj avanza: " ++ (TIME_NS() > antes * 1000000).ToString()
+
+' Esperar es esperar. El kernel devuelve cuando puede: con la carga del runner tarda
+' mas, nunca menos.
+DIM t0 AS I64 = TIME_MS()
+TIME_SLEEP(11)
+PRINT "dormir 11 tarda al menos 11: " ++ ((TIME_MS() - t0) >= 11).ToString()
+
+' Dormir cero no es un error, es no esperar.
+DIM t1 AS I64 = TIME_MS()
+TIME_SLEEP(0)
+PRINT "dormir cero no espera: " ++ ((TIME_MS() - t1) < 11).ToString()
+
+' El azar sale en el rango, y el rango es medio abierto como el de Rango: con 6 sale
+' de 0 a 5, y el 6 no aparece nunca.
+DIM dentro AS BOOL = TRUE
+DIM i2 AS INT = 0
+WHILE i2 < 500
+  DIM v AS I64 = TIME_RANDOM(6)
+  IF v < 0 OR v >= 6 THEN dentro = FALSE
+  i2 = i2 + 1
+END WHILE
+PRINT "el dado cae en [0,6): " ++ dentro.ToString()
+
+' Un rango de uno solo devuelve ese numero, y uno invertido tambien. Sin esto un
+' `WHILE v /= objetivo` con TIME_RANDOM_BETWEEN se colgaria esperando algo que no
+' puede salir.
+PRINT "un rango de uno solo: " ++ (TIME_RANDOM_BETWEEN(7, 7) == 7).ToString()
+' Un rango invertido devuelve el limite de abajo, que es la unica regla que se
+' puede dar sin inventarse un numero: no hay ningun valor que este en [9,4).
+PRINT "y uno invertido devuelve el de abajo: " ++ (TIME_RANDOM_BETWEEN(9, 4) == 9).ToString()
+
+' El reparto. No se comprueba «salen las seis caras», que un generador roto tambien
+' lo cumple, sino que ninguna sale mil veces mas que otra: 6000 sorteos de un dado
+' darian unas 1000 por cara si el reparto es correcto.
+DIM cuenta AS ARRAY[INT]
+DIM cara AS INT = 0
+WHILE cara < 6
+  cuenta.Push(0)
+  cara = cara + 1
+END WHILE
+DIM j AS INT = 0
+WHILE j < 6000
+  DIM n AS I64 = TIME_RANDOM(6)
+  cuenta.Set(n, cuenta.At(n) + 1)
+  j = j + 1
+END WHILE
+DIM mn AS INT = 999999
+DIM mx AS INT = 0
+FOR c IN cuenta.Map(FUNC(k AS INT) AS INT
+  RETURN k
+END FUNC)
+  IF c < mn THEN mn = c
+  IF c > mx THEN mx = c
+NEXT c
+PRINT "el dado reparte: " ++ ((mx - mn) < 400).ToString()
+
+' Dos sorteos seguidos no coinciden. Con un generador sembrado con la hora, dos
+' llamadas seguidas en el mismo instante salen iguales y esto falla; es la razon de
+' que la entropia venga del kernel y no de un LCG.
+DIM repetidas AS INT = 0
+DIM m AS INT = 0
+WHILE m < 200
+  IF TIME_RANDOM(1000000000) == TIME_RANDOM(1000000000) THEN repetidas = repetidas + 1
+  m = m + 1
+END WHILE
+PRINT "dos sorteos seguidos no coinciden: " ++ (repetidas == 0).ToString()
+
+' Los nanosegundos existen. No se comparan con los milisegundos porque un I64 de
+' milisegundos multiplicado por un millon se sale de los 292 años que caben en
+' nanosegundos, y la comparacion daria algo que no mide lo que parece.
+PRINT "hay nanosegundos: " ++ (TIME_NS() > 0).ToString()
+PRINT "y el reloj es el mismo en las dos unidades: " ++ (TIME_NS() >= TIME_MS() * 1000000).ToString()

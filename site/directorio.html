@@ -151,6 +151,10 @@
       arbitrarios no tiene sentido sin que el programa sepa comparar. Con
       <code>ARRAY</code> de números se puede con un <code>Fold</code> de intercambio
       mientras haya hueco.</li>
+      <li><strong>Sin reloj en el perfil <code>freestanding</code> sin la
+      capacidad <code>time</code></strong>. Está, pero hay que declararla con
+      <code>ENABLE time</code>, y por lo que solo la tienen los programas que la
+      piden. Sin ella no hay forma de medir el tiempo ni de esperar.</li>
       <li><strong>Sin rebanadas</strong> (<code>a[1..3]</code> da <code>E0210</code>),
       <strong>sin <code>audio</code> ni
       <code>gpu</code></strong>, porque no hay dispositivo ni compilador por

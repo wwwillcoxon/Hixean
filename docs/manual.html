@@ -143,7 +143,7 @@ footer{border-top:1px solid var(--linea);margin-top:3rem;padding-top:1.2rem;colo
       <ul class="cifras">
         <li><b>8 896 B</b><span>hola mundo, perfil freestanding</span></li>
         <li><b>12 288 B</b><span>puerta de tamaño</span></li>
-        <li><b>37/37</b><span>pruebas del corpus</span></li>
+        <li><b>38/38</b><span>pruebas del corpus</span></li>
         <li><b>0</b><span>dependencias más allá de C11</span></li>
       </ul>
     </div>
@@ -1358,6 +1358,37 @@ END QUERY</code></pre>
       El fuente declara lo que usa con <code>ENABLE</code>; el manifiesto lo
       autoriza con <code>CAPABILITY</code>. Si no coinciden,
       <code>hxc build --kit</code> se niega a construir.</p>
+      <p>Hay dos. <code>net</code> habla con el kernel por sockets.
+      <code>time</code> da reloj, espera y azar, y es la más pequeña: cinco
+      funciones.</p>
+      <figure class="ej">
+        <figcaption><span>tiempo.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
+<pre><code class="lang-hixean">ENABLE time
+
+DIM t0 AS I64 = TIME_MS()
+TIME_SLEEP(500)
+PRINT "han pasado al menos 500 ms: " ++ ((TIME_MS() - t0) &gt;= 500).ToString()
+
+DIM cara AS I64 = TIME_RANDOM(6)              ' de 0 a 5
+PRINT "dentro: " ++ ((cara &gt;= 0 AND cara &lt; 6).ToString())
+PRINT "en el tramo: " ++ (TIME_RANDOM_BETWEEN(10, 20) &gt;= 10).ToString()</code></pre>
+        <div class="salida"><span>salida</span><pre>han pasado al menos 500 ms: true
+dentro: true
+en el tramo: true</pre></div>
+      </figure>
+      <p>Los valores del azar no salen fijados en este documento, y no por
+      descuido: un ejemplo que dice <code>5</code> y sale <code>3</code> esta mal.
+      Aquí se comprueba la propiedad, que es lo único que se puede comprobar.</p>
+      <p>Tres cosas que no son obvias. El <strong>origen del reloj no se
+      dice</strong>: es monótono —no se mueve cuando alguien cambia la hora del
+      sistema, porque un reloj que se puede atrasar da diferencias negativas— pero
+      es desconocido, así que lo que sirve son diferencias, no el número.
+      Los <strong>rangos del azar son medio abiertos</strong>, como
+      <code>Rango(0, n)</code>, y uno invertido devuelve el límite de abajo.
+      Y el <strong>azar sale del kernel</strong>, con <code>getrandom</code> y
+      cayendo a <code>/dev/urandom</code> si no está, no de un generador sembrado
+      con la hora: un LCG con la hora como semilla regala su clave, porque el
+      estado inicial se prueba.</p>
       <figure class="ej">
         <figcaption><span>red.hxe</span><button class="copiar" type="button">copiar</button></figcaption>
 <pre><code class="lang-hixean">ENABLE net
@@ -1539,6 +1570,7 @@ OK: 8896 &lt;= 12288 bytes</code></pre>
         <tr class="fila" data-codigo="E0818"><td><code>E0818</code></td><td>'…' ya esta instalado en …: borra ese directorio antes de reinstalar</td></tr>
         <tr class="fila" data-codigo="E0819"><td><code>E0819</code></td><td>el ENTRY … no existe; un paquete sin su fuente no se puede publicar</td></tr>
         <tr class="fila" data-codigo="E0902"><td><code>E0902</code></td><td>…: el argumento … debe ser INT, I64 o STRING</td></tr>
+        <tr class="fila" data-codigo="E0903"><td><code>E0903</code></td><td>una espera no puede ser negativa; el rango del azar tiene que ser mayor que cero</td></tr>
       </table>
     </section>
 

@@ -104,6 +104,30 @@ el número mayor se mueve cuando algo incompatible lo obliga, y esta vez lo hay.
   no tiene permiso de administración sobre el repositorio: el 403 es al escribir, no
   al leer.
 
+- **Capacidad `time`: reloj, espera y azar.** `ENABLE time` da cinco funciones:
+  `TIME_MS`, `TIME_NS`, `TIME_SLEEP`, `TIME_RANDOM` y `TIME_RANDOM_BETWEEN`. Es lo
+  más pequeño que puede hacer falta un programa que mide algo, y sin esto no hay
+  manera de comprobar nada que dependa del tiempo: un bucle «mientras no pase un
+  segundo» necesita saber cuánto ha pasado.
+  - El reloj es `CLOCK_MONOTONIC` y **su origen no se dice**: es monótono para que
+    nadie lo pueda atrasar y romper una medida, pero desconocido, así que lo que
+    sirve son diferencias y no el número.
+  - Los rangos del azar son **medio abiertos**, como `Rango(0, n)`. Cerrarlos por
+    arriba obligaría a decidir qué pasa cuando sale el máximo, y un bucle que sortea
+    hasta alcanzarlo se colgaría.
+  - La entropía **viene del kernel**, con `getrandom` (syscall 318) y cayendo a
+    `/dev/urandom` si el kernel no lo tiene. Un LCG sembrado con la hora regala su
+    clave, porque el estado inicial se prueba. A partir de ahí el reparto es
+    SplitMix64 con descarte de resto, para que `TIME_RANDOM(6)` no dé el 0 más
+    veces que el 5.
+  - El perfil `libc` necesita `_POSIX_C_SOURCE`, que no ponía: con `-std=c11` glibc
+    declara las funciones de POSIX pero no las macros, y `CLOCK_MONOTONIC` es una
+    macro. Va en `_runtime.h` antes de la primera cabecera del sistema, que es el
+    único sitio donde puede ir.
+  - `tests/tiempo.hxe` no comprueba ningún número exacto —un reloj da uno distinto
+    cada vez— sino cosas que tienen que ser verdad siempre: que dormir 11 tarda al
+    menos 11, que el dado reparte, que dos sorteos seguidos no coinciden.
+
 ### Arreglado
 
 - **Un `TYPE` que se menciona a sí mismo reventaba el compilador.** `TYPE Nodo<T>

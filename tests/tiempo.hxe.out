@@ -1,0 +1,11 @@
+un bucle no retrocede el reloj: true
+y el reloj avanza: true
+dormir 11 tarda al menos 11: true
+dormir cero no espera: true
+el dado cae en [0,6): true
+un rango de uno solo: true
+y uno invertido devuelve el de abajo: true
+el dado reparte: true
+dos sorteos seguidos no coinciden: true
+hay nanosegundos: true
+y el reloj es el mismo en las dos unidades: true

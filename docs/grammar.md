@@ -665,9 +665,51 @@ declara en el fuente; el manifiesto tiene que declararla también con
 `CAPABILITY net`, y si no, `hxc build --kit` se niega a construir. Así una
 revisión puede exigir que una capacidad esté autorizada sin leer el código.
 
+Hay dos. `net` habla con el kernel por sockets. `time` da reloj, espera y azar, y es
+la más pequeña de las dos: cinco funciones, que están en `src/emit.c` como un bloque
+del runtime y en los dos perfiles.
+
+```
+ENABLE time
+
+DIM t0 AS I64 = TIME_MS()
+TIME_SLEEP(500)
+PRINT "han pasado al menos 500 ms: " ++ ((TIME_MS() - t0) >= 500).ToString()
+PRINT TIME_RANDOM(6)                 ' un dado: de 0 a 5
+PRINT TIME_RANDOM_BETWEEN(10, 20)    ' de 10 a 19
+```
+
+| función | qué da |
+|---|---|
+| `TIME_MS()` | milisegundos de un reloj que no se sabe desde cuándo |
+| `TIME_NS()` | lo mismo en nanosegundos |
+| `TIME_SLEEP(ms)` | espera, como mucho; el kernel devuelve cuando puede |
+| `TIME_RANDOM(max)` | un entero de `0` a `max - 1` |
+| `TIME_RANDOM_BETWEEN(lo, hi)` | un entero de `lo` a `hi - 1` |
+
+Tres decisiones que no son obvias:
+
+**El origen del reloj no se dice y no se puede pedir.** Es monótono —no se mueve
+cuando alguien cambia la hora del sistema, porque un reloj que se puede atrasar da
+diferencias negativas y rompe cualquier medida— pero es desconocido, así que un
+programa que lo imprima da un número distinto cada vez que se compila. Lo que sirve
+son diferencias.
+
+**Los rangos son medio abiertos**, como `Rango(0, n)`: `TIME_RANDOM(6)` sale de 0 a
+5. Cerrarlos por arriba obligaría a decidir qué pasa cuando sale el máximo, y un
+bucle que sortea hasta alcanzarlo se colgaría. Un rango invertido o vacío devuelve
+el límite de abajo, que es lo único que se puede devolver sin inventarse un número.
+
+**El azar sale del kernel, no de un generador sembrado con la hora.** Un LCG con la
+hora como semilla regala su clave: el estado inicial se prueba, y unas pocas semillas
+bastan. La entropía se pide una vez, con `getrandom` (syscall 318) y cayendo a
+`/dev/urandom` si el kernel no lo tiene; a partir de ahí el reparto es SplitMix64 con
+descarte de resto, para que `TIME_RANDOM(6)` no dé el 0 más veces que el 5.
+
 | código | significa |
 |---|---|
-| `E0902` | un argumento de la capacidad no es `INT`, `I64` ni `STRING` |
+| `E0902` | un argumento de la capacidad no es del tipo que pide |
+| `E0903` | un valor de la capacidad está fuera de lo que significa: una espera negativa, un rango de azar vacío |
 | `E0306` | número de argumentos incorrecto |
 
 Un nombre no puede declararse dos veces en el mismo ámbito: `E0315` lo dice el
