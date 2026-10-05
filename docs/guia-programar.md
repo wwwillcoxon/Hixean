@@ -1,10 +1,10 @@
 ---
 titulo: "Hixean: cómo programar en él"
 subtitulo: "Un compilador AOT a C11, sin máquina virtual"
-version: "Hixean 0.2.0"
+version: "Hixean 0.3.0"
 fecha: "octubre de 2026"
 web: "github.com/wwwillcoxon/Hixean"
-pie: "Hixean 0.2.0 — documento generado de docs/guia-programar.md"
+pie: "Hixean 0.3.0 — documento generado de docs/guia-programar.md"
 ---
 
 # Antes de escribir una línea

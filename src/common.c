@@ -9,7 +9,7 @@
 #include <io.h>
 #endif
 
-const char *HX_VERSION = "0.2.0";
+const char *HX_VERSION = "0.3.0";
 
 void hx_buf_reserve(HxBuf *b, size_t n) {
     if (b->len + n + 1 <= b->cap) return;

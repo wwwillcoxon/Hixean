@@ -11,6 +11,11 @@ La sección de una versión publicada no se toca: es exactamente lo que hay en s
 `tag`, y lo que va después de publicar va aquí. No es una regla de estilo, la
 comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
+Esta sección se acumuló en una ventana que no llegó a publicarse, así que su
+`Arreglado` incluye fallos que nunca salieron: el `Fold` con lambda capturante, el
+`2.5` que salía `2.0`, el reloj de Windows. Se dejan como están, porque son cosas
+que pasaron de verdad y quitarlas sería escribir una historia que no ocurrió.
+
 ### Añadido
 
 - **Publicada la release `v0.2.0`**, con un artefacto (`linux-x64`) y su
@@ -156,6 +161,16 @@ comprueba `tools/verificar-changelog.py`, que compara las dos cosas.
 
 ### Arreglado
 
+- **La versión sube a 0.3.0** en el compilador, en los tres pies del sitio, en el
+  subtítulo de instalación, en los dos ejemplos de instalación, en el enlace y el
+  título de la tarjeta de release, en el ejemplo de `git tag` del README y del
+  workflow, y en el pie del PDF. Los manifiestos de Homebrew y winget **no** suben
+  todavía, a propósito: describen lo que se puede instalar hoy, y una fórmula que
+  apunta a un artefacto que todavía no existe hace que `brew install` falle con un 404.
+  Se suben en el commit posterior a publicar, que es como se hizo con la 0.2.0. La
+  puerta lo refleja: solo exige los manifiestos cuando la versión tiene tag, y eso no es
+  una excepción para poder apagarla, es que comprobarlo antes obligaría a dejar en el
+  repositorio una fórmula rota.
 - **Una puerta que comprueba que la versión que se anuncia es la que es.** La versión
   aparece en trece sitios —los tres pies del sitio, el subtítulo de instalación, dos
   ejemplos de instalación, el enlace a la release, el ejemplo de `git tag` del README,

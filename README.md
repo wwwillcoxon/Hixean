@@ -42,7 +42,7 @@ confundirlos: el primero se instala, el segundo se consulta.
 
 ### El compilador
 
-La fuente de verdad es la **release de GitHub**: `git tag v0.2.0` dispara
+La fuente de verdad es la **release de GitHub**: `git tag v0.3.0` dispara
 `.github/workflows/release.yml`, que compila y prueba las seis combinaciones
 (linux x64/arm64, macos x64/arm64, windows x64/arm64), adjunta un tarball por
 plataforma y calcula `SHA256SUMS` sobre lo que subió cada runner.

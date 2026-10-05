@@ -212,6 +212,13 @@ def main():
     except (OSError, subprocess.SubprocessError):
         version = ""
 
+    tags = []
+    try:
+        tags = subprocess.run(["git", "tag"], cwd=RAIZ, capture_output=True, text=True,
+                              encoding="utf-8", check=True).stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        tags = []
+
     if solo_linux and not version:
         comprobar(False, "no se pudo leer la version de `hxc version`")
     elif version:
@@ -219,6 +226,17 @@ def main():
         # (fichero, que es este sitio, patron): el nombre va en el mensaje porque «no
         # anuncia la versión» sin decir cuál no lleva a ninguna parte. Un pie de pagina
         # puede ser de tres ficheros y hay cuatro sitios distintos en el mismo index.
+        # (fichero, que es este sitio, patron)
+        #
+        # Los dos ultimos no se comprueban hasta que la version tiene tag, y no es una
+        # excepcion para que la puerta se pueda apagar: es que los manifiestos de
+        # empaquetado describen lo que se puede instalar HOY, y un manifiesto que
+        # apunta a un artefacto que todavia no existe hace que `brew install` falle con
+        # un 404. Se suben en el commit posterior a publicar, que es como se hizo con
+        # la 0.2.0. Comprobarlos antes obligaria a dejar en el repositorio una formula
+        # rota, que es peor que un manifiesto una version por detras.
+        publicada = os.path.isdir(os.path.join(RAIZ, ".git")) and any(
+            t.strip() == "v" + version for t in tags)
         donde = [
             ("site/index.html", "el pie", r"Hixean %s · licencia MIT"),
             ("site/directorio.html", "el pie", r"Hixean %s · licencia MIT"),
@@ -227,11 +245,23 @@ def main():
             ("site/index.html", "el ejemplo de install.sh", r"sh tools/install\.sh %s"),
             ("site/index.html", "el nombre del tarball", r"hixean-%s-linux-x64\.tar\.gz"),
             ("site/index.html", "el enlace a la release", r"releases/tag/v%s"),
+            # El titulo de la tarjeta va con el enlace: cambiar el href y no el texto
+            # deja una tarjeta que dice «Release 0.2.0» y lleva a la 0.3.0, y con el
+            # href solo no se ve. Paso por eso al subir la version.
+            ("site/index.html", "el titulo de la tarjeta de release", r">Release %s</a>"),
             ("README.md", "el ejemplo de git tag", r"git tag v%s"),
-            ("packaging/homebrew/hixean.rb", "la version de la formula", r'version "%s"'),
-            ("packaging/winget/hixean.yaml", "PackageVersion", r"PackageVersion: %s"),
-            ("packaging/winget/hixean.yaml", "el enlace a la release", r"releases/tag/v%s"),
+            (".github/workflows/release.yml", "el ejemplo de git tag", r"git tag v%s"),
+            # El pie del PDF va en el documento que lo genera, asi que un PDF con una
+            # version dentro y el fuente con otra sale de ahi sin que nadie se entere:
+            # el PDF se genera una vez y se sube.
+            ("docs/guia-programar.md", "el pie del PDF", r"Hixean %s — documento generado"),
         ]
+        if publicada:
+            donde += [
+                ("packaging/homebrew/hixean.rb", "la version de la formula", r'version "%s"'),
+                ("packaging/winget/hixean.yaml", "PackageVersion", r"PackageVersion: %s"),
+                ("packaging/winget/hixean.yaml", "el enlace a la release", r"releases/tag/v%s"),
+            ]
         for fichero, cual, patron in donde:
             ruta = os.path.join(RAIZ, fichero)
             if not os.path.exists(ruta):
